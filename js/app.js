@@ -2498,11 +2498,14 @@
     Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit)routeRuntimeOutput(hit,'out');st.next+=st.ms;}});
   }
 
-  function dispatchRuntimeEvent(defName,eventType,values={}){
+  function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
 
     if(!state.runtime.running)return;
     state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);
     runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>{
+      // Pointer events are delivered only to the node under the pointer.
+      // Keyboard/screen/joystick events remain broadcast when no target is supplied.
+      if(targetNodeId && node.id!==targetNodeId)return;
       runtimeScriptList(node.id).forEach(sn=>{
         if(sn.defName!==defName)return;
         const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)return;
@@ -2653,13 +2656,13 @@
         const node=runtimeNodeAtPoint(world.x,world.y);
         if(node){
           activeTouchNodes[e.pointerId]=node.id;
-          dispatchRuntimeEvent('onTouch','down',nodeInputValues(node,world.x,world.y,'TouchDown'));
+          dispatchRuntimeEvent('onTouch','down',nodeInputValues(node,world.x,world.y,'TouchDown'),node.id);
         }
       }else if(e.pointerType==='mouse' || !e.pointerType){
         const node=runtimeNodeAtPoint(world.x,world.y);
         if(node){
           activeMouseNodes[e.pointerId]=node.id;
-          dispatchRuntimeEvent('onMouse','down',nodeInputValues(node,world.x,world.y,'MouseDown'));
+          dispatchRuntimeEvent('onMouse','down',nodeInputValues(node,world.x,world.y,'MouseDown'),node.id);
         }
       }
       state.runtime.inputs.PointerType=e.pointerType||'mouse';
@@ -2671,8 +2674,8 @@
       updateRuntimeJoystick(e,'move');
       const world=worldPoint(e);
       const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','move',nodeInputValues(node,world.x,world.y,'TouchMove'));}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','move',nodeInputValues(node,world.x,world.y,'MouseMove'));}
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','move',nodeInputValues(node,world.x,world.y,'TouchMove'),node.id);}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','move',nodeInputValues(node,world.x,world.y,'MouseMove'),node.id);}
       sendScreen('move',e);
     };
     const handlePointerUp=e=>{
@@ -2680,16 +2683,16 @@
       const world=worldPoint(e);
       updateRuntimeJoystick(e,'up');
       const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'));delete activeTouchNodes[e.pointerId];}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'));delete activeMouseNodes[e.pointerId];}
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
       sendScreen('up',e);
     };
     const handlePointerCancel=e=>{
       e.preventDefault();
       const world=worldPoint(e);updateRuntimeJoystick(e,'cancel');
       const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'));delete activeTouchNodes[e.pointerId];}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'));delete activeMouseNodes[e.pointerId];}
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
       sendScreen('up',e);
     };
     canvas.addEventListener('pointerdown',handlePointerDown,{passive:false});
