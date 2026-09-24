@@ -2673,6 +2673,33 @@
   }
   function capitalize(v){return String(v).charAt(0).toUpperCase()+String(v).slice(1);}
 
+  function fitRuntimeCanvas(){
+    const canvas=$('#runtimeCanvas');
+    if(!canvas)return;
+    const host=canvas.closest('.runtime-viewport')||$('#runtimeRoot')||canvas.parentElement||document.body;
+    if(!host)return;
+    const rect=host.getBoundingClientRect();
+    const hostW=Math.max(1,rect.width),hostH=Math.max(1,rect.height);
+    const aspect=1280/720;
+    let width=hostW,height=width/aspect;
+    if(height>hostH){height=hostH;width=height*aspect;}
+    width=Math.max(1,Math.floor(width));
+    height=Math.max(1,Math.floor(height));
+    canvas.style.width=`${width}px`;
+    canvas.style.height=`${height}px`;
+    canvas.style.maxWidth='none';
+    canvas.style.maxHeight='none';
+    canvas.style.aspectRatio='auto';
+    canvas.style.display='block';
+    canvas.style.touchAction='none';
+    host.style.overflow='hidden';
+    host.style.display='grid';
+    host.style.placeItems='center';
+    const bg=colorCss(state.runtime?.camera?.bgColor,'#202020');
+    host.style.background=bg;
+    canvas.style.background=bg;
+  }
+
   function startRuntime(debug){
     if(editorAnimationRAF){cancelAnimationFrame(editorAnimationRAF);editorAnimationRAF=0;}
     runtimeAccumulator=0;
@@ -2686,9 +2713,9 @@
 
     if(window.__UIX_STANDALONE__){
       const root=$('#runtimeRoot')||document.body;
-      const canvas=$('#runtimeCanvas')||(()=>{const c=document.createElement('canvas');c.id='runtimeCanvas';c.width=1280;c.height=720;c.style.cssText='display:block;width:100vw;height:100vh;touch-action:none;image-rendering:auto;';root.append(c);return c;})();
+      const canvas=$('#runtimeCanvas')||(()=>{const c=document.createElement('canvas');c.id='runtimeCanvas';c.width=1280;c.height=720;c.style.cssText='display:block;touch-action:none;image-rendering:auto;';root.append(c);return c;})();
       if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#202020;';
-      canvas.style.touchAction='none';
+      fitRuntimeCanvas();
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();
       runtimeLast=performance.now();
@@ -2697,9 +2724,10 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;fitRuntimeCanvas();installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    window.addEventListener('resize',fitRuntimeCanvas,{passive:true});
   }
-  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];window.removeEventListener('resize',fitRuntimeCanvas);$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -2708,7 +2736,7 @@
     drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
-  function drawRuntime(){const c=$('#runtimeCanvas');if(!c)return;const ctx=c.getContext('2d');const W=1280,H=720;if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};ctx.fillStyle=colorCss(cam.bgColor,'#202020');ctx.fillRect(0,0,W,H);const zoom=Math.max(.01,Number(cam.scale)||1);ctx.save();ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.rotate(Number(cam.angle||0)*Math.PI/180);ctx.translate(-Number(cam.x||0),-Number(cam.y||0));for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);drawRuntimeColliders(ctx);ctx.restore();drawRuntimeUIComponents(ctx,W,H);renderRuntimeDebug();}
+  function drawRuntime(){const c=$('#runtimeCanvas');if(!c)return;fitRuntimeCanvas();const ctx=c.getContext('2d');const W=1280,H=720;if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};const bg=colorCss(cam.bgColor,'#202020');const host=c.closest('.runtime-viewport')||$('#runtimeRoot')||c.parentElement;if(host)host.style.background=bg;c.style.background=bg;ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);const zoom=Math.max(.01,Number(cam.scale)||1);ctx.save();ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.rotate(Number(cam.angle||0)*Math.PI/180);ctx.translate(-Number(cam.x||0),-Number(cam.y||0));for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);drawRuntimeColliders(ctx);ctx.restore();drawRuntimeUIComponents(ctx,W,H);renderRuntimeDebug();}
 
   // ---------------- Events ----------------
   function setupLongPress(el,callback){el.addEventListener('pointerdown',e=>{if(e.button!==0)return;const startX=e.clientX,startY=e.clientY,timer=setTimeout(()=>callback(e),550);const move=ev=>{if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>8){clearTimeout(timer);document.removeEventListener('pointermove',move);}};document.addEventListener('pointermove',move);document.addEventListener('pointerup',()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);},{once:true});});}
