@@ -31,7 +31,8 @@
     return cat([...local,...central,end]);
   }
   function escapeHTML(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function standaloneHTML(name,pwa){
+  function standaloneHTML(name,pwa,screenType='Windowboxing'){
+    const screenClass=screenType==='Stretch'?'uix-screen-stretch':'uix-screen-windowboxing';
     const title=escapeHTML(name||'My Project');
     return `<!doctype html>
 <html lang="en">
@@ -40,10 +41,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <title>${title}</title>
   ${pwa?'<link rel="manifest" href="manifest.json">':''}
-  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#202020}body{overscroll-behavior:none}#runtimeRoot{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#202020}#runtimeCanvas{display:block;width:100vw;height:100vh;touch-action:none;image-rendering:auto}</style>
+  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}body{overscroll-behavior:none}#runtimeRoot{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111}#runtimeRoot.uix-screen-windowboxing{display:grid;place-items:center;background:#111}#runtimeRoot.uix-screen-windowboxing #runtimeCanvas{display:block;width:min(100vw,177.7778vh);height:min(100vh,56.25vw);max-width:100%;max-height:100%;aspect-ratio:16/9;touch-action:none;image-rendering:auto;background:#202020}#runtimeRoot.uix-screen-stretch{display:block;background:#202020}#runtimeRoot.uix-screen-stretch #runtimeCanvas{display:block;width:100vw;height:100vh;max-width:none;max-height:none;aspect-ratio:auto;touch-action:none;image-rendering:auto;background:#202020}</style>
 </head>
 <body>
-  <div id="runtimeRoot"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>
+  <div id="runtimeRoot" class="${screenClass}"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>
   <script>window.__UIX_STANDALONE__=true;</script>
   <script src="js/node.js"></script>
   <script src="js/assets.js"></script>
@@ -82,9 +83,9 @@
   }
   function serviceWorker(version,files){const cache=`uix-player-${safeName(version)}`;return `const C=${JSON.stringify(cache)},F=${JSON.stringify(['./',...files])};self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F)).then(()=>self.skipWaiting())));self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(x=>x||fetch(e.request))));`;}
   async function exportProject(o={}){
-    const name=String(o.name||'My Project').trim()||'My Project',version=String(o.version||'1.0.0').trim()||'1.0.0',pwa=!!o.pwa,needMidi=!!o.needMidi;
+    const name=String(o.name||'My Project').trim()||'My Project',version=String(o.version||'1.0.0').trim()||'1.0.0',pwa=!!o.pwa,needMidi=!!o.needMidi,screenType=o.screenType==='Stretch'?'Stretch':'Windowboxing';
     o.onProgress?.(4,'Building standalone Playtime');
-    const files=[{name:'index.html',bytes:te.encode(standaloneHTML(name,pwa))},{name:'project.ndc',bytes:o.projectNdc instanceof Uint8Array?o.projectNdc:new Uint8Array(o.projectNdc||[])}];
+    const files=[{name:'index.html',bytes:te.encode(standaloneHTML(name,pwa,screenType))},{name:'project.ndc',bytes:o.projectNdc instanceof Uint8Array?o.projectNdc:new Uint8Array(o.projectNdc||[])}];
     const engineFiles=['js/node.js','js/assets.js','js/scriptNodes.js','js/uiComponents.js','js/ndcCodec.js','js/runtimeEngine.js',...(needMidi?['js/midiParser.js']:[]),'js/app.js'];
     for(let i=0;i<engineFiles.length;i++){const path=engineFiles[i];const bytes=await fetchFile(path);files.push({name:path,bytes});o.onProgress?.(8+Math.round((i+1)/engineFiles.length*58),`Loaded ${path}`);}
     const icon=iconBytes(o.iconAsset);if(pwa&&icon)files.push(icon);

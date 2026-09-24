@@ -48,7 +48,7 @@
     },
     dragTree: null,
     runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '' },
-    game: { preferredSceneId: '' },
+    game: { preferredSceneId: '', screenType: 'Windowboxing' },
     ui: {
       componentCollapsed: Object.create(null),
       globalVariablesCollapsed: false,
@@ -203,7 +203,7 @@
   }
 
   function historySnapshot(){return clone({scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
-  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:''});state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
+  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=state.game.screenType==='Stretch'?'Stretch':'Windowboxing';state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
   function pushHistory(){if(state.history.busy)return;state.history.undo.push(historySnapshot());if(state.history.undo.length>80)state.history.undo.shift();state.history.redo=[];}
   function undo(){const prev=state.history.undo.pop();if(!prev)return status('Nothing to undo');state.history.busy=true;state.history.redo.push(historySnapshot());restoreHistorySnapshot(prev);state.history.busy=false;status('Undo');}
   function redo(){const next=state.history.redo.pop();if(!next)return status('Nothing to redo');state.history.busy=true;state.history.undo.push(historySnapshot());restoreHistorySnapshot(next);state.history.busy=false;status('Redo');}
@@ -265,6 +265,7 @@
       const scene = makeScene('Main');
       state.scenes = [scene]; state.currentSceneId = scene.id; state.game.preferredSceneId = scene.id; state.camera = scene.camera;
     } else {
+      state.game.screenType = state.game.screenType === 'Stretch' ? 'Stretch' : 'Windowboxing';
       if (!state.game.preferredSceneId || !state.scenes.some(s => s.id === state.game.preferredSceneId)) state.game.preferredSceneId = state.scenes[0].id;
       syncSceneCamera();
     }
@@ -282,7 +283,7 @@
     state.project.created = true;
     state.project.localNdcId = null;
     state.project.name = String(name||'Untitled Node2D').trim()||'Untitled Node2D';
-    state.scenes = [scene]; state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; state.game.preferredSceneId = scene.id; syncSceneCamera();
+    state.scenes = [scene]; state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; state.game = { preferredSceneId: scene.id, screenType: 'Windowboxing' }; syncSceneCamera();
     state.nextNodeId = 1; state.nextVariableId = 1; state.globalVariables = [];
     state.sceneVariablesByScene = Object.create(null);
     state.localVarsByNode = Object.create(null);
@@ -1137,7 +1138,7 @@
     state.project={name:'Untitled Node2D',created:false};
     state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera';
     state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
-    state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:''};
+    state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing'};
     state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),editingInput:null};
     state.history={undo:[],redo:[],busy:false}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
@@ -1233,7 +1234,8 @@
     state.localVarsByNode=clone(data.localVarsByNode||{});
     state.uiComponentsByScene=clone(data.uiComponentsByScene||{});
     state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),editingInput:null};
-    state.game=clone(data.game||{preferredSceneId:''});
+    state.game=clone(data.game||{preferredSceneId:'',screenType:'Windowboxing'});
+    state.game.screenType=state.game.screenType==='Stretch'?'Stretch':'Windowboxing';
     state.camera=clone(data.camera||defaultCamera());
     if(!state.game.preferredSceneId||!state.scenes.some(s=>s.id===state.game.preferredSceneId)) state.game.preferredSceneId=state.scenes[0].id;
     Object.keys(state.assets).forEach(k=>{state.assets[k].length=0;});
@@ -1406,7 +1408,7 @@
       setExportProgress(2,'Building project data…',true);
       const ndc=await buildProjectNDC();
       setExportProgress(8,'Packaging existing Playtime files…',true);
-      const result=await window.UIXProjectExporter.exportProject({name,version,pwa,manifest,iconAsset:icon,projectNdc:ndc,needMidi:(state.assets.MIDI||[]).length>0,onProgress:(p,t)=>setExportProgress(Math.max(8,p),t,true)});
+      const result=await window.UIXProjectExporter.exportProject({name,version,pwa,manifest,iconAsset:icon,screenType:state.game.screenType,projectNdc:ndc,needMidi:(state.assets.MIDI||[]).length>0,onProgress:(p,t)=>setExportProgress(Math.max(8,p),t,true)});
       setExportProgress(100,`Download started · ${result.name}`,true);
       status(`Exported Project · ${name}`);
       setTimeout(()=>closeModal($('#exportProjectModal')),350);
@@ -1420,6 +1422,7 @@
   function updateFullscreenButton(){const f=!!document.fullscreenElement;$('#fullscreenButton').title=f?'Unfullscreen':'Fullscreen';}
 
   function openGameSettings(){
+    state.game.screenType = state.game.screenType === 'Stretch' ? 'Stretch' : 'Windowboxing';
     const host=$('#preferredSceneControl');
     if(host){
       host.innerHTML='';
@@ -1428,6 +1431,16 @@
       state.game.preferredSceneId=selected?.id||'';
       const wrap=customSelect(selected?.name||'No Scene',options,name=>{const scene=state.scenes.find(s=>s.name===name);if(scene){state.game.preferredSceneId=scene.id;status(`Preferred Scene: ${scene.name}`);}});
       wrap.classList.add('preferred-scene-custom-select');host.append(wrap);
+    }
+    const screenHost=$('#screenTypeControl');
+    if(screenHost){
+      screenHost.innerHTML='';
+      const wrap=customSelect(state.game.screenType,['Stretch','Windowboxing'],value=>{
+        state.game.screenType=value==='Stretch'?'Stretch':'Windowboxing';
+        status(`Screen Type: ${state.game.screenType}`);
+      });
+      wrap.classList.add('screen-type-custom-select');
+      screenHost.append(wrap);
     }
     showModal($('#gameSettingsModal'));
   }
@@ -2673,33 +2686,6 @@
   }
   function capitalize(v){return String(v).charAt(0).toUpperCase()+String(v).slice(1);}
 
-  function fitRuntimeCanvas(){
-    const canvas=$('#runtimeCanvas');
-    if(!canvas)return;
-    const host=canvas.closest('.runtime-viewport')||$('#runtimeRoot')||canvas.parentElement||document.body;
-    if(!host)return;
-    const rect=host.getBoundingClientRect();
-    const hostW=Math.max(1,rect.width),hostH=Math.max(1,rect.height);
-    const aspect=1280/720;
-    let width=hostW,height=width/aspect;
-    if(height>hostH){height=hostH;width=height*aspect;}
-    width=Math.max(1,Math.floor(width));
-    height=Math.max(1,Math.floor(height));
-    canvas.style.width=`${width}px`;
-    canvas.style.height=`${height}px`;
-    canvas.style.maxWidth='none';
-    canvas.style.maxHeight='none';
-    canvas.style.aspectRatio='auto';
-    canvas.style.display='block';
-    canvas.style.touchAction='none';
-    host.style.overflow='hidden';
-    host.style.display='grid';
-    host.style.placeItems='center';
-    const bg=colorCss(state.runtime?.camera?.bgColor,'#202020');
-    host.style.background=bg;
-    canvas.style.background=bg;
-  }
-
   function startRuntime(debug){
     if(editorAnimationRAF){cancelAnimationFrame(editorAnimationRAF);editorAnimationRAF=0;}
     runtimeAccumulator=0;
@@ -2713,9 +2699,13 @@
 
     if(window.__UIX_STANDALONE__){
       const root=$('#runtimeRoot')||document.body;
-      const canvas=$('#runtimeCanvas')||(()=>{const c=document.createElement('canvas');c.id='runtimeCanvas';c.width=1280;c.height=720;c.style.cssText='display:block;touch-action:none;image-rendering:auto;';root.append(c);return c;})();
-      if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#202020;';
-      fitRuntimeCanvas();
+      const canvas=$('#runtimeCanvas')||(()=>{const c=document.createElement('canvas');c.id='runtimeCanvas';c.width=1280;c.height=720;c.style.cssText='display:block;width:100vw;height:100vh;touch-action:none;image-rendering:auto;';root.append(c);return c;})();
+      if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111;display:grid;place-items:center;';
+      root.classList.toggle('uix-screen-stretch',state.game.screenType==='Stretch');
+      root.classList.toggle('uix-screen-windowboxing',state.game.screenType!=='Stretch');
+      canvas.classList.toggle('uix-screen-stretch',state.game.screenType==='Stretch');
+      canvas.classList.toggle('uix-screen-windowboxing',state.game.screenType!=='Stretch');
+      canvas.style.touchAction='none';
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();
       runtimeLast=performance.now();
@@ -2724,10 +2714,9 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;fitRuntimeCanvas();installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
-    window.addEventListener('resize',fitRuntimeCanvas,{passive:true});
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport ${state.game.screenType==='Stretch'?'screen-stretch':'screen-windowboxing'}"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];window.removeEventListener('resize',fitRuntimeCanvas);$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -2736,7 +2725,7 @@
     drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
-  function drawRuntime(){const c=$('#runtimeCanvas');if(!c)return;fitRuntimeCanvas();const ctx=c.getContext('2d');const W=1280,H=720;if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};const bg=colorCss(cam.bgColor,'#202020');const host=c.closest('.runtime-viewport')||$('#runtimeRoot')||c.parentElement;if(host)host.style.background=bg;c.style.background=bg;ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);const zoom=Math.max(.01,Number(cam.scale)||1);ctx.save();ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.rotate(Number(cam.angle||0)*Math.PI/180);ctx.translate(-Number(cam.x||0),-Number(cam.y||0));for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);drawRuntimeColliders(ctx);ctx.restore();drawRuntimeUIComponents(ctx,W,H);renderRuntimeDebug();}
+  function drawRuntime(){const c=$('#runtimeCanvas');if(!c)return;const ctx=c.getContext('2d');const W=1280,H=720;if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};ctx.fillStyle=colorCss(cam.bgColor,'#202020');ctx.fillRect(0,0,W,H);const zoom=Math.max(.01,Number(cam.scale)||1);ctx.save();ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.rotate(Number(cam.angle||0)*Math.PI/180);ctx.translate(-Number(cam.x||0),-Number(cam.y||0));for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);drawRuntimeColliders(ctx);ctx.restore();drawRuntimeUIComponents(ctx,W,H);renderRuntimeDebug();}
 
   // ---------------- Events ----------------
   function setupLongPress(el,callback){el.addEventListener('pointerdown',e=>{if(e.button!==0)return;const startX=e.clientX,startY=e.clientY,timer=setTimeout(()=>callback(e),550);const move=ev=>{if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>8){clearTimeout(timer);document.removeEventListener('pointermove',move);}};document.addEventListener('pointermove',move);document.addEventListener('pointerup',()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);},{once:true});});}
