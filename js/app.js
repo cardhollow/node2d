@@ -81,6 +81,8 @@
   };
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
+  const SCREEN_TYPES=['Stretch','Windowboxing','Crop','Smart Camera'];
+  function normalizeScreenType(v){ return SCREEN_TYPES.includes(v)?v:'Windowboxing'; }
   function defaultCamera(){ return { enabled:true, followId:'this', horizontal:0, vertical:0, animation:'Smooth', speed:300, bgColor:'#202020', scale:1, transform:{position:[0,0],angle:[0]} }; }
   function ensureSceneCamera(scene){ if(!scene)return defaultCamera(); if(!scene.camera) scene.camera=defaultCamera(); return scene.camera; }
   function syncSceneCamera(){ const scene=currentScene(); if(scene){ state.camera=ensureSceneCamera(scene); } }
@@ -203,7 +205,7 @@
   }
 
   function historySnapshot(){return clone({scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
-  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=state.game.screenType==='Stretch'?'Stretch':'Windowboxing';state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
+  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
   function pushHistory(){if(state.history.busy)return;state.history.undo.push(historySnapshot());if(state.history.undo.length>80)state.history.undo.shift();state.history.redo=[];}
   function undo(){const prev=state.history.undo.pop();if(!prev)return status('Nothing to undo');state.history.busy=true;state.history.redo.push(historySnapshot());restoreHistorySnapshot(prev);state.history.busy=false;status('Undo');}
   function redo(){const next=state.history.redo.pop();if(!next)return status('Nothing to redo');state.history.busy=true;state.history.undo.push(historySnapshot());restoreHistorySnapshot(next);state.history.busy=false;status('Redo');}
@@ -265,7 +267,7 @@
       const scene = makeScene('Main');
       state.scenes = [scene]; state.currentSceneId = scene.id; state.game.preferredSceneId = scene.id; state.camera = scene.camera;
     } else {
-      state.game.screenType = state.game.screenType === 'Stretch' ? 'Stretch' : 'Windowboxing';
+      state.game.screenType = normalizeScreenType(state.game.screenType);
       if (!state.game.preferredSceneId || !state.scenes.some(s => s.id === state.game.preferredSceneId)) state.game.preferredSceneId = state.scenes[0].id;
       syncSceneCamera();
     }
@@ -937,7 +939,13 @@
   function cameraEditorFrame(){
     const pos=getEditorCameraWorldPosition();
     const scale=Math.max(.01,Number(state.camera.scale)||1);
-    return {x:pos.x,y:pos.y,w:1280/scale,h:720/scale,angle:Number(state.camera.transform?.angle?.[0]||0)*Math.PI/180};
+    const canvas=$('#workplaceCanvas');
+    const rect=canvas?.getBoundingClientRect?.();
+    const aspect=rect&&rect.width>0&&rect.height>0?rect.width/rect.height:1280/720;
+    const type=normalizeScreenType(state.game.screenType);
+    const h=720/scale;
+    const w=type==='Smart Camera' ? h*aspect : 1280/scale;
+    return {x:pos.x,y:pos.y,w,h,angle:Number(state.camera.transform?.angle?.[0]||0)*Math.PI/180,type,aspect};
   }
   function rotatePoint(x,y,a){const c=Math.cos(a),s=Math.sin(a);return {x:x*c-y*s,y:x*s+y*c};}
   function inverseRotatePoint(x,y,a){return rotatePoint(x,y,-a);}
@@ -976,14 +984,12 @@
     return {x,y};
   }
   function drawCameraViewport(ctx,rect){
-    const pos=getEditorCameraWorldPosition();
-    const camScale=Math.max(.01,Number(state.camera.scale)||1);
-    const base={w:1280,h:720};
-    const w=base.w/camScale,h=base.h/camScale,angle=Number(state.camera.transform?.angle?.[0]||0)*Math.PI/180;
-    ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(angle);
-    ctx.strokeStyle='#555';ctx.lineWidth=1/state.zoom;ctx.setLineDash([8/state.zoom,5/state.zoom]);
-    ctx.strokeRect(-w/2,-h/2,w,h);ctx.setLineDash([]);
-    ctx.fillStyle='#555';ctx.globalAlpha=.7;ctx.fillRect(-3/state.zoom,-3/state.zoom,6/state.zoom,6/state.zoom);
+    const cam=cameraEditorFrame();
+    ctx.save();ctx.translate(cam.x,cam.y);ctx.rotate(cam.angle);
+    ctx.strokeStyle=cam.type==='Smart Camera'?'#d8c35a':'#555';
+    ctx.lineWidth=1/state.zoom;ctx.setLineDash([8/state.zoom,5/state.zoom]);
+    ctx.strokeRect(-cam.w/2,-cam.h/2,cam.w,cam.h);ctx.setLineDash([]);
+    ctx.fillStyle=cam.type==='Smart Camera'?'#d8c35a':'#555';ctx.globalAlpha=.7;ctx.fillRect(-3/state.zoom,-3/state.zoom,6/state.zoom,6/state.zoom);
     ctx.restore();
   }
   function roundRectPath(ctx,x,y,w,h,r){r=Array.isArray(r)?r:[r,r,r,r];const [tl,tr,br,bl]=r.map(v=>Math.max(0,Number(v)||0));const max=Math.min(Math.abs(w)/2,Math.abs(h)/2);const a=Math.min(tl,max),b=Math.min(tr,max),c=Math.min(br,max),d=Math.min(bl,max);ctx.beginPath();ctx.moveTo(x+a,y);ctx.lineTo(x+w-b,y);ctx.quadraticCurveTo(x+w,y,x+w,y+b);ctx.lineTo(x+w,y+h-c);ctx.quadraticCurveTo(x+w,y+h,x+w-c,y+h);ctx.lineTo(x+d,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-d);ctx.lineTo(x,y+a);ctx.quadraticCurveTo(x,y,x+a,y);ctx.closePath();}
@@ -1235,7 +1241,7 @@
     state.uiComponentsByScene=clone(data.uiComponentsByScene||{});
     state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),editingInput:null};
     state.game=clone(data.game||{preferredSceneId:'',screenType:'Windowboxing'});
-    state.game.screenType=state.game.screenType==='Stretch'?'Stretch':'Windowboxing';
+    state.game.screenType=normalizeScreenType(state.game.screenType);
     state.camera=clone(data.camera||defaultCamera());
     if(!state.game.preferredSceneId||!state.scenes.some(s=>s.id===state.game.preferredSceneId)) state.game.preferredSceneId=state.scenes[0].id;
     Object.keys(state.assets).forEach(k=>{state.assets[k].length=0;});
@@ -1422,7 +1428,7 @@
   function updateFullscreenButton(){const f=!!document.fullscreenElement;$('#fullscreenButton').title=f?'Unfullscreen':'Fullscreen';}
 
   function openGameSettings(){
-    state.game.screenType = state.game.screenType === 'Stretch' ? 'Stretch' : 'Windowboxing';
+    state.game.screenType = normalizeScreenType(state.game.screenType);
     const host=$('#preferredSceneControl');
     if(host){
       host.innerHTML='';
@@ -1435,8 +1441,9 @@
     const screenHost=$('#screenTypeControl');
     if(screenHost){
       screenHost.innerHTML='';
-      const wrap=customSelect(state.game.screenType,['Stretch','Windowboxing'],value=>{
-        state.game.screenType=value==='Stretch'?'Stretch':'Windowboxing';
+      const wrap=customSelect(state.game.screenType,SCREEN_TYPES,value=>{
+        state.game.screenType=normalizeScreenType(value);
+        drawWorkplace();
         status(`Screen Type: ${state.game.screenType}`);
       });
       wrap.classList.add('screen-type-custom-select');
@@ -2518,12 +2525,29 @@
     }
     return null;
   }
+  function runtimeProjection(canvas){
+    const rect=canvas?.getBoundingClientRect?.()||{width:1,height:1};
+    const width=Math.max(1,rect.width),height=Math.max(1,rect.height);
+    const type=normalizeScreenType(state.game.screenType);
+    const baseW=1280,baseH=720;
+    let viewW=baseW,viewH=baseH,scaleX=width/baseW,scaleY=height/baseH,offsetX=0,offsetY=0;
+    if(type==='Windowboxing'){
+      const s=Math.min(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
+    }else if(type==='Stretch'){
+      scaleX=width/baseW;scaleY=height/baseH;
+    }else if(type==='Crop'){
+      const s=Math.max(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
+    }else{
+      const s=height/baseH;scaleX=scaleY=s;viewW=width/s;viewH=baseH;
+    }
+    return {width,height,type,baseW,baseH,viewW,viewH,scaleX,scaleY,offsetX,offsetY,dpr:Math.max(1,Number(window.devicePixelRatio)||1)};
+  }
   function runtimePointerPosition(e){
     const canvas=$('#runtimeCanvas');
     if(!canvas)return null;
-    const rect=canvas.getBoundingClientRect();
-    const sx=rect.width?1280/rect.width:1, sy=rect.height?720/rect.height:1;
-    return {x:(e.clientX-rect.left)*sx,y:(e.clientY-rect.top)*sy};
+    const r=runtimeProjection(canvas);
+    const px=e.clientX-canvas.getBoundingClientRect().left,py=e.clientY-canvas.getBoundingClientRect().top;
+    return {x:(px-r.offsetX)/r.scaleX+((r.viewW-r.baseW)/2),y:(py-r.offsetY)/r.scaleY};
   }
   function updateRuntimeJoystick(e,type){
     const p=runtimePointerPosition(e); if(!p)return false;
@@ -2601,14 +2625,13 @@
     const canvas=$('#runtimeCanvas',overlay);if(!canvas)return;
     canvas.style.touchAction='none';
     overlay.tabIndex=0;overlay.focus?.();
-    const pointerPoint=(e)=>{
-      const r=canvas.getBoundingClientRect();
-      const sx=r.width?1280/r.width:1, sy=r.height?720/r.height:1;
-      return {x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};
+    const screenPoint=(e)=>{
+      const m=runtimeProjection(canvas),r=canvas.getBoundingClientRect();
+      const px=e.clientX-r.left,py=e.clientY-r.top;
+      return {x:(px-m.offsetX)/m.scaleX-m.viewW/2,y:(py-m.offsetY)/m.scaleY-m.viewH/2};
     };
-    const screenPoint=(e)=>{const p=pointerPoint(e);return{x:p.x-640,y:p.y-360};};
     const worldPoint=(e)=>{
-      const p=screenPoint(e), cam=state.runtime.camera||{};
+      const p=screenPoint(e),cam=state.runtime.camera||{};
       const zoom=Math.max(.0001,Number(cam.scale)||1);
       const a=Number(cam.angle||0)*Math.PI/180;
       const q=rotatePoint(p.x/zoom,p.y/zoom,-a);
@@ -2701,10 +2724,7 @@
       const root=$('#runtimeRoot')||document.body;
       const canvas=$('#runtimeCanvas')||(()=>{const c=document.createElement('canvas');c.id='runtimeCanvas';c.width=1280;c.height=720;c.style.cssText='display:block;width:100vw;height:100vh;touch-action:none;image-rendering:auto;';root.append(c);return c;})();
       if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111;display:grid;place-items:center;';
-      root.classList.toggle('uix-screen-stretch',state.game.screenType==='Stretch');
-      root.classList.toggle('uix-screen-windowboxing',state.game.screenType!=='Stretch');
-      canvas.classList.toggle('uix-screen-stretch',state.game.screenType==='Stretch');
-      canvas.classList.toggle('uix-screen-windowboxing',state.game.screenType!=='Stretch');
+      applyRuntimeScreenType(root,canvas,state.game.screenType);
       canvas.style.touchAction='none';
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();
@@ -2714,7 +2734,7 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport ${state.game.screenType==='Stretch'?'screen-stretch':'screen-windowboxing'}"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
@@ -2725,7 +2745,70 @@
     drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
-  function drawRuntime(){const c=$('#runtimeCanvas');if(!c)return;const ctx=c.getContext('2d');const W=1280,H=720;if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};ctx.fillStyle=colorCss(cam.bgColor,'#202020');ctx.fillRect(0,0,W,H);const zoom=Math.max(.01,Number(cam.scale)||1);ctx.save();ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.rotate(Number(cam.angle||0)*Math.PI/180);ctx.translate(-Number(cam.x||0),-Number(cam.y||0));for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);drawRuntimeColliders(ctx);ctx.restore();drawRuntimeUIComponents(ctx,W,H);renderRuntimeDebug();}
+  const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
+  function runtimeViewportMetrics(canvas){
+    const m=runtimeProjection(canvas);
+    const pw=Math.max(1,Math.round(m.width*m.dpr)),ph=Math.max(1,Math.round(m.height*m.dpr));
+    if(canvas.width!==pw)canvas.width=pw;
+    if(canvas.height!==ph)canvas.height=ph;
+    return m;
+  }
+  function applyRuntimeScreenType(root,canvas,type){
+    const t=normalizeScreenType(type);
+    ['Windowboxing','Stretch','Crop','Smart Camera'].forEach(v=>{
+      const slug=v==='Smart Camera'?'smart-camera':v.toLowerCase();
+      root?.classList.toggle('screen-'+slug,t===v);
+      root?.classList.toggle('uix-screen-'+slug,t===v);
+      canvas?.classList.toggle('screen-'+slug,t===v);
+      canvas?.classList.toggle('uix-screen-'+slug,t===v);
+    });
+    if(root)root.dataset.screenType=t;
+    if(canvas)canvas.dataset.screenType=t;
+  }
+  function drawRuntime(){
+    const c=$('#runtimeCanvas');if(!c)return;
+    const ctx=c.getContext('2d');
+    const m=runtimeViewportMetrics(c);
+    const W=m.width,H=m.height,cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};
+    const zoom=Math.max(.01,Number(cam.scale)||1);
+    ctx.setTransform(m.dpr,0,0,m.dpr,0,0);
+    ctx.imageSmoothingEnabled=true;
+    ctx.fillStyle=colorCss(cam.bgColor,'#202020');ctx.fillRect(0,0,W,H);
+
+    ctx.save();
+    ctx.translate(m.type==='Crop'?W/2:W/2,m.type==='Crop'?H/2:H/2);
+    if(m.type==='Windowboxing'){
+      ctx.translate(m.offsetX-W/2+m.baseW*m.scaleX/2,m.offsetY-H/2+m.baseH*m.scaleY/2);
+      ctx.scale(m.scaleX*zoom,m.scaleY*zoom);
+    }else if(m.type==='Stretch'){
+      ctx.scale(m.scaleX*zoom,m.scaleY*zoom);
+    }else if(m.type==='Crop'){
+      ctx.scale(m.scaleX*zoom,m.scaleY*zoom);
+    }else{
+      ctx.scale(m.scaleX*zoom,m.scaleY*zoom);
+    }
+    ctx.rotate(Number(cam.angle||0)*Math.PI/180);
+    ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
+    for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);
+    drawRuntimeColliders(ctx);
+    ctx.restore();
+
+    // Screen-space UI uses the logical screen box. Smart Camera expands/contracts
+    // that box with the real display aspect ratio; Stretch/Crop/Windowboxing keep 1280x720.
+    ctx.save();
+    if(m.type==='Windowboxing'){
+      ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);
+    }else if(m.type==='Stretch'){
+      ctx.scale(m.scaleX,m.scaleY);
+    }else if(m.type==='Crop'){
+      ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);
+    }else{
+      ctx.scale(m.scaleX,m.scaleY);
+    }
+    drawRuntimeUIComponents(ctx,m.viewW,m.viewH);
+    ctx.restore();
+    renderRuntimeDebug();
+  }
 
   // ---------------- Events ----------------
   function setupLongPress(el,callback){el.addEventListener('pointerdown',e=>{if(e.button!==0)return;const startX=e.clientX,startY=e.clientY,timer=setTimeout(()=>callback(e),550);const move=ev=>{if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>8){clearTimeout(timer);document.removeEventListener('pointermove',move);}};document.addEventListener('pointermove',move);document.addEventListener('pointerup',()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);},{once:true});});}
