@@ -3162,8 +3162,8 @@
   }
   function processRuntimeTimers(now){
     const due=(state.runtime.timers||[]);state.runtime.timers=[];
-    due.forEach(t=>{if(t.kind==='timeout'&&now>=t.at){const node=runtimeFindNode(t.nodeId);const sn=runtimeScriptList(t.nodeId).find(x=>x.id===t.key);if(node&&sn)routeRuntimeOutput(sn,'out');}else state.runtime.timers.push(t);});
-    Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit)routeRuntimeOutput(hit,'out');st.next+=st.ms;}});
+    due.forEach(t=>{if(t.kind==='timeout'&&now>=t.at){const node=runtimeFindNode(t.nodeId);const sn=runtimeScriptList(t.nodeId).find(x=>x.id===t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else state.runtime.timers.push(t);});
+    Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit){routeRuntimeOutput(hit,'next');routeRuntimeOutput(hit,'out');}st.next+=st.ms;}});
   }
 
   function createRuntimeKeyEventState(){

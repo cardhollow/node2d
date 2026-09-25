@@ -101,9 +101,9 @@
     {name:'stopAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.stopAudio?.();return {out:true};}},
     {name:'clearAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.clearAudio?.();return {out:true};}},
     {name:'Boolean',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Value',type:'bool',value:true}],func:(ctx,v)=>({next:true,truth:!!v.Value,falsy:!v.Value})},
-    {name:'Interval',receiver:true,group:'Controls',output:[{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
-    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
-    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target);return {truth:yes,falsy:!yes};}}
+    {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
+    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
+    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target);return {next:true,truth:yes,falsy:!yes};}}
   ];
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
   const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onUnload','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
