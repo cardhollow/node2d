@@ -70,6 +70,14 @@
       {
         "subtitle": "Reload and close protection",
         "contents": "<h2>Reload and close protection</h2><p>When a project is loaded, Node2D can prevent an accidental browser refresh or tab close from happening silently. The browser may show its standard confirmation dialog so you have a chance to stay on the page.</p><p>This browser protection does not replace saving. Use Save or Auto Save so your work is actually stored before leaving.</p>"
+      },
+      {
+        "subtitle": "Gizmo size while zooming",
+        "contents": "<h2>Gizmo size while zooming</h2><p>The Move, Rotate, and Scale editing controls stay visually usable while you zoom the viewport. Their handles use screen-aware sizing instead of becoming tiny or huge only because the Node itself is large or small on the screen.</p><p>The object outline still represents the actual object size, while the editing handles remain easy to grab.</p>"
+      },
+      {
+        "subtitle": "Move gizmo",
+        "contents": "<h2>Move gizmo</h2><p>The Move gizmo has a center control and directional arrows. Drag the center to move freely. Drag the horizontal arrow to move horizontally, and drag the vertical arrow to move vertically.</p><p>Move Snap from Editor Settings determines the fixed editing interval used while moving. A value of <code>1</code> means movement is snapped to whole units.</p>"
       }
     ]
   },
@@ -765,6 +773,10 @@
       {
         "subtitle": "PWA installation",
         "contents": "<h2>PWA</h2><p>The editor itself can be used as a Progressive Web App when the browser supports installation. This is separate from exporting a game as a PWA: the editor can also have its own installable/offline behavior.</p>"
+      },
+      {
+        "subtitle": "Landscape PWA preference",
+        "contents": "<h2>Landscape PWA preference</h2><p>The Node2D Game Engine PWA manifest requests <strong>landscape</strong> orientation. On browsers and installed-app environments that support the manifest orientation setting, the installed app prefers to open in landscape.</p>"
       }
     ]
   },
@@ -798,6 +810,10 @@
       {
         "subtitle": "Scale corner does not keep the ratio",
         "contents": "<h2>Scale corner behavior</h2><p>Use a corner handle when you want a proportional resize. Corner handles preserve the starting width-to-height ratio. Use a side handle when you intentionally want to change only width or only height.</p>"
+      },
+      {
+        "subtitle": "ScriptNode placement",
+        "contents": "<h2>ScriptNode placement</h2><p>When adding a ScriptNode from the library, Node2D places it at the center of the currently visible Script canvas, taking the current pan and zoom into account. Dragging a ScriptNode into the canvas places it at the actual drop location.</p>"
       }
     ]
   },
@@ -910,6 +926,43 @@
       {
         "subtitle": "New ScriptNode placement",
         "contents": "<h2>New ScriptNode placement</h2><p>When you add a ScriptNode from the ScriptNode Library, Node2D places it at the center of the ScriptNode canvas view. If you have already panned or zoomed the graph, the new ScriptNode is placed at the center of the area you are currently looking at rather than at a fixed screen corner.</p><p>Dragging a ScriptNode from the library onto the canvas is different: it is placed at the exact drop location.</p>"
+      }
+    ]
+  },
+  {
+    "title": "UI Layout, Panels, and Fullscreen",
+    "items": [
+      {
+        "subtitle": "Sprite Inspector on small screens",
+        "contents": "<h2>Sprite Inspector</h2><p>The Sprite Editor keeps the Sprite Inspector available on narrow screens. When the editor is wider than the device can comfortably show, the Sprite Editor can use horizontal scrolling rather than removing the Inspector.</p><p>The Inspector contains the Sprite name, width, height, frame list, frame actions, playback controls, and FPS.</p>"
+      },
+      {
+        "subtitle": "Hidden Selection and Components panels",
+        "contents": "<h2>Hidden panels</h2><p>When the Selection or Components panel is hidden, it no longer occupies visible editor space. A small <strong>S</strong> or <strong>C</strong> button appears beside the remaining dock so you can restore the hidden panel.</p><p>The buttons only appear for panels that are currently hidden.</p>"
+      },
+      {
+        "subtitle": "Script panel collapse",
+        "contents": "<h2>Collapsing Script panels</h2><p>The Script Editor has a Local Variables/ScriptNode Library panel on the left and a Script Inspector on the right. Each side can be collapsed with its arrow button.</p><p>When collapsed, the side becomes a narrow strip while its arrow remains available to expand it again. This gives the Script canvas more room without closing the Script Editor.</p>"
+      },
+      {
+        "subtitle": "Resizing Script panels",
+        "contents": "<h2>Resizing Script panels</h2><p>Drag the thin handle at the edge of either Script side panel to change its width. This works like resizing the Selection and Components dock.</p>"
+      },
+      {
+        "subtitle": "Fullscreen editor surfaces",
+        "contents": "<h2>Fullscreen editor surfaces</h2><p>Large editing surfaces such as the Script Editor, Sprite Editor, MIDI Editor, Help, and Expression Editor can cover the full viewport. They no longer leave the main topbar visible behind them.</p>"
+      },
+      {
+        "subtitle": "PWA fullscreen",
+        "contents": "<h2>PWA fullscreen</h2><p>When Node2D is installed as a Progressive Web App, its manifest requests the browser's <strong>fullscreen</strong> display mode. Supported browsers can therefore launch the installed Node2D app without normal browser UI around the app.</p><p>A normal browser tab still cannot be forced into fullscreen without a user gesture; the fullscreen PWA setting applies when the app is installed/launched as a PWA.</p>"
+      },
+      {
+        "subtitle": "Script panel resizing and collapse",
+        "contents": "<h2>Script panel resizing and collapse</h2><p>In the Script Editor, the Local Variables/ScriptNode Library panel on the left and Script Inspector panel on the right can each be resized with their edge handle.</p><p>Use the arrow in a panel header to collapse that panel. When collapsed, its content no longer occupies the main canvas area. Use the same arrow to restore it.</p>"
+      },
+      {
+        "subtitle": "Sprite Editor side panels",
+        "contents": "<h2>Sprite Editor side panels</h2><p>The Sprite Editor keeps both the Tools panel and Sprite Inspector available. Each side panel can be resized with its edge handle and collapsed with its header arrow.</p><p>On a narrow screen, the editor can scroll horizontally so the Inspector remains reachable instead of simply removing it from the editor.</p>"
       }
     ]
   }
