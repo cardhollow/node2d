@@ -49,8 +49,8 @@
       editingInput: null, clipboard: null
     },
     dragTree: null,
-    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' } },
-    game: { preferredSceneId: '', screenType: 'Windowboxing' },
+    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
+    game: { preferredSceneId: '', screenType: 'Windowboxing', requirements: { 'Use Mic': false }, mic: { speechLanguage: 'en-US', continuous: true, interimResults: true } },
     ui: {
       componentCollapsed: Object.create(null),
       globalVariablesCollapsed: false,
@@ -70,6 +70,22 @@
   let assetImageCache = new Map();
   let dpr = 1;
   let editorAnimationRAF = 0;
+  const EDITOR_SETTINGS_STORE='uix.editor.settings.v1';
+  const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
+  const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:0.1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
+  let autoSaveTimer=0;
+  function getEditorSettings(){
+    let out={...DEFAULT_EDITOR_SETTINGS};
+    try{const saved=JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORE)||'null');if(saved&&typeof saved==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(saved,k))out[k]=saved[k];});out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;out.autoSave=!!out.autoSave;out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;}}catch{}
+    return out;
+  }
+  function saveEditorSettings(settings){const value={...getEditorSettings(),moveScaleSnap:Math.max(0,Number(settings?.moveScaleSnap)||0),rotateSnap:Math.max(0,Number(settings?.rotateSnap)||0),autoSave:!!settings?.autoSave,autoSaveIntervalSec:clamp(Number(settings?.autoSaveIntervalSec)||30,1,86400)};try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(value));}catch{}resetAutoSaveTimer();return value;}
+  function resetAutoSaveTimer(){clearTimeout(autoSaveTimer);autoSaveTimer=0;const st=getEditorSettings();if(!st.autoSave||!hasLoadedProject())return;autoSaveTimer=setTimeout(async()=>{if(hasLoadedProject()){await saveProjectToProjectStorage(true);}resetAutoSaveTimer();},Math.max(1,Number(st.autoSaveIntervalSec)||30)*1000);}
+  function rememberCurrentProjectSession(){try{if(!state.project?.created){sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);return;}sessionStorage.setItem(CURRENT_PROJECT_SESSION_NAME,String(state.project.name||'Untitled Node2D'));if(state.project.localNdcId)sessionStorage.setItem(CURRENT_PROJECT_SESSION_ID,String(state.project.localNdcId));else sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
+  function clearCurrentProjectSession(){try{sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
+  function readCurrentProjectSession(){try{return{name:sessionStorage.getItem(CURRENT_PROJECT_SESSION_NAME)||'',id:sessionStorage.getItem(CURRENT_PROJECT_SESSION_ID)||''};}catch{return{name:'',id:''};}}
+  function snapEditorValue(value,step){const n=Number(value);if(!Number.isFinite(n)||!step||step<=0)return n;return Math.round(n/step)*step;}
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -360,7 +376,23 @@
     if(!targets.length)return status('Nothing selected');
     askConfirm('Delete Selection',`Delete ${targets.length===1?'“'+targets[0].name+'”':targets.length+' selected items'}${targets.some(x=>x.type==='folder')?' and everything inside the selected folders':''}?`,()=>deleteSelectedNodesNow(targets));
   }
+  function ensureGameSettings(){
+    if(!state.game||typeof state.game!=='object')state.game={preferredSceneId:'',screenType:'Windowboxing'};
+    state.game.screenType=normalizeScreenType(state.game.screenType);
+    state.game.requirements=state.game.requirements&&typeof state.game.requirements==='object'?state.game.requirements:{};
+    state.game.mic=state.game.mic&&typeof state.game.mic==='object'?state.game.mic:{};
+    if(!state.game.mic.speechLanguage)state.game.mic.speechLanguage='en-US';
+    state.game.mic.continuous=state.game.mic.continuous!==false;
+    state.game.mic.interimResults=state.game.mic.interimResults!==false;
+    new Set(scriptNodes.map(n=>n.require).filter(Boolean)).forEach(req=>{if(typeof state.game.requirements[req]!=='boolean')state.game.requirements[req]=false;});
+    return state.game;
+  }
+  function scriptRequirementEnabled(def){ensureGameSettings();return !def?.require||state.game.requirements?.[def.require]===true;}
+  function showScriptRequirementPrompt(def){const req=String(def?.require||'').trim();if(!req)return;askConfirm('ScriptNode Disabled',`“${def.name}” requires “${req}”. Go to Game Settings and enable it?`,()=>openGameSettings(),'Game Settings');}
+  function enableScriptNodeRequirement(req,enabled){ensureGameSettings();state.game.requirements[req]=!!enabled;renderScriptLibrary();renderScriptCanvas();resetAutoSaveTimer();status(`${req}: ${enabled?'Enabled':'Disabled'}`);}
+
   function ensureProject() {
+    ensureGameSettings();
     if (!state.scenes.length) {
       const scene = makeScene('Main');
       state.scenes = [scene]; state.currentSceneId = scene.id; state.game.preferredSceneId = scene.id; state.camera = scene.camera;
@@ -383,7 +415,7 @@
     state.project.created = true;
     state.project.localNdcId = null;
     state.project.name = String(name||'Untitled Node2D').trim()||'Untitled Node2D';
-    state.scenes = [scene]; state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; state.game = { preferredSceneId: scene.id, screenType: 'Windowboxing' }; syncSceneCamera();
+    state.scenes = [scene]; state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; state.game = { preferredSceneId: scene.id, screenType: 'Windowboxing', requirements:{'Use Mic':false}, mic:{speechLanguage:'en-US',continuous:true,interimResults:true} }; ensureGameSettings(); syncSceneCamera();
     state.nextNodeId = 1; state.nextVariableId = 1; state.globalVariables = [];
     state.sceneVariablesByScene = Object.create(null);
     state.localVarsByNode = Object.create(null);
@@ -391,7 +423,7 @@
     state.pan = { x: 0, y: 0 }; state.zoom = 1;
     state.script = { nodeId: null, selectedNodeId: null, pan: { x: 0, y: 0 }, zoom: 1, nodesByNode: Object.create(null), connectionsByNode: Object.create(null), editingInput: null };
     state.history={undo:[],redo:[],busy:false}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
-    hideAllModals(); renderAll(); status('New Node2D project created');
+    hideAllModals(); renderAll(); rememberCurrentProjectSession(); resetAutoSaveTimer(); status('New Node2D project created');
   }
 
   function addScene() {
@@ -402,14 +434,31 @@
     closeMenus(); renderAll(); status(`${name} added`);
   }
 
-  function addNode(name = null) {
+  function addNode(name = null, configure = null) {
     ensureProject(); pushHistory();
     const used = new Set(allNodes().map(x => x.node.numericId).filter(Number.isFinite));
     let id = state.nextNodeId; while (used.has(id)) id++;
     state.nextNodeId = id + 1;
     const node = createNode(`node-${Date.now()}-${id}`, id, name || `Node ${id}`);
+    configure?.(node);
     currentScene().nodes.push(node); state.selectedId = node.id;
     renderAll(); status(`${node.name} added`); return node;
+  }
+
+  function addNodeFromSprite(asset) {
+    if (!asset?.value) return;
+    const node = addNode(null, target => {
+      const sprite = createComponent('sprite');
+      sprite.name = asset.name || '';
+      sprite.src = asset.value;
+      sprite.sourceType = 'Sprite';
+      sprite.animation = '';
+      target.components.push(sprite);
+      normalizeNode(target);
+    });
+    closeModal($('#assetModal'));
+    status(`${node.name} created with Sprite ${asset.name || ''}`.trim());
+    return node;
   }
 
   function addFolder(name = null) {
@@ -1287,7 +1336,21 @@
     new ResizeObserver(()=>{resizeWorkplaceCanvas();drawWorkplace();}).observe($('#workplace'));
   }
 
-  function updateGizmoDrag(e){const d=workspace.gizmoDrag,n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y;if(d.type==='move'){t.position=[d.axis==='y'?d.startTransform.position[0]:d.startTransform.position[0]+dx,d.axis==='x'?d.startTransform.position[1]:d.startTransform.position[1]+dy];}else if(d.type==='rotate'){const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(g.center[0],g.center[1]),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);t.angle=[d.startTransform.angle[0]+(nowA-startA)*180/Math.PI];}else if(d.type==='scale'){const a=g.angle,L=rotatePoint(dx,dy,-a),baseX=Math.max(1,g.baseW),baseY=Math.max(1,g.baseH),left=['left','tl','bl'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),sx=Number(d.startTransform.scale?.[0]??1),sy=Number(d.startTransform.scale?.[1]??1);t.scale[0]=sx+(L.x/baseX)*(left?-1:1)*2;t.scale[1]=sy+(L.y/baseY)*(top?-1:1)*2;}drawWorkplace();}
+  function updateGizmoDrag(e){
+    const d=workspace.gizmoDrag,n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
+    if(d.type==='move'){
+      const px=d.axis==='y'?d.startTransform.position[0]:d.startTransform.position[0]+dx;
+      const py=d.axis==='x'?d.startTransform.position[1]:d.startTransform.position[1]+dy;
+      t.position=[snapEditorValue(px,snap),snapEditorValue(py,snap)];
+    }else if(d.type==='rotate'){
+      const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(g.center[0],g.center[1]),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);
+      const raw=d.startTransform.angle[0]+(nowA-startA)*180/Math.PI;t.angle=[rotateSnap?snapEditorValue(raw,rotateSnap):raw];
+    }else if(d.type==='scale'){
+      const a=g.angle,L=rotatePoint(dx,dy,-a),baseX=Math.max(1,g.baseW),baseY=Math.max(1,g.baseH),left=['left','tl','bl'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),sx=Number(d.startTransform.scale?.[0]??1),sy=Number(d.startTransform.scale?.[1]??1);
+      t.scale[0]=snapEditorValue(sx+(L.x/baseX)*(left?-1:1)*2,snap);t.scale[1]=snapEditorValue(sy+(L.y/baseY)*(top?-1:1)*2,snap);
+    }
+    drawWorkplace();
+  }
 
   function applyAssetImage(src){if(!src)return null;if(assetImageCache.has(src))return assetImageCache.get(src);const img=new Image();img.src=src;assetImageCache.set(src,img);img.onload=()=>drawWorkplace();return img;}
   const getAssetImage=applyAssetImage;
@@ -1317,15 +1380,30 @@
     state.project={name:'Untitled Node2D',created:false};
     state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera'; state.selectedIds=[]; state.selectionAnchorId=null;
     state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
-    state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing'};
+    state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing',requirements:{'Use Mic':false},mic:{speechLanguage:'en-US',continuous:true,interimResults:true}};
     state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),editingInput:null,clipboard:null};
     state.history={undo:[],redo:[],busy:false}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
+    clearCurrentProjectSession();
     showModal($('#projectModal'));
   }
 
   function openEditorSettings(){
     const host=$('#editorKeybindList');if(!host)return;host.innerHTML='';
+    const old=$('#editorSnapSettings');old?.remove();
+    const settings=getEditorSettings();
+    const settingsWrap=document.createElement('div');settingsWrap.id='editorSnapSettings';settingsWrap.className='editor-snap-settings';
+    const heading=document.createElement('div');heading.className='editor-snap-heading';heading.textContent='Editing Snap';settingsWrap.append(heading);
+    const makeRow=(label,value,options={})=>{const row=document.createElement('div');row.className='editor-snap-row';const name=document.createElement('div');name.className='keybind-name';name.textContent=label;const control=document.createElement('div');control.className='editor-snap-control';if(options.select){const select=document.createElement('select');select.className='editor-snap-input';options.select.forEach(v=>{const opt=document.createElement('option');opt.value=String(v);opt.textContent=v===0?'0° (Off)':`${v}°`;opt.selected=Number(v)===Number(value);select.append(opt);});select.addEventListener('change',()=>{const next=getEditorSettings();next.rotateSnap=Math.max(0,Number(select.value)||0);saveEditorSettings(next);});control.append(select);}else{const input=document.createElement('input');input.className='editor-snap-input';input.type='number';input.min='0';input.step='0.01';input.value=String(value);input.addEventListener('change',()=>{const next=getEditorSettings();next.moveScaleSnap=Math.max(0,Number(input.value)||0);input.value=String(next.moveScaleSnap);saveEditorSettings(next);});control.append(input);}row.append(name,control);settingsWrap.append(row);};
+    makeRow('Move / Scale Snap',settings.moveScaleSnap);
+    makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
+    const saveHeading=document.createElement('div');saveHeading.className='editor-snap-heading';saveHeading.textContent='Saving';settingsWrap.append(saveHeading);
+    const autoRow=document.createElement('div');autoRow.className='editor-snap-row';const autoLabel=document.createElement('label');autoLabel.className='game-setting-check';const autoCheck=document.createElement('input');autoCheck.type='checkbox';autoCheck.checked=!!settings.autoSave;const autoText=document.createElement('span');autoText.textContent='Auto Save';autoLabel.append(autoCheck,autoText);autoRow.append(autoLabel);settingsWrap.append(autoRow);
+    const intervalRow=document.createElement('div');intervalRow.className='editor-snap-row';const intervalName=document.createElement('div');intervalName.className='keybind-name';intervalName.textContent='Auto Save Interval';const intervalControl=document.createElement('div');intervalControl.className='editor-snap-control';const intervalInput=document.createElement('input');intervalInput.className='editor-snap-input';intervalInput.type='number';intervalInput.min='1';intervalInput.step='1';intervalInput.value=String(settings.autoSaveIntervalSec);const intervalUnit=document.createElement('span');intervalUnit.className='editor-snap-unit';intervalUnit.textContent='s';intervalControl.append(intervalInput,intervalUnit);intervalRow.append(intervalName,intervalControl);settingsWrap.append(intervalRow);
+    const syncSaveUI=()=>{intervalRow.hidden=!autoCheck.checked;};syncSaveUI();
+    autoCheck.addEventListener('change',()=>{const next=getEditorSettings();next.autoSave=autoCheck.checked;next.autoSaveIntervalSec=clamp(Number(intervalInput.value)||30,1,86400);saveEditorSettings(next);syncSaveUI();});
+    intervalInput.addEventListener('change',()=>{const next=getEditorSettings();next.autoSave=autoCheck.checked;next.autoSaveIntervalSec=clamp(Number(intervalInput.value)||30,1,86400);intervalInput.value=String(next.autoSaveIntervalSec);saveEditorSettings(next);});
+    host.parentElement?.insertBefore(settingsWrap,host);
     const defs=window.UIXKeyBinds?.getAll?.()||[];const groups={editor:'Editor',all:'Global / All Editors',script:'Script Editor',sprite:'Sprite Editor',midi:'MIDI Editor'};
     defs.forEach((def,i)=>{
       if(i===0||defs[i-1].scope!==def.scope){const g=document.createElement('div');g.className='keybind-group';g.textContent=groups[def.scope]||def.scope;host.append(g);}
@@ -1352,8 +1430,8 @@
     try{const defs=window.UIXKeyBinds?.getAll?.()||[];keybinds=Object.fromEntries(defs.map(k=>[k.command+'|'+k.name,k.keys||'']));}catch{}
     const payload={
       format:'UIX Editor Preferences',
-      version:1,
-      editorSettings:{},
+      version:2,
+      editorSettings:getEditorSettings(),
       shortcuts:keybinds,
       localStorage:storage
     };
@@ -1464,7 +1542,7 @@
     state.uiComponentsByScene=clone(data.uiComponentsByScene||{});
     state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),editingInput:null};
     state.game=clone(data.game||{preferredSceneId:'',screenType:'Windowboxing'});
-    state.game.screenType=normalizeScreenType(state.game.screenType);
+    ensureGameSettings();
     state.camera=clone(data.camera||defaultCamera());
     if(!state.game.preferredSceneId||!state.scenes.some(s=>s.id===state.game.preferredSceneId)) state.game.preferredSceneId=state.scenes[0].id;
     Object.keys(state.assets).forEach(k=>{state.assets[k].length=0;});
@@ -1477,6 +1555,7 @@
       hideAllModals();
       syncSceneCamera(); renderAll();
     }
+    rememberCurrentProjectSession(); resetAutoSaveTimer();
   }
 
   function downloadBytes(bytes,name,type='application/octet-stream'){
@@ -1494,14 +1573,15 @@
   function hasLoadedProject(){return !!state.project.created&&Array.isArray(state.scenes)&&state.scenes.length>0;}
   function openLoadChoice(){showModal($('#loadModal'));}
 
-  async function saveProjectToProjectStorage(){
+  async function saveProjectToProjectStorage(silent=false){
     try{
       ensureProject();
       const bytes=await buildProjectNDC();
       const saved=await window.UIXNDCCodec.saveCurrent(bytes,state.project.name,state.project.localNdcId||null);
       state.project.localNdcId=saved?.id||state.project.localNdcId||null;
-      status(`Saved in Project · ${Math.round(bytes.length/1024)} KB`);
-    }catch(err){console.error(err);status(`Save failed: ${err.message||err}`);}
+      rememberCurrentProjectSession();
+      if(!silent)status(`Saved in Project · ${Math.round(bytes.length/1024)} KB`);
+    }catch(err){console.error(err);if(!silent)status(`Save failed: ${err.message||err}`);}
   }
 
   function loadProjectBytes(bytes,label,meta={}){
@@ -1544,6 +1624,18 @@
         row.append(open,edit,del);host.append(row);
       }
     }catch(err){host.innerHTML=`<div class="local-ndc-empty">Could not read Local NDC: ${esc(err.message||err)}</div>`;}
+  }
+
+  async function restoreCurrentProjectFromSession(){
+    const remembered=readCurrentProjectSession();
+    if(!remembered.name&&!remembered.id)return false;
+    try{
+      if(remembered.id){const saved=await window.UIXNDCCodec.loadLocal(remembered.id);if(saved){loadProjectBytes(saved.bytes,saved.name||remembered.name,{localNdcId:saved.id||remembered.id,force:true});return true;}}
+      const list=await window.UIXNDCCodec.listLocal();
+      const match=list.find(x=>(remembered.id&&String(x.id)===String(remembered.id))||(remembered.name&&String(x.name||'')===String(remembered.name)));
+      if(match){const saved=await window.UIXNDCCodec.loadLocal(match.id);if(saved){loadProjectBytes(saved.bytes,saved.name||match.name,{localNdcId:saved.id||match.id,force:true});return true;}}
+    }catch(err){console.error(err);}
+    return false;
   }
 
   async function loadLocalNDC(id){
@@ -1651,31 +1743,57 @@
   function updateFullscreenButton(){const f=!!document.fullscreenElement;$('#fullscreenButton').title=f?'Unfullscreen':'Fullscreen';}
 
   function openGameSettings(){
-    state.game.screenType = normalizeScreenType(state.game.screenType);
+    ensureGameSettings();
     const host=$('#preferredSceneControl');
     if(host){
       host.innerHTML='';
       const options=state.scenes.map(s=>s.name);
       const selected=state.scenes.find(s=>s.id===state.game.preferredSceneId)||state.scenes[0];
       state.game.preferredSceneId=selected?.id||'';
-      const wrap=customSelect(selected?.name||'No Scene',options,name=>{const scene=state.scenes.find(s=>s.name===name);if(scene){state.game.preferredSceneId=scene.id;status(`Preferred Scene: ${scene.name}`);}});
+      const wrap=customSelect(selected?.name||'No Scene',options,name=>{const scene=state.scenes.find(s=>s.name===name);if(scene){state.game.preferredSceneId=scene.id;resetAutoSaveTimer();status(`Preferred Scene: ${scene.name}`);}});
       wrap.classList.add('preferred-scene-custom-select');host.append(wrap);
     }
     const screenHost=$('#screenTypeControl');
     if(screenHost){
       screenHost.innerHTML='';
-      const wrap=customSelect(state.game.screenType,SCREEN_TYPES,value=>{
-        state.game.screenType=normalizeScreenType(value);
-        drawWorkplace();
-        status(`Screen Type: ${state.game.screenType}`);
+      const wrap=customSelect(state.game.screenType,SCREEN_TYPES,value=>{state.game.screenType=normalizeScreenType(value);drawWorkplace();resetAutoSaveTimer();status(`Screen Type: ${state.game.screenType}`);});
+      wrap.classList.add('screen-type-custom-select');screenHost.append(wrap);
+    }
+    const reqHost=$('#gameRequirementsControl');
+    if(reqHost){
+      reqHost.innerHTML='';
+      const reqs=[...new Set(scriptNodes.map(n=>n.require).filter(Boolean))];
+      if(!reqs.length)reqHost.innerHTML='<span class="game-settings-muted">No optional features required by the current ScriptNode library.</span>';
+      reqs.forEach(req=>{
+        const label=document.createElement('label');label.className='game-setting-check';
+        const input=document.createElement('input');input.type='checkbox';input.checked=state.game.requirements[req]===true;
+        input.addEventListener('change',()=>enableScriptNodeRequirement(req,input.checked));
+        const text=document.createElement('span');text.textContent=req;label.append(input,text);reqHost.append(label);
       });
-      wrap.classList.add('screen-type-custom-select');
-      screenHost.append(wrap);
+    }
+    const micSection=$('#micSettingsSection');
+    if(micSection){
+      micSection.hidden=state.game.requirements['Use Mic']!==true;
+      const lang=$('#micSpeechLanguage');if(lang){lang.value=state.game.mic.speechLanguage||'en-US';lang.onchange=()=>{state.game.mic.speechLanguage=lang.value.trim()||'en-US';resetAutoSaveTimer();};}
+      const continuous=$('#micSpeechContinuous');if(continuous){continuous.checked=state.game.mic.continuous!==false;continuous.onchange=()=>{state.game.mic.continuous=continuous.checked;resetAutoSaveTimer();};}
+      const interim=$('#micSpeechInterim');if(interim){interim.checked=state.game.mic.interimResults!==false;interim.onchange=()=>{state.game.mic.interimResults=interim.checked;resetAutoSaveTimer();};}
     }
     showModal($('#gameSettingsModal'));
   }
 
   // ---------------- Assets ----------------
+  function openAudioPreview(asset){
+    if(!asset?.value)return;
+    const existing=$('#audioPreviewModal');existing?.remove();
+    const modal=document.createElement('section');modal.id='audioPreviewModal';modal.className='modal audio-preview-modal';modal.dataset.closeOutside='true';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');
+    modal.innerHTML=`<div class="modal-header"><div><h3>Audio Preview</h3><p>${esc(asset.name||asset.filename||'Audio')}</p></div><button class="modal-close" type="button">×</button></div><div class="audio-preview-body"></div><div class="modal-actions"><button class="btn" type="button">Close</button></div>`;
+    document.body.append(modal);
+    const body=$('.audio-preview-body',modal),audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=asset.value;audio.style.width='100%';body.append(audio);
+    Object.assign(body.style,{padding:'18px',minHeight:'88px',display:'grid',placeItems:'center'});
+    Object.assign(modal.style,{width:'min(520px,calc(100vw - 24px))'});
+    const close=()=>{try{audio.pause();audio.currentTime=0;}catch{}closeModal(modal);modal.remove();};$('.modal-close',modal).onclick=close;$('.modal-actions .btn',modal).onclick=close;
+    showModal(modal);
+  }
   function openAssetManager(){renderAssetManager();showModal($('#assetModal'));}
   function renderAssetManager(){
     $$('.asset-tab').forEach(tab=>tab.classList.toggle('active',tab.dataset.assetTab===state.activeAssetTab));
@@ -1689,6 +1807,10 @@
       if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);}
       else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol">♫</span><span class="midi-asset-meta">MIDI</span>';}
       else preview.textContent='◉';
+      if(type==='Audio'){
+        card.title='Click to preview this audio';
+        card.addEventListener('click',e=>{if(e.target.closest('.asset-edit'))return;openAudioPreview(asset);});
+      }
       const actions=document.createElement('div'); actions.className='asset-card-actions';
       const edit=document.createElement('button'); edit.type='button'; edit.className='asset-edit'; edit.title='Edit'; edit.setAttribute('aria-label','Edit asset'); edit.textContent='✎';
       edit.onclick=e=>{e.stopPropagation();if(type==='Sprite')window.UIXSpriteEditor?.openEdit(asset);else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);else if(type==='Audio'){
@@ -1702,6 +1824,10 @@
       const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); del.textContent='×';
       del.onclick=e=>{e.stopPropagation();if(type==='Sprite')deleteSpriteAsset(asset);else if(type==='MIDI')deleteMIDIAsset(asset);}; actions.append(edit,del); preview.append(actions);
       const name=document.createElement('div'); name.className='asset-name'; name.textContent=asset.filename||`${asset.name||type}.asset`;
+      if(type==='Sprite'){
+        card.title='Click to create a Node with this Sprite';
+        card.addEventListener('click',e=>{if(e.target.closest('.asset-edit'))return;addNodeFromSprite(asset);});
+      }
       card.append(preview,name); grid.append(card);
     });
     host.append(grid);
@@ -1815,9 +1941,9 @@
       head.innerHTML=`<span>${collapsed?'+':'−'}</span>${group}`;
       if(!nodes.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No ScriptNodes'}));
       nodes.forEach(def=>{
-        const b=document.createElement('button'); b.className='library-node'; b.textContent=def.name; b.draggable=true;
-        b.addEventListener('click',()=>addScriptNode(def));
-        b.addEventListener('dragstart',e=>{e.dataTransfer.setData('application/x-uix-script-node',def.name);e.dataTransfer.effectAllowed='copy';});
+        const b=document.createElement('button'); b.className='library-node'; b.textContent=def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled; b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
+        b.addEventListener('click',()=>enabled?addScriptNode(def):showScriptRequirementPrompt(def));
+        b.addEventListener('dragstart',e=>{if(!enabled){e.preventDefault();showScriptRequirementPrompt(def);return;}e.dataTransfer.setData('application/x-uix-script-node',def.name);e.dataTransfer.effectAllowed='copy';});
         body.append(b);
       });
       head.onclick=()=>{state.ui.scriptGroupCollapsed[group]=!state.ui.scriptGroupCollapsed[group];body.classList.toggle('hidden',state.ui.scriptGroupCollapsed[group]);head.firstElementChild.textContent=state.ui.scriptGroupCollapsed[group]?'+':'−';};
@@ -1867,10 +1993,11 @@
   }
   function addScriptNode(def){
     if(!def||!state.script.nodeId)return;
+    if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return null;}
     const canvas=$('#scriptCanvas');
     const rect=canvas?.getBoundingClientRect?.();
-    const x=rect?(-state.script.pan.x/state.script.zoom):0;
-    const y=rect?(-state.script.pan.y/state.script.zoom):0;
+    const x=rect?((rect.width/2)-state.script.pan.x)/state.script.zoom:0;
+    const y=rect?((rect.height/2)-state.script.pan.y)/state.script.zoom:0;
     const list=state.script.nodesByNode[state.script.nodeId] ||= [];
     const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x,y,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
     list.push(sn);renderScriptCanvas();status(`${def.name} ScriptNode added`);return sn;
@@ -1974,7 +2101,9 @@
     return b;
   }
   function renderScriptNodeCard(sn,def){
-    const card=document.createElement('article');card.className=`script-node-card${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}`;card.dataset.scriptNodeId=sn.id;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;
+    const enabled=scriptRequirementEnabled(def);
+    const card=document.createElement('article');card.className=`script-node-card${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}${enabled?'':' script-node-require-disabled'}`;card.dataset.scriptNodeId=sn.id;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;card.setAttribute('aria-disabled',enabled?'false':'true');card.title=enabled?'':`Requires ${def.require}`;
+    if(!enabled)card.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();showScriptRequirementPrompt(def);},true);
     const title=document.createElement('div');title.className='script-node-title';title.textContent=def.name;card.append(title);
     if(def.receiver){const input=document.createElement('button');input.className='script-input-port';input.title='Input';input.addEventListener('click',e=>e.stopPropagation());card.append(input);}
     const fields=document.createElement('div');fields.className='script-editor-fields';
@@ -2203,7 +2332,7 @@
       audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],spriteAssets:state.assets.Sprite||[],
       allNodes:allNodes().map(x=>x.node),
       animations:(component(node,'animationsprite')?.animations||[]),
-      inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},node,
+      inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},mic:{decibel:-100,speech:'',active:false,speechActive:false},node,
       TouchUpX:Number(state.runtime?.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime?.inputs?.TouchUpY)||0,
       TouchDownX:Number(state.runtime?.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime?.inputs?.TouchDownY)||0,
       TouchMoveX:Number(state.runtime?.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime?.inputs?.TouchMoveY)||0,
@@ -2243,6 +2372,7 @@
       Mouse:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
       'Screen Input':['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Screen${k}`,value:`ctx.Screen${k}`})),
       Joystick:sceneJoysticks().flatMap(st=>{const base=st.variable||'joystick';return [{label:`${base}_distance`,value:`ctx.${base}_distance`},{label:`${base}_angle`,value:`ctx.${base}_angle`},{label:`${base}_value_x`,value:`ctx.${base}_value_x`},{label:`${base}_value_y`,value:`ctx.${base}_value_y`}];}),
+      Mic:[{label:'decibel',value:'ctx.mic.decibel',title:'Current microphone level in decibels'},{label:'speech',value:'ctx.mic.speech',title:'Live speech-recognition text'},{label:'active',value:'ctx.mic.active',title:'Whether the microphone is active'},{label:'speechActive',value:'ctx.mic.speechActive',title:'Whether speech recognition is running'}],
       transforms:[{label:'Position X',value:'ctx.transform.position[0]'},{label:'Position Y',value:'ctx.transform.position[1]'},{label:'Scale X',value:'ctx.transform.scale[0]'},{label:'Scale Y',value:'ctx.transform.scale[1]'},{label:'Angle',value:'ctx.transform.angle[0]'}],
       Velocity:[{label:'VelocityX',value:'ctx.velocity.velocityX'},{label:'VelocityY',value:'ctx.velocity.velocityY'},{label:'AngularVelocity',value:'ctx.velocity.angularVelocity'}],
       Math:customMath,
@@ -2319,11 +2449,12 @@
     canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
     canvas.addEventListener('wheel',e=>{e.preventDefault();state.script.zoom=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
-    canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;addScriptNodeAt(def,e.clientX,e.clientY);});
+    canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return;}addScriptNodeAt(def,e.clientX,e.clientY);});
     new ResizeObserver(renderScriptConnections).observe(canvas);
   }
 
   function addScriptNodeAt(def,clientX,clientY){
+    if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return null;}
     const rect=$('#scriptCanvas').getBoundingClientRect();
     const x=(clientX-rect.left-rect.width/2-state.script.pan.x)/state.script.zoom;
     const y=(clientY-rect.top-rect.height/2-state.script.pan.y)/state.script.zoom;
@@ -2500,6 +2631,7 @@
   }
   function drawRuntimeColliders(ctx){if(!state.runtime.debug)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
   function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+    updateRuntimeMic();
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
     const substeps=4,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
@@ -2619,6 +2751,36 @@
     let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}
     mutator(c);normalizeNode(node);return c;
   }
+  async function prepareRuntimeMic(){
+    ensureGameSettings();
+    if(state.game.requirements?.['Use Mic']!==true)return null;
+    if(!window.UIXRuntimeEngine?.prepareMicrophone)throw new Error('Microphone runtime support is unavailable');
+    const stream=await window.UIXRuntimeEngine.prepareMicrophone(state.game);
+    const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext)throw new Error('Web Audio is unavailable');
+    const audioContext=new AudioContext();const source=audioContext.createMediaStreamSource(stream);const analyser=audioContext.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=.15;source.connect(analyser);
+    return {enabled:true,decibel:-100,speech:'',stream,audioContext,source,analyser,buffer:new Uint8Array(analyser.fftSize),speechRecognition:null,speechActive:false,pickupActive:false};
+  }
+  function cleanupRuntimeMic(){
+    const mic=state.runtime?.mic;if(!mic)return;
+    try{if(mic.speechRecognition){mic.speechActive=false;mic.speechRecognition.onend=null;mic.speechRecognition.stop();}}catch{}
+    try{mic.source?.disconnect();}catch{}
+    try{mic.audioContext?.close();}catch{}
+    try{mic.stream?.getTracks?.().forEach(t=>t.stop());}catch{}
+    if(state.runtime?.mic)state.runtime.mic={enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false};
+  }
+  function updateRuntimeMic(){
+    const mic=state.runtime?.mic;if(!mic?.enabled||!mic.analyser||!mic.buffer)return;
+    mic.analyser.getByteTimeDomainData(mic.buffer);let sum=0;for(const v of mic.buffer){const d=(v-128)/128;sum+=d*d;}
+    const rms=Math.sqrt(sum/mic.buffer.length);mic.decibel=rms>0?Math.max(-100,20*Math.log10(rms)):-100;
+    const picked=mic.decibel>-55;if(picked&&!mic.pickupActive)dispatchRuntimeEvent('onAudioPickup','pickup',{decibel:mic.decibel});mic.pickupActive=picked;
+  }
+  function runtimeStartSpeechRecognition(){
+    const mic=state.runtime?.mic;if(!mic?.enabled)return false;
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition){state.runtime.lastError='Speech recognition is not supported by this browser';return false;}
+    try{if(mic.speechRecognition)runtimeStopSpeechRecognition();const rec=new Recognition();rec.lang=state.game.mic?.speechLanguage||'en-US';rec.continuous=state.game.mic?.continuous!==false;rec.interimResults=state.game.mic?.interimResults!==false;rec.onresult=e=>{let text='';for(let i=0;i<e.results.length;i++)text+=e.results[i][0]?.transcript||'';mic.speech=text.trim();};rec.onerror=e=>{if(e?.error!=='no-speech')state.runtime.lastError=`Speech recognition: ${e?.error||'error'}`;};rec.onend=()=>{mic.speechRecognition=null;if(mic.speechActive){setTimeout(()=>{if(mic.speechActive)runtimeStartSpeechRecognition();},50);}};mic.speechRecognition=rec;mic.speechActive=true;rec.start();return true;}catch(err){state.runtime.lastError=String(err?.message||err);return false;}
+  }
+  function runtimeStopSpeechRecognition(){const mic=state.runtime?.mic;if(!mic)return false;mic.speechActive=false;try{mic.speechRecognition?.stop();}catch{}mic.speechRecognition=null;return true;}
+
   function runtimeContext(node){
     const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
     const locals=runtimeVariableArray('Local',node),globals=runtimeVariableArray('Global',node),sceneVars=runtimeVariableArray('Scene',node);
@@ -2641,7 +2803,7 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),allNodes:runtimeAllNodes().map(x=>x.node),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
+      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:runtimeAllNodes().map(x=>x.node),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
@@ -2714,9 +2876,11 @@
     const audio=runtimeMIDIContext;
     if(audio.state==='suspended')audio.resume();
     const master=audio.createGain();master.gain.value=1;master.connect(audio.destination);
-    const oscillators=new Set();let timer=0,cursor=0,base=audio.currentTime,loops=0,stopped=false;
-    const lookAhead=0.18,intervalMs=40,maxDuration=Math.max(0,Number(v?.duration)||0)/1000;
-    const stopAt=maxDuration>0?Math.min(songDuration,maxDuration):songDuration;
+    const oscillators=new Set();let timer=0,cursor=0,loops=0,stopped=false;
+    const lookAhead=0.18,intervalMs=40,startAt=Math.min(songDuration,Math.max(0,Number(v?.start)||0)/1000),maxDuration=Math.max(0,Number(v?.duration)||0)/1000;
+    const stopAt=maxDuration>0?Math.min(songDuration,startAt+maxDuration):songDuration;
+    let base=audio.currentTime-startAt;
+    while(cursor<notes.length&&notes[cursor].end<=startAt)cursor++;
     const fadeIn=Math.max(0,Number(v?.fadein)||0)/1000,fadeOut=Math.max(0,Number(v?.fadeout)||0)/1000;
     const wave=['sine','triangle','square','sawtooth'];
     let player;
@@ -2724,7 +2888,7 @@
     if(fadeIn>0){master.gain.setValueAtTime(0,base);master.gain.linearRampToValueAtTime(1,base+fadeIn);}
     const finish=()=>{cleanup();state.runtime.audio=state.runtime.audio.filter(x=>x!==player);};
     const scheduleNote=(n,when)=>{
-      const osc=audio.createOscillator(),gain=audio.createGain(),dur=Math.max(0.01,n.end-n.start),vol=0.2*(n.velocity/127);
+      const osc=audio.createOscillator(),gain=audio.createGain(),dur=Math.max(0.01,n.end-Math.max(n.start,startAt)),vol=0.2*(n.velocity/127);
       osc.type=wave[n.track%wave.length];osc.frequency.value=440*Math.pow(2,(n.pitch-69)/12);
       gain.gain.setValueAtTime(0,when);gain.gain.linearRampToValueAtTime(vol,when+Math.min(0.008,dur*.25));
       gain.gain.setValueAtTime(vol,when+Math.max(0.009,dur-Math.min(0.012,dur*.2)));gain.gain.linearRampToValueAtTime(0,when+dur);
@@ -2735,12 +2899,12 @@
       if(stopped)return;
       const now=audio.currentTime-base;
       if(now>=stopAt){
-        if(v?.loop&&maxDuration<=0){loops++;base=audio.currentTime;cursor=0;master.gain.cancelScheduledValues(audio.currentTime);master.gain.setValueAtTime(1,audio.currentTime);return schedule();}
+        if(v?.loop&&maxDuration<=0){loops++;base=audio.currentTime-startAt;cursor=0;while(cursor<notes.length&&notes[cursor].end<=startAt)cursor++;master.gain.cancelScheduledValues(audio.currentTime);master.gain.setValueAtTime(1,audio.currentTime);return schedule();}
         if(fadeOut>0){const t=audio.currentTime;master.gain.cancelScheduledValues(t);master.gain.setValueAtTime(master.gain.value,t);master.gain.linearRampToValueAtTime(0,t+fadeOut);setTimeout(finish,fadeOut*1000+60);}else finish();
         return;
       }
       const horizon=Math.min(stopAt,now+lookAhead);
-      while(cursor<notes.length&&notes[cursor].start<=horizon){const n=notes[cursor++];if(n.end<=now)continue;const when=base+n.start;if(when<audio.currentTime-0.01)continue;scheduleNote({...n,end:Math.min(n.end,stopAt)},when);}
+      while(cursor<notes.length&&notes[cursor].start<=horizon){const n=notes[cursor++];if(n.end<=startAt||n.end<=now)continue;const when=base+Math.max(n.start,startAt);if(when<audio.currentTime-0.01)continue;scheduleNote({...n,end:Math.min(n.end,stopAt)},when);}
       timer=setTimeout(()=>{timer=0;schedule();},intervalMs);
     };
     state.runtime.audio.push(player);schedule();return player;
@@ -2751,7 +2915,7 @@
     try{
       const isMIDI=asset.kind==='MIDI'||asset.type==='audio/midi'||/\.(mid|midi)$/i.test(asset.filename||'');
       if(isMIDI){runtimePlayMIDI(asset,v);return;}
-      const audio=new Audio(asset.value);audio.loop=!!v?.loop;if(v?.duration>0)setTimeout(()=>{try{audio.pause();}catch{}},Number(v.duration));audio.play?.();state.runtime.audio.push(audio);audio.onended=()=>{state.runtime.audio=state.runtime.audio.filter(a=>a!==audio);};
+      const audio=new Audio(asset.value);audio.loop=!!v?.loop;const start=Math.max(0,Number(v?.start)||0),duration=Math.max(0,Number(v?.duration)||0);audio.addEventListener('loadedmetadata',()=>{try{audio.currentTime=Math.min(start,Math.max(0,(audio.duration||start)-0.001));}catch{}});if(duration>0)setTimeout(()=>{try{audio.pause();}catch{}},duration);audio.play?.();state.runtime.audio.push(audio);audio.onended=()=>{state.runtime.audio=state.runtime.audio.filter(a=>a!==audio);};
     }catch(err){state.runtime.lastError=String(err?.message||err);}
   }
   function runtimeStopAudio(){(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});}
@@ -2767,6 +2931,7 @@
   }
   function executeRuntimeScriptNode(sn,def,node,isEvent=false){
     if(!sn||!def||!node)return null;
+    if(!scriptRequirementEnabled(def))return null;
     if(def.receiver && !isEvent && def.name==='Interval'){const key=sn.id;state.runtime.intervalStates[key] ||= {active:false,next:0};const st=state.runtime.intervalStates[key];st.active=true;st.ms=Math.max(1,Number(runtimeValuesForScript(sn,node).Milliseconds)||1000);st.next=performance.now()+st.ms;return null;}
     if(def.receiver && !isEvent && def.name==='Timeout'){const key=sn.id,now=performance.now(),v=runtimeValuesForScript(sn,node);state.runtime.timers.push({kind:'timeout',key,nodeId:node.id,at:now+Math.max(0,Number(v.Milliseconds)||0)});return null;}
     const ctx=runtimeContext(node);const values=runtimeValuesForScript(sn,node);
@@ -2824,6 +2989,7 @@
           if(defName==='onKeybind' && selected!==values.key)return;
           if(['onTouch','onMouse','onScreenInput'].includes(defName) && selected!==eventType)return;
           if(defName==='onJoystick' && selected!==values.Variable)return;
+          if(defName==='onConnectionChange' && selected!==values.connection)return;
         }
         executeRuntimeScriptNode(sn,def,node,true);
       });
@@ -3021,15 +3187,18 @@
   }
   function capitalize(v){return String(v).charAt(0).toUpperCase()+String(v).slice(1);}
 
-  function startRuntime(debug){
+  async function startRuntime(debug){
+    ensureGameSettings();
     if(editorAnimationRAF){cancelAnimationFrame(editorAnimationRAF);editorAnimationRAF=0;}
     runtimeAccumulator=0;
 
     const preferred=state.scenes.find(s=>s.id===state.game.preferredSceneId)||currentScene();
     if(!preferred)return;
+    let runtimeMic=null;
+    try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
 
     if(window.__UIX_STANDALONE__){
@@ -3048,7 +3217,7 @@
     $('#runtimeOverlay')?.remove();
     const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});cleanupRuntimeMic();state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -3151,7 +3320,13 @@
       if(tab){ state.activeAssetTab=tab.dataset.assetTab; renderAssetManager(); return; }
     });
     $('#componentContent')?.addEventListener('pointerdown',e=>{const card=e.target.closest('.component-card[data-component-key]');if(!card||e.target.closest('.comp-actions'))return;state.ui.selectedComponentKey=card.dataset.componentKey;$$('.component-card.component-selected').forEach(el=>el.classList.remove('component-selected'));card.classList.add('component-selected');drawWorkplace();},{capture:true});
+    window.addEventListener('online',()=>dispatchRuntimeEvent('onConnectionChange','Online',{connection:'Online'}));
+    window.addEventListener('offline',()=>dispatchRuntimeEvent('onConnectionChange','Offline',{connection:'Offline'}));
+    window.addEventListener('beforeunload',e=>{
+      if(state.project?.created&&!window.__UIX_STANDALONE__){e.preventDefault();e.returnValue='';}
+    });
     document.addEventListener('keydown',e=>{
+      if(!state.runtime?.running&&state.project?.created&&(e.key==='F5'||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))&&!e.shiftKey){e.preventDefault();e.stopPropagation();status('Reload blocked. Use the project controls to reload.');return;}
       if(state.runtime?.running){
         const key=normalizeRuntimeKey(e);
         if(key && !e.repeat){setRuntimeKeyEvent(key);dispatchRuntimeEvent('onKeybind','down',{key,code:e.code,repeat:false,shiftKey:!!e.shiftKey,ctrlKey:!!e.ctrlKey,altKey:!!e.altKey,metaKey:!!e.metaKey});}
@@ -3351,8 +3526,10 @@
   if(window.__UIX_STANDALONE__){
     document.documentElement.classList.add('uix-standalone');
   }else{
-    state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;
-    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();showModal($('#projectModal'));
-    bootstrapURLLoad();
+    state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;ensureGameSettings();
+    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();applyTopbarAnchors();
+    const bootURL=new URLSearchParams(location.search).get('load');
+    if(bootURL)bootstrapURLLoad();
+    else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
   }
 })();

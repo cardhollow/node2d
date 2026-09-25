@@ -9,6 +9,8 @@
     { name:'onMouse', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onScreenInput', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onJoystick', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Variable',type:'selector',value:ctx=>(ctx?.joysticksList||[]).map(j=>j.variable),selected:''}], func:()=>({out:true}) },
+    { name:'onAudioPickup', require:'Use Mic', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     {
       name:'loadScene', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -93,7 +95,7 @@
     },
     {
       name:'playAudio', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'src',type:'selector',value:ctx=>(ctx?.audioAssets||[]).map(a=>a.name),selected:''},{name:'duration',type:'int',value:0},{name:'loop',type:'bool',value:false},{name:'fadein',type:'int',value:0},{name:'fadeout',type:'int',value:0}],
+      editor:[{name:'src',type:'selector',value:ctx=>(ctx?.audioAssets||[]).map(a=>a.name),selected:''},{name:'start',type:'int',value:0},{name:'duration',type:'int',value:0},{name:'loop',type:'bool',value:false},{name:'fadein',type:'int',value:0},{name:'fadeout',type:'int',value:0}],
       func:(ctx,v)=>{ctx.playAudio?.(v);return {out:true};}
     },
     {name:'stopAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.stopAudio?.();return {out:true};}},
@@ -103,7 +105,8 @@
     {name:'Timeout',receiver:true,group:'Controls',output:[{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
     {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target);return {truth:yes,falsy:!yes};}}
   ];
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onUnload','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Create Object','Destroy Object','playAudio','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
+  scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onUnload','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();

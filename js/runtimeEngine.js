@@ -279,5 +279,12 @@
     return contacts.length;
   }
 
-  window.UIXRuntimeEngine={stepPhysics,colliderShape,collide};
+  async function prepareMicrophone(gameSettings={}){
+    if(gameSettings?.requirements?.['Use Mic']!==true)return null;
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone access is not available in this browser or context');
+    return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+  }
+
+  window.UIXRuntimeEngine={stepPhysics,colliderShape,collide,prepareMicrophone};
+
 })();
