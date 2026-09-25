@@ -1,10 +1,10 @@
 {
-  "name": "Node2D",
+  "name": "Node2D Game Engine",
   "short_name": "Node2D",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
-  "orientation": "any",
+  "display": "fullscreen",
+  "orientation": "landscape",
   "theme_color": "#111111",
   "background_color": "#111111",
   "icons": [
@@ -15,5 +15,5 @@
       "purpose": "any maskable"
     }
   ],
-  "description": "2D game engine and visual editor"
+  "description": "Node2D Game Engine — 2D game creation and visual scripting for the web"
 }

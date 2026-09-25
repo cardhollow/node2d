@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Node2D</title>
+  <title>Node2D Game Engine</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23111'/%3E%3Cg stroke='%23555' stroke-width='16' fill='none' stroke-linecap='round'%3E%3Cpath d='M256 100V180'/%3E%3Cpath d='M256 180H140V270'/%3E%3Cpath d='M256 180H372V270'/%3E%3Cpath d='M140 270V350'/%3E%3Cpath d='M372 270V350'/%3E%3C/g%3E%3Crect x='196' y='70' width='120' height='90' rx='22' fill='white'/%3E%3Crect x='90' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Crect x='302' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Ccircle cx='140' cy='390' r='28' fill='white'/%3E%3Ccircle cx='372' cy='390' r='28' fill='white'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111111">
@@ -37,6 +37,8 @@
           <button data-action="game-settings"><span>⚙</span>Game Settings</button>
           <button data-action="editor-settings"><span>⚙</span>Editor Settings</button>
           <button data-action="help"><span>?</span>Help</button>
+          <div class="menu-separator"></div>
+          <button data-action="install-node2d" data-node2d-install hidden><span>⇩</span>Install Node2D</button>
           <div class="menu-separator"></div>
           <button data-action="exit"><span>⏻</span>Exit</button>
         </div>
@@ -95,6 +97,10 @@
       </section>
 
       <aside id="inspectorDock" class="inspector-dock">
+        <div id="panelRestoreRail" class="panel-restore-rail" aria-label="Restore hidden panels">
+          <button type="button" data-restore-panel="selection" title="Show Selection panel">S</button>
+          <button type="button" data-restore-panel="component" title="Show Components panel">C</button>
+        </div>
         <section id="selectionPanel" class="panel selection-panel">
           <div class="dock-edge dock-edge-left" data-resize-dock="right"></div>
           <div class="panel-edge panel-edge-right" data-resize-split="selection"></div>
@@ -102,6 +108,7 @@
           <div id="selectionTree" class="selection-tree"></div>
         </section>
         <section id="componentPanel" class="panel component-panel">
+          <div class="dock-edge dock-edge-right" data-resize-dock="component"></div>
           <div class="panel-header"><div><strong>Components</strong><span id="componentTarget" class="panel-subtitle">Scene Camera</span></div><button class="panel-icon" data-action="collapse-components" title="Collapse">›</button></div>
           <div id="componentContent" class="component-scroll"></div>
           <div class="component-footer"><button class="add-component-button" data-action="open-add-component"><span>＋</span>Add Component</button></div>
@@ -118,6 +125,10 @@
     <div class="project-choice-grid">
       <button class="project-choice" data-project-action="create"><span class="choice-icon">＋</span><strong>Create New</strong><small>Create a new unsaved Node2D project.</small></button>
       <button class="project-choice" data-project-action="load"><span class="choice-icon">▱</span><strong>Load</strong><small>Load a local project or import an .ndc file.</small></button>
+    </div>
+    <div id="node2dInstallBar" class="node2d-install-bar" data-node2d-install hidden>
+      <div class="node2d-install-info"><span class="node2d-install-icon">⇩</span><div><strong>Install Node2D APP</strong><small>Install Node2D Game Engine for faster access and offline use.</small></div></div>
+      <button class="btn primary node2d-install-button" type="button" data-action="install-node2d">Install</button>
     </div>
   </section>
 
@@ -223,7 +234,11 @@
     <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><button class="modal-close" data-action="close-modal">×</button></div>
     <div class="script-layout">
       <aside class="script-left">
-        <div class="script-panel-header"><strong>Local Variables</strong><span>Lives only inside this node</span></div>
+        <div class="script-panel-header">
+          <div class="script-panel-heading"><strong>Local Variables</strong><span>Lives only inside this node</span></div>
+          <button class="script-panel-collapse" type="button" data-script-panel-collapse="left" title="Collapse">‹</button>
+        </div>
+        <div class="script-panel-resize script-panel-resize-left" data-resize-script-panel="left"></div>
         <div id="localVariablesContent" class="local-vars-scroll"></div>
         <div class="script-section-divider"></div>
         <div id="scriptNodeLibrary" class="script-node-library"></div>
@@ -237,12 +252,12 @@
     </div>
   </section>
 
-  <section id="helpModal" class="modal help-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+  <section id="helpModal" class="modal help-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
     <div class="modal-header"><div><h3>Help</h3><p>Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
     <div class="help-frame-wrap"><iframe id="helpFrame" title="Node2D Help"></iframe></div>
   </section>
 
-  <section id="expressionModal" class="modal expression-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+  <section id="expressionModal" class="modal expression-modal editor-fullscreen-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
     <div class="modal-header"><div><h3 id="expressionTitle">Input</h3><p>Edit this input or expression.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
     <div class="expression-layout">
       <div class="expression-main">

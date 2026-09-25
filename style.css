@@ -86,7 +86,6 @@ body{touch-action:pan-x pan-y}
 .script-inspector-list{padding:6px;display:grid;gap:5px;overflow-y:auto;min-height:0;flex:1;touch-action:pan-y;-webkit-overflow-scrolling:touch}.script-inspector-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px;min-height:32px;padding:3px 4px;border:1px solid transparent;border-radius:5px;background:#292929}.script-inspector-row:hover{background:#343434}.script-inspector-row.selected{border-color:var(--accent);box-shadow:0 0 0 1px rgba(228,202,78,.25)}.script-inspector-name{min-width:0;overflow:hidden;padding:5px 6px;color:#c7c7c7;text-align:left;white-space:nowrap;text-overflow:ellipsis}.script-inspector-actions{display:flex;gap:2px}.icon-action{width:27px;height:27px;display:grid;place-items:center;border-radius:4px;color:#aaa}.icon-action:hover{background:#3a3a3a;color:#fff}.icon-action img{width:14px;height:14px;display:block}.script-inspector-empty{overflow:auto;padding:12px;color:#777;font-size:10px}
 /* v8 sprite editor */
 .sprite-create-modal{width:min(420px,calc(100vw - 24px))}.sprite-create-form{padding:13px;display:grid;gap:9px}.sprite-create-pixel{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sprite-paint-modal{position:fixed;left:0;top:var(--topbar-height);right:0;bottom:0;width:100%;height:calc(100% - var(--topbar-height));max-width:none;max-height:none;transform:none;border-radius:0;border-width:1px 0 0;display:flex;flex-direction:column;z-index:860}.sprite-editor-header{height:46px;min-height:46px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #414141;background:#292929}.sprite-editor-header strong{font-size:11px}.sprite-editor-header span{color:#777;font-size:9px}.sprite-editor-layout{flex:1;min-height:0;display:grid;grid-template-columns:185px minmax(0,1fr) 220px}.sprite-tool-panel,.sprite-inspector-panel{min-width:0;min-height:0;overflow:auto;background:#292929;touch-action:pan-y;-webkit-overflow-scrolling:touch}.sprite-tool-panel{border-right:1px solid #3d3d3d;padding:8px}.sprite-inspector-panel{border-left:1px solid #3d3d3d;padding:10px}.sprite-tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.sprite-tool{min-height:30px;padding:4px;border:1px solid #414141;border-radius:4px;background:#303030;color:#aaa;font-size:9px}.sprite-tool.active{border-color:var(--accent);color:var(--accent)}.sprite-tool:hover{background:#373737}.sprite-tool img{width:15px;height:15px;display:block;margin:0 auto 2px}.sprite-setting{margin-top:9px;padding-top:8px;border-top:1px solid #3c3c3c}.sprite-setting-title{margin-bottom:5px;color:#888;font-size:9px}.sprite-color-row{display:grid;grid-template-columns:32px 1fr;gap:6px;align-items:center}.sprite-color-swatch{width:32px;height:26px;border:1px solid #555;border-radius:4px}.sprite-canvas-wrap{position:relative;overflow:hidden;background:#202020;touch-action:none}.sprite-paint-canvas{width:100%;height:100%;display:block;cursor:crosshair;image-rendering:pixelated}.sprite-editor-status{position:absolute;bottom:8px;left:8px;padding:4px 6px;border:1px solid #454545;border-radius:4px;background:#292929dd;color:#888;font-size:9px;pointer-events:none}.sprite-info-grid{display:grid;gap:7px}.sprite-mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.sprite-action-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.sprite-action-row .btn{flex:1}.sprite-divider{height:1px;background:#3e3e3e;margin:8px 0}.sprite-ruler-label{margin-top:6px;color:#888;font-size:9px}
-@media(max-width:850px){.sprite-editor-layout{grid-template-columns:145px minmax(0,1fr)}.sprite-inspector-panel{display:none}}
 .variable-head-actions{display:flex;align-items:center;gap:2px}.variable-toggle{font-size:14px}.variable-block .variable-body.hidden{display:none}
 
 /* v10 Script Inspector / infinite runtime / camera viewport */
@@ -180,7 +179,6 @@ body{touch-action:pan-x pan-y}
 .sprite-preview-card{max-width:150px}.sprite-preview-card canvas{max-width:100%;height:auto}
 .sprite-crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#777;font:16px/1 monospace;pointer-events:none;opacity:.55}
 .asset-card-actions{position:absolute;right:5px;top:5px;display:flex;gap:4px;z-index:2}.asset-edit.danger{color:#c98a8a}.asset-preview{position:relative;overflow:hidden}
-@media(max-width:900px){.sprite-editor-layout{grid-template-columns:142px minmax(0,1fr)!important}.sprite-inspector-panel{display:none!important}.sprite-tool-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.sprite-preview-card{width:106px}.sprite-preview-card canvas{width:92px;height:92px}}
 @media(max-width:560px){.sprite-editor-layout{grid-template-columns:112px minmax(0,1fr)!important}.sprite-tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.sprite-context-bar span{display:none}.sprite-action-row{flex-direction:column}.sprite-frame-actions{grid-template-columns:1fr}.sprite-play-row{grid-template-columns:28px minmax(0,1fr) 28px 66px}}
 
 /* v16 header/mobile safety */
@@ -675,3 +673,97 @@ html.uix-narrow-edit-lock .uix-viewport-narrow-notice{pointer-events:auto!import
 .script-node-require-disabled .script-input,.script-node-require-disabled .script-input-port,.script-node-require-disabled .script-output-port{filter:grayscale(1)}
 
 .editor-snap-unit{opacity:.75;align-self:center}
+
+.node2d-install-bar{margin:0 13px 13px;padding:10px;border:1px solid #474747;border-radius:7px;background:#303030;display:flex;align-items:center;justify-content:space-between;gap:12px}.node2d-install-info{min-width:0;display:flex;align-items:center;gap:10px}.node2d-install-icon{width:34px;height:34px;display:grid;place-items:center;border:1px solid #575757;border-radius:6px;color:var(--accent);font-size:16px;flex:0 0 34px}.node2d-install-info>div{min-width:0;display:flex;flex-direction:column;gap:3px}.node2d-install-info strong{font-size:11px}.node2d-install-info small{color:#858585;font-size:10px;line-height:1.4}.node2d-install-button{min-width:88px;flex:0 0 auto}.node2d-install-bar[hidden]{display:none!important}
+@media(max-width:560px){.node2d-install-bar{align-items:stretch;flex-direction:column}.node2d-install-button{width:100%}}
+
+
+/* v12 authoritative UI update */
+[hidden],.panel[hidden],.selection-panel[hidden],.component-panel[hidden],.script-left[hidden],.script-right[hidden]{display:none!important}
+
+/* Workspace/editor modals cover the whole viewport, including the former topbar area. */
+.editor-fullscreen-modal,.script-modal,.sprite-paint-modal,.uix-midi-modal{inset:0!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;transform:none!important;border-radius:0!important;border-width:0!important;}
+.editor-fullscreen-modal .modal-header{flex:0 0 auto}
+#modalBackdrop{z-index:200000!important}
+.modal{z-index:200010}
+
+/* Hidden inspector panels leave the editor canvas untouched. These S/C buttons restore them. */
+.editor-body{position:relative}
+.panel-restore-rail{position:absolute;top:50%;right:8px;transform:translateY(-50%);z-index:70;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;pointer-events:none}
+.panel-restore-rail button{width:32px;height:32px;border:1px solid #4b4b4b;border-radius:5px;background:#2d2d2d;color:#aaa;font-weight:700;pointer-events:auto;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.panel-restore-rail button:hover{background:#3a3a3a;color:#eee;border-color:#666}
+.panel-restore-rail button:active{background:#403e32;color:var(--accent)}
+.panel-restore-rail:not(:has(button:not([hidden]))){display:none}
+
+/* Script panels: collapsible and resizable in the same edge-drag style as the main dock. */
+.script-layout{position:relative!important;grid-template-columns:minmax(190px,260px) minmax(0,1fr) minmax(200px,250px)!important;overflow:hidden}
+.script-left,.script-right{position:relative!important;min-width:0!important;min-height:0!important;transition:none!important}
+.script-panel-header{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;min-width:0!important}
+.script-panel-heading{min-width:0!important;overflow:hidden!important}
+.script-panel-heading strong,.script-panel-heading span{display:block!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.script-panel-collapse{width:27px;height:27px;flex:0 0 27px;border-radius:5px;color:#aaa;font-size:19px}
+.script-panel-collapse:hover{background:#393939;color:#eee}
+.script-panel-resize{position:absolute;top:0;bottom:0;width:14px;z-index:30;cursor:ew-resize;background:transparent;touch-action:none}
+.script-panel-resize-left{right:-7px}
+.script-panel-resize-right{left:-7px}
+.script-panel-resize::after{content:'';position:absolute;top:50%;left:50%;width:3px;height:28px;transform:translate(-50%,-50%);border-radius:3px;background:#666;box-shadow:0 -7px 0 #666,0 7px 0 #666;opacity:.7;pointer-events:none}
+.script-panel-resize:hover::after{background:var(--accent);box-shadow:0 -7px 0 var(--accent),0 7px 0 var(--accent);opacity:1}
+.script-left.script-panel-collapsed>*:not(.script-panel-header):not(.script-panel-resize),.script-right.script-panel-collapsed>*:not(.script-panel-header):not(.script-panel-resize){display:none!important}
+.script-left.script-panel-collapsed .script-panel-header,.script-right.script-panel-collapsed .script-panel-header{justify-content:center!important}
+.script-left.script-panel-collapsed .script-panel-heading,.script-right.script-panel-collapsed .script-panel-heading{display:none!important}
+
+/* Keep the Sprite Inspector present on narrow devices; allow horizontal scrolling instead of removing it. */
+.sprite-editor-layout{grid-template-columns:160px minmax(180px,1fr) 205px!important;min-width:545px!important;overflow-x:auto!important;overflow-y:hidden!important}
+.sprite-inspector-panel{display:flex!important;min-width:205px!important;overflow-y:auto!important}
+.sprite-tool-panel{min-width:160px!important}
+
+/* Compact sprite inspector controls remain usable instead of disappearing. */
+@media(max-width:600px){.sprite-editor-layout{grid-template-columns:150px minmax(180px,1fr) 190px!important;min-width:520px!important}.sprite-inspector-panel{min-width:190px!important}.sprite-tool-panel{min-width:150px!important}}
+
+
+/* v13 authoritative panel/layout fixes. */
+.script-layout{grid-template-columns:var(--script-left-width,260px) minmax(0,1fr) var(--script-right-width,250px)!important;}
+.script-panel-resize{width:20px!important;top:0!important;bottom:0!important;background:transparent!important;z-index:60!important;}
+.script-panel-resize-left{right:-10px!important;}
+.script-panel-resize-right{left:-10px!important;}
+.script-panel-resize::after{content:'⋮'!important;position:absolute!important;top:50%!important;left:50%!important;width:18px!important;height:42px!important;transform:translate(-50%,-50%)!important;display:grid!important;place-items:center!important;border:1px solid #505050!important;border-radius:6px!important;background:#2f2f2f!important;box-shadow:none!important;color:#888!important;font-size:16px!important;line-height:1!important;pointer-events:none!important;}
+.script-panel-resize:hover::after{color:var(--accent)!important;border-color:#666!important;}
+.script-left.script-panel-collapsed,.script-right.script-panel-collapsed{min-width:0!important;width:auto!important;}
+.script-left.script-panel-collapsed>.script-panel-resize,.script-right.script-panel-collapsed>.script-panel-resize{display:block!important;}
+
+/* Keep both Sprite Editor side panels available. Narrow screens can scroll horizontally to the Inspector. */
+.sprite-editor-layout{grid-template-columns:var(--sprite-left-width,190px) minmax(240px,1fr) var(--sprite-right-width,235px)!important;min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important;}
+.sprite-tool-panel,.sprite-inspector-panel{min-width:0!important;position:relative!important;align-self:stretch!important;}
+.sprite-inspector-panel{display:flex!important;flex-direction:column!important;overflow-y:auto!important;overflow-x:hidden!important;}
+.sprite-tool-panel{overflow-y:auto!important;overflow-x:hidden!important;}
+.sprite-side-header{min-height:48px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border-bottom:1px solid #3e3e3e;background:#292929;}
+.sprite-side-heading{min-width:0;overflow:hidden;}
+.sprite-side-heading strong,.sprite-side-heading span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sprite-side-heading strong{font-size:11px;}
+.sprite-side-heading span{margin-top:2px;color:#777;font-size:9px;}
+.sprite-side-collapse{width:27px;height:27px;flex:0 0 27px;border-radius:5px;color:#aaa;font-size:19px;display:grid;place-items:center;}
+.sprite-side-collapse:hover{background:#393939;color:#eee;}
+.sprite-panel-resize{position:absolute;top:0;bottom:0;width:20px;z-index:60;cursor:ew-resize;background:transparent;touch-action:none;}
+.sprite-panel-resize-left{right:-10px;}
+.sprite-panel-resize-right{left:-10px;}
+.sprite-panel-resize::after{content:'⋮';position:absolute;top:50%;left:50%;width:18px;height:42px;transform:translate(-50%,-50%);display:grid;place-items:center;border:1px solid #505050;border-radius:6px;background:#2f2f2f;color:#888;font-size:16px;line-height:1;pointer-events:none;}
+.sprite-panel-resize:hover::after{color:var(--accent);border-color:#666;}
+.sprite-tool-panel.sprite-panel-collapsed>*:not(.sprite-side-header):not(.sprite-panel-resize),.sprite-inspector-panel.sprite-panel-collapsed>*:not(.sprite-side-header):not(.sprite-panel-resize){display:none!important;}
+.sprite-tool-panel.sprite-panel-collapsed .sprite-side-header,.sprite-inspector-panel.sprite-panel-collapsed .sprite-side-header{justify-content:center!important;}
+.sprite-tool-panel.sprite-panel-collapsed .sprite-side-heading,.sprite-inspector-panel.sprite-panel-collapsed .sprite-side-heading{display:none!important;}
+@media(max-width:700px){.sprite-editor-layout{grid-template-columns:var(--sprite-left-width,160px) minmax(240px,1fr) var(--sprite-right-width,205px)!important;min-width:0!important;overflow-x:auto!important;}.sprite-tool-panel,.sprite-inspector-panel{min-width:0!important;}.sprite-tool-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+@media(max-width:480px){.sprite-editor-layout{grid-template-columns:var(--sprite-left-width,140px) minmax(240px,1fr) var(--sprite-right-width,195px)!important;}}
+
+/* v14: independent Selection/Components dock sizing and attached restore rail. */
+.inspector-dock{position:relative!important;display:grid!important;grid-template-columns:var(--selection-panel-width,285px) var(--component-panel-width,285px);width:570px;min-width:0!important;max-width:82vw!important;overflow:visible!important;}
+.inspector-dock.dock-empty{width:0!important;min-width:0!important;border-left:0!important;background:transparent!important;}
+.inspector-dock.dock-empty .panel{display:none!important;}
+.panel-restore-rail{position:absolute!important;left:-42px!important;right:auto!important;top:50%!important;transform:translateY(-50%)!important;width:34px!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:120!important;pointer-events:none;}
+.panel-restore-rail button{position:relative!important;flex:0 0 32px!important;width:32px!important;height:32px!important;}
+.panel-restore-rail button[hidden]{display:none!important;}
+.panel-restore-rail:not(:has(button:not([hidden]))){display:none!important;}
+.selection-panel>.dock-edge-left,.component-panel>.dock-edge-right{position:absolute!important;top:0!important;bottom:0!important;width:20px!important;z-index:999!important;display:block!important;pointer-events:auto!important;touch-action:none!important;background:rgba(255,255,255,.001);cursor:ew-resize;}
+.selection-panel>.dock-edge-left{left:-10px!important;right:auto!important;}
+.component-panel>.dock-edge-right{right:-10px!important;left:auto!important;}
+.component-panel>.dock-edge-right::after{content:'⋮'!important;display:grid!important;place-items:center!important;position:absolute!important;top:50%!important;left:50%!important;width:18px!important;height:42px!important;transform:translate(-50%,-50%)!important;border:1px solid #505050!important;border-radius:6px!important;background:#2f2f2f!important;color:#888!important;font-size:16px!important;line-height:1!important;}
+.component-panel>.dock-edge-right:hover::after{color:var(--accent)!important;border-color:#666!important;}
