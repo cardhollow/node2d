@@ -139,8 +139,10 @@
         <div class="sprite-editor-header-actions"><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
       </div>
       <div class="sprite-editor-layout">
-        <aside class="sprite-tool-panel">
-          <section class="sprite-tool-section">
+        <aside class="sprite-tool-panel" data-sprite-panel="left">
+          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Tools</strong><span>Sprite editing tools</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="left" title="Collapse">‹</button></div>
+          <div class="sprite-panel-resize sprite-panel-resize-left" data-resize-sprite-panel="left"></div>
+          <section class="sprite-tool-section sprite-tool-first-section">
             <div class="sprite-section-title">Tools</div>
             <div class="sprite-tool-stack" data-basic-tools></div>
           </section>
@@ -194,7 +196,9 @@
           <div class="sprite-editor-status"><span data-sprite-coord>—, —</span><span>Zoom <b data-sprite-zoom>100%</b></span></div>
         </main>
 
-        <aside class="sprite-inspector-panel">
+        <aside class="sprite-inspector-panel" data-sprite-panel="right">
+          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Inspector</strong><span>Sprite and frame settings</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="right" title="Collapse">›</button></div>
+          <div class="sprite-panel-resize sprite-panel-resize-right" data-resize-sprite-panel="right"></div>
           <section class="sprite-inspector-section">
             <div class="sprite-section-title">Sprite</div>
             <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input data-sprite-name type="text"></div></div>
@@ -215,10 +219,12 @@
       modal,name:config.name||'Sprite',sourceAssets:config.sourceAssets||[],frames:frames.length?frames:[{name:config.name||'Sprite',width:config.width||32,height:config.height||32,pixels:makePixels(config.width||32,config.height||32),sourceAsset:null}],
       frameIndex:0,fps:config.fps||8,playing:false,playTimer:null,tool:'pencil',brushSize:1,color:[255,255,255,255],showGrid:true,
       zoom:4,pan:{x:0,y:0},mirrorX:false,mirrorY:false,undo:[],redo:[],drawing:false,drawStart:null,lastCell:null,lastPaintCell:null,
+      panelWidths:{left:190,right:235},leftCollapsed:false,rightCollapsed:false,
       pointers:new Map(),pinch:null,panDrag:null,spacePan:false,ruler:null,pointerDrawingId:null,lastPointerCellKey:'',perfectShape:false,points:[],pointDragIndex:-1,
       lassoPoints:[],lassoDrawing:false,selection:null,selectionMode:'set',selectionGestureMode:'set',selectionRect:null,clipboard:null,canvasRenderRaf:0,selectionDrag:null
     };
     bindEditor(ed);
+    enablePanelControls(ed);
     activeEditor=ed;
     requestAnimationFrame(()=>{modal.focus?.({preventScroll:true});fitEditor(ed);render(ed);});
   }
@@ -240,6 +246,30 @@
       ed.tool=name;ed.ruler=null;render(ed);
     });
     return b;
+  }
+
+  function applyPanelState(ed){
+    const layout=ed.modal.querySelector('.sprite-editor-layout'),left=ed.modal.querySelector('.sprite-tool-panel'),right=ed.modal.querySelector('.sprite-inspector-panel');
+    if(!layout||!left||!right)return;
+    const lw=clamp(Number(ed.panelWidths?.left)||190,34,420),rw=clamp(Number(ed.panelWidths?.right)||235,34,420);
+    ed.panelWidths={left:lw,right:rw};
+    left.classList.toggle('sprite-panel-collapsed',!!ed.leftCollapsed);
+    right.classList.toggle('sprite-panel-collapsed',!!ed.rightCollapsed);
+    layout.style.setProperty('--sprite-left-width',`${ed.leftCollapsed?34:lw}px`);
+    layout.style.setProperty('--sprite-right-width',`${ed.rightCollapsed?34:rw}px`);
+    const lb=left.querySelector('[data-sprite-panel-collapse="left"]'),rb=right.querySelector('[data-sprite-panel-collapse="right"]');
+    if(lb){lb.textContent=ed.leftCollapsed?'›':'‹';lb.title=ed.leftCollapsed?'Expand':'Collapse';}
+    if(rb){rb.textContent=ed.rightCollapsed?'‹':'›';rb.title=ed.rightCollapsed?'Expand':'Collapse';}
+    requestAnimationFrame(()=>render(ed));
+  }
+  function enablePanelControls(ed){
+    const modal=ed.modal;if(!modal||modal.dataset.spritePanelControls==='1')return;
+    modal.dataset.spritePanelControls='1';let active=null;
+    modal.addEventListener('click',e=>{const b=e.target.closest('[data-sprite-panel-collapse]');if(!b)return;e.preventDefault();e.stopPropagation();if(b.dataset.spritePanelCollapse==='left')ed.leftCollapsed=!ed.leftCollapsed;else ed.rightCollapsed=!ed.rightCollapsed;applyPanelState(ed);});
+    modal.addEventListener('pointerdown',e=>{const h=e.target.closest('[data-resize-sprite-panel]');if(!h)return;if(e.pointerType==='mouse'&&e.button!==0)return;e.preventDefault();e.stopPropagation();active={side:h.dataset.resizeSpritePanel,startX:e.clientX,left:ed.panelWidths.left,right:ed.panelWidths.right,pointerId:e.pointerId};h.setPointerCapture?.(e.pointerId);document.documentElement.classList.add('resizing-panels');});
+    const move=e=>{if(!active||e.pointerId!==active.pointerId)return;e.preventDefault();if(active.side==='left')ed.panelWidths.left=clamp(active.left+(e.clientX-active.startX),34,420);else ed.panelWidths.right=clamp(active.right-(e.clientX-active.startX),34,420);applyPanelState(ed);};
+    const end=e=>{if(!active)return;if(e?.pointerId!=null&&e.pointerId!==active.pointerId)return;active=null;document.documentElement.classList.remove('resizing-panels');};
+    document.addEventListener('pointermove',move,{passive:false});document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
   }
 
   function bindEditor(ed){
