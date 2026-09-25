@@ -102,7 +102,8 @@
       },
       {
         "subtitle": "Folders",
-        "contents": "<h2>Folders</h2><p>Folders help organize Nodes inside a Scene. They do not act as game objects themselves. You can expand and collapse them to keep the Scene tree manageable.</p>"
+        "contents": "<h2>Folders</h2><p>Folders help organize Nodes inside a Scene. They do not act as game objects themselves. You can expand and collapse them to keep the Scene tree manageable.</p>",
+        "id": "scenes-folders"
       },
       {
         "subtitle": "Moving Nodes",
@@ -144,11 +145,12 @@
       },
       {
         "subtitle": "Script",
-        "contents": "<h2>Script Component</h2><p>The Script component contains the Node's visual ScriptNode graph. Open it to build the Node's behavior.</p><p>The graph belongs to that Node, so each Node has its own ScriptNode workspace.</p>"
+        "contents": "<h2>Script Component</h2><p>The Script component contains the Node's visual ScriptNode graph. Open it to build the Node's behavior.</p><p>The graph belongs to that Node, so each Node has its own ScriptNode workspace.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=scriptnodes-follow-object\" data-help-topic=\"scriptnodes-follow-object\">Follow Object</a> · <a class=\"help-ref\" href=\"?topic=actions-create-object\" data-help-topic=\"actions-create-object\">Create Object</a> · <a class=\"help-ref\" href=\"?topic=actions-chase\" data-help-topic=\"actions-chase\">Chase</a> · <a class=\"help-ref\" href=\"?topic=actions-avoid\" data-help-topic=\"actions-avoid\">Avoid</a> · <a class=\"help-ref\" href=\"?topic=expressions-overview\" data-help-topic=\"expressions-overview\">Expressions</a></p>"
       },
       {
         "subtitle": "Transform",
-        "contents": "<h2>Transform Component</h2><p>Transform controls the Node's position, scale, and rotation.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Position X/Y</td><td>Where the Node is placed.</td></tr><tr><td>Scale X/Y</td><td>How large the Node is horizontally and vertically.</td></tr><tr><td>Angle</td><td>Node rotation.</td></tr></tbody></table>"
+        "contents": "<h2>Transform Component</h2><p>Transform controls the Node's position, scale, and rotation.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Position X/Y</td><td>Where the Node is placed.</td></tr><tr><td>Scale X/Y</td><td>How large the Node is horizontally and vertically.</td></tr><tr><td>Angle</td><td>Node rotation.</td></tr></tbody></table>",
+        "id": "components-transform"
       },
       {
         "subtitle": "Text",
@@ -164,11 +166,13 @@
       },
       {
         "subtitle": "Physics",
-        "contents": "<h2>Physics Component</h2><p>Physics gives a Node physical movement and collision behavior.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Body</td><td>Static, Kinematic, or Dynamic.</td></tr><tr><td>Gravity</td><td>Gravity applied to Dynamic bodies.</td></tr><tr><td>Friction</td><td>Resistance during contact.</td></tr><tr><td>Bounciness</td><td>How much an object rebounds.</td></tr><tr><td>Fixed Rotation</td><td>Prevents physics from rotating the body.</td></tr><tr><td>isCollider</td><td>Allows the physics body to participate as a physical collider.</td></tr></tbody></table>"
+        "contents": "<h2>Physics Component</h2><p>Physics gives a Node physical movement and collision behavior.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Body</td><td>Static, Kinematic, or Dynamic.</td></tr><tr><td>Gravity</td><td>Gravity applied to Dynamic bodies.</td></tr><tr><td>Friction</td><td>Resistance during contact.</td></tr><tr><td>Bounciness</td><td>How much an object rebounds.</td></tr><tr><td>Fixed Rotation</td><td>Prevents physics from rotating the body.</td></tr><tr><td>isCollider</td><td>Allows the physics body to participate as a physical collider.</td></tr></tbody></table>",
+        "id": "components-physics"
       },
       {
         "subtitle": "Collider",
-        "contents": "<h2>Collider Component</h2><p>Collider defines a collision shape independently from the Node's main Transform.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Collider</td><td>Turns the collider on or off.</td></tr><tr><td>Type</td><td>Rect, Circle, or Triangle.</td></tr><tr><td>Position X/Y</td><td>Local collider offset relative to the Node.</td></tr><tr><td>Scale X/Y</td><td>Local collider size/scale.</td></tr><tr><td>Angle</td><td>Local collider rotation.</td></tr></tbody></table>"
+        "contents": "<h2>Collider Component</h2><p>Collider defines a collision shape independently from the Node's main Transform.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Collider</td><td>Turns the collider on or off.</td></tr><tr><td>Type</td><td>Rect, Circle, or Triangle.</td></tr><tr><td>Position X/Y</td><td>Local collider offset relative to the Node.</td></tr><tr><td>Scale X/Y</td><td>Local collider size/scale.</td></tr><tr><td>Angle</td><td>Local collider rotation.</td></tr></tbody></table>",
+        "id": "components-collider"
       },
       {
         "subtitle": "Progress Bar",
@@ -287,7 +291,8 @@
       },
       {
         "subtitle": "setPhysics",
-        "contents": "<h2>setPhysics</h2><p>Changes the runtime Physics settings.</p><p>Inputs: Body, Gravity, Friction, Bounciness, Fixed Rotation, and collider participation. Output: <code>out</code>.</p>"
+        "contents": "<h2>setPhysics</h2><p>Changes the runtime Physics settings.</p><p>Inputs: Body, Gravity, Friction, Bounciness, Fixed Rotation, and collider participation. Output: <code>out</code>.</p>",
+        "id": "actions-setphysics"
       },
       {
         "subtitle": "setCollider",
@@ -299,7 +304,8 @@
       },
       {
         "subtitle": "Follow Object",
-        "contents": "<h2>Follow Object</h2><p>Makes the current runtime object move directly toward a selected target using Physics velocity.</p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node needs a Physics component. Without Physics, it does not move. The Node faces its movement direction unless <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Follow Object</h2><p>Makes the current runtime object move directly toward a selected target using Physics velocity.</p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node needs a Physics component. Without Physics, it does not move. The Node faces its movement direction unless <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a></p>",
+        "id": "actions-follow-object"
       },
       {
         "subtitle": "Destroy Object",
@@ -307,11 +313,13 @@
       },
       {
         "subtitle": "Create Object",
-        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. <code>Angle</code> sets the new object’s starting rotation in degrees.</p>"
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. <code>Angle</code> sets the new object’s starting rotation in degrees.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a></p>",
+        "id": "actions-create-object"
       },
       {
         "subtitle": "setVelocity",
-        "contents": "<h2>setVelocity</h2><p>Changes movement speed during runtime.</p><p>Inputs: <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Output: <code>out</code>.</p>"
+        "contents": "<h2>setVelocity</h2><p>Changes movement speed during runtime.</p><p>Inputs: <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Output: <code>out</code>.</p>",
+        "id": "actions-setvelocity"
       },
       {
         "subtitle": "setCamera",
@@ -339,11 +347,13 @@
       },
       {
         "subtitle": "Chase",
-        "contents": "<h2>Chase</h2><p>Chases a target while avoiding Collider Nodes inside the selected Map folder and its nested folders.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Requires a Physics component on the current Node. It uses a lightweight pursuit plus local obstacle steering rather than a full navigation rebuild every frame.</p><p>The Node faces movement direction unless <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Chase</h2><p>Chases a target while avoiding Collider Nodes inside the selected Map folder and its nested folders.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Requires a Physics component on the current Node. It uses a lightweight pursuit plus local obstacle steering rather than a full navigation rebuild every frame.</p><p>The Node faces movement direction unless <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-follow-object\" data-help-topic=\"actions-follow-object\">Follow Object</a></p>",
+        "id": "actions-chase"
       },
       {
         "subtitle": "Avoid",
-        "contents": "<h2>Avoid</h2><p>Moves away from a target while avoiding Collider Nodes inside the selected Map folder and its nested folders.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Requires a Physics component on the current Node. It uses the same obstacle steering as Chase, but reverses the target-seeking direction.</p><p>The Node faces movement direction unless <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Avoid</h2><p>Moves away from a target while avoiding Collider Nodes inside the selected Map folder and its nested folders.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Requires a Physics component on the current Node. It uses the same obstacle steering as Chase, but reverses the target-seeking direction.</p><p>The Node faces movement direction unless <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-chase\" data-help-topic=\"actions-chase\">Chase</a></p>",
+        "id": "actions-avoid"
       }
     ]
   },
@@ -373,7 +383,8 @@
     "items": [
       {
         "subtitle": "What is an expression?",
-        "contents": "<h2>Expressions</h2><p>An expression lets an input use a calculated value instead of a fixed value. You can type expressions or choose helpers from the Expression Library.</p>"
+        "contents": "<h2>Expressions</h2><p>An expression lets an input use a calculated value instead of a fixed value. You can type expressions or choose helpers from the Expression Library.</p>",
+        "id": "expressions-overview"
       },
       {
         "subtitle": "Variables in expressions",
@@ -838,7 +849,8 @@
       },
       {
         "subtitle": "Actions",
-        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Chase</code>, <code>Avoid</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>"
+        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Chase</code>, <code>Avoid</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>",
+        "id": "quickref-actions"
       },
       {
         "subtitle": "Controls",
@@ -937,19 +949,23 @@
       },
       {
         "subtitle": "Follow Object",
-        "contents": "<h2>Follow Object</h2><p>Makes the current Node move directly toward a selected target using the Node’s Physics velocity.</p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing.</p><p>The movement direction is updated continuously. When the target is reached, the movement velocity is stopped. The Node faces the direction of movement unless Physics <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Follow Object</h2><p>Makes the current Node move directly toward a selected target using the Node’s Physics velocity.</p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing.</p><p>The movement direction is updated continuously. When the target is reached, the movement velocity is stopped. The Node faces the direction of movement unless Physics <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a></p>",
+        "id": "scriptnodes-follow-object"
       },
       {
         "subtitle": "Create Object",
-        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, and <code>AngularVelocity</code>. The new <code>Angle</code> is the starting rotation in degrees.</p>"
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, and <code>AngularVelocity</code>. The new <code>Angle</code> is the starting rotation in degrees.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a></p>",
+        "id": "scriptnodes-create-object"
       },
       {
         "subtitle": "Chase",
-        "contents": "<h2>Chase</h2><p>Makes the current Node pursue a target while using a selected folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a Collider become obstacles.</p><p>Chase uses a lightweight pursuit direction based on the target’s current movement, then combines it with local obstacle avoidance. It samples a small set of nearby movement directions instead of running a full pathfinder every frame, which keeps the behavior suitable for real-time gameplay. This is a hybrid steering approach based on the common seek/pursuit/flee and obstacle-avoidance behaviors described by Craig Reynolds.</p><p><small>Reference: Craig Reynolds, “Steering Behaviors for Autonomous Characters” (1999).</small></p><p>The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Chase</h2><p>Makes the current Node pursue a target while using a selected folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a Collider become obstacles.</p><p>Chase uses a lightweight pursuit direction based on the target’s current movement, then combines it with local obstacle avoidance. It samples a small set of nearby movement directions instead of running a full pathfinder every frame, which keeps the behavior suitable for real-time gameplay. This is a hybrid steering approach based on the common seek/pursuit/flee and obstacle-avoidance behaviors described by Craig Reynolds.</p><p>The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-follow-object\" data-help-topic=\"actions-follow-object\">Follow Object</a></p>",
+        "id": "scriptnodes-chase"
       },
       {
         "subtitle": "Avoid",
-        "contents": "<h2>Avoid</h2><p>Makes the current Node move away from a selected target while using a selected folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a Collider become obstacles.</p><p>Avoid uses the same lightweight obstacle-steering pass as Chase, but reverses the target direction. In other words, Chase seeks the target while Avoid flees from it. Obstacle avoidance is kept separate from flee direction so walls are treated as obstacles rather than simply causing the Node to run away from the wall.</p><p><small>Reference: Craig Reynolds, “Steering Behaviors for Autonomous Characters” (1999).</small></p><p>The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p>"
+        "contents": "<h2>Avoid</h2><p>Makes the current Node move away from a selected target while using a selected folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a Collider become obstacles.</p><p>Avoid uses the same lightweight obstacle-steering pass as Chase, but reverses the target direction. In other words, Chase seeks the target while Avoid flees from it. Obstacle avoidance is kept separate from flee direction so walls are treated as obstacles rather than simply causing the Node to run away from the wall.</p><p><small>Reference: Craig Reynolds, “Steering Behaviors for Autonomous Characters” (1999).</small></p><p>The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p> <p><strong>References:</strong> <a class=\"help-ref\" href=\"?topic=scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-chase\" data-help-topic=\"actions-chase\">Chase</a></p>",
+        "id": "scriptnodes-avoid"
       },
       {
         "subtitle": "Sliding numeric inputs",
