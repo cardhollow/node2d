@@ -73,7 +73,7 @@
   const EDITOR_SETTINGS_STORE='uix.editor.settings.v1';
   const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
   const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
-  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:0.1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
   let autoSaveTimer=0;
   function getEditorSettings(){
     let out={...DEFAULT_EDITOR_SETTINGS};
@@ -85,7 +85,7 @@
   function rememberCurrentProjectSession(){try{if(!state.project?.created){sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);return;}sessionStorage.setItem(CURRENT_PROJECT_SESSION_NAME,String(state.project.name||'Untitled Node2D'));if(state.project.localNdcId)sessionStorage.setItem(CURRENT_PROJECT_SESSION_ID,String(state.project.localNdcId));else sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
   function clearCurrentProjectSession(){try{sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
   function readCurrentProjectSession(){try{return{name:sessionStorage.getItem(CURRENT_PROJECT_SESSION_NAME)||'',id:sessionStorage.getItem(CURRENT_PROJECT_SESSION_ID)||''};}catch{return{name:'',id:''};}}
-  function snapEditorValue(value,step){const n=Number(value);if(!Number.isFinite(n)||!step||step<=0)return n;return Math.round(n/step)*step;}
+  function snapEditorValue(value,step){const n=Number(value);if(!Number.isFinite(n)||!step||step<=0)return n;return Number((Math.round(n/step)*step).toFixed(12));}
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -1245,13 +1245,13 @@
   }
 
   function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d'));return {kind:'node',node,component:t,transform:t,center:[Number(t.position?.[0]||0),Number(t.position?.[1]||0)],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
-  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'||state.mode==='select'){drawArrow(ctx,0,0,Math.max(42,g.w*.55),0,'#d85c5c');drawArrow(ctx,0,0,0,-Math.max(42,g.h*.55),'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){drawScaleHandle(ctx,g.w/2,0);drawScaleHandle(ctx,0,g.h/2);drawScaleHandle(ctx,-g.w/2,-g.h/2);drawScaleHandle(ctx,g.w/2,-g.h/2);drawScaleHandle(ctx,-g.w/2,g.h/2);}if(state.mode==='rotate'||state.mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
+  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'||state.mode==='select'){drawArrow(ctx,0,0,Math.max(42,g.w*.55),0,'#d85c5c');drawArrow(ctx,0,0,0,-Math.max(42,g.h*.55),'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.type==='scale'&&workspace.gizmoDrag.corner===id){const s=(12/state.zoom);ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-s/2-2/state.zoom,y-s/2-2/state.zoom,s+4/state.zoom,s+4/state.zoom);}});}if(state.mode==='rotate'||state.mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
 
   function drawArrow(ctx,x1,y1,x2,y2,color){ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const ang=Math.atan2(y2-y1,x2-x1);const s=7/state.zoom;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-Math.cos(ang-.55)*s,y2-Math.sin(ang-.55)*s);ctx.lineTo(x2-Math.cos(ang+.55)*s,y2-Math.sin(ang+.55)*s);ctx.closePath();ctx.fill();ctx.restore();}
   function drawScaleHandle(ctx,x,y){const s=11/state.zoom;ctx.fillStyle='#e4ca4e';ctx.fillRect(x-s/2,y-s/2,s,s);}
   function drawCenter(ctx,color){ctx.fillStyle=color;ctx.fillRect(-3/state.zoom,-3/state.zoom,6/state.zoom,6/state.zoom);}
 
-  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;for(const p of [[g.w/2,0,'right'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br'],[-g.w/2,-g.h/2,'tl'],[g.w/2,-g.h/2,'tr'],[-g.w/2,g.h/2,'bl']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate'};}if(mode==='move'||mode==='all'){const hit=12/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free'};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<g.w*.62)return {type:'move',axis:'x'};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-g.h*.62)return {type:'move',axis:'y'};}return null;}
+  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate'};}if(mode==='move'||mode==='all'){const hit=12/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free'};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<g.w*.62)return {type:'move',axis:'x'};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-g.h*.62)return {type:'move',axis:'y'};}return null;}
 
   function nodeAt(world){
     const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;let dx=world.x-t.position[0],dy=world.y-t.position[1],rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
@@ -1346,8 +1346,26 @@
       const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(g.center[0],g.center[1]),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);
       const raw=d.startTransform.angle[0]+(nowA-startA)*180/Math.PI;t.angle=[rotateSnap?snapEditorValue(raw,rotateSnap):raw];
     }else if(d.type==='scale'){
-      const a=g.angle,L=rotatePoint(dx,dy,-a),baseX=Math.max(1,g.baseW),baseY=Math.max(1,g.baseH),left=['left','tl','bl'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),sx=Number(d.startTransform.scale?.[0]??1),sy=Number(d.startTransform.scale?.[1]??1);
-      t.scale[0]=snapEditorValue(sx+(L.x/baseX)*(left?-1:1)*2,snap);t.scale[1]=snapEditorValue(sy+(L.y/baseY)*(top?-1:1)*2,snap);
+      const a=g.angle,L=rotatePoint(dx,dy,-a),baseX=Math.max(1,g.baseW),baseY=Math.max(1,g.baseH),left=['left','tl','bl'].includes(d.corner),right=['right','tr','br'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),bottom=['bottom','bl','br'].includes(d.corner),sx=Number(d.startTransform.scale?.[0]??1),sy=Number(d.startTransform.scale?.[1]??1);
+      let nx=sx,ny=sy;
+      if(d.corner==='left'||d.corner==='right') nx=sx+(L.x/baseX)*(right?1:-1)*2;
+      else if(d.corner==='top'||d.corner==='bottom') ny=sy+(L.y/baseY)*(bottom?1:-1)*2;
+      else {
+        const rawX=sx+(L.x/baseX)*(right?1:-1)*2,rawY=sy+(L.y/baseY)*(bottom?1:-1)*2;
+        const bx=Math.max(1e-6,Math.abs(sx)),by=Math.max(1e-6,Math.abs(sy));
+        const fx=rawX/sx,fy=rawY/sy;
+        const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;
+        nx=sx*factor;ny=sy*factor;
+      }
+      nx=Math.max(0.01,nx);ny=Math.max(0.01,ny);
+      if(snap>0 && d.corner!=='left' && d.corner!=='right' && d.corner!=='top' && d.corner!=='bottom'){
+        const dominant=Math.abs(nx-sx)>=Math.abs(ny-sy)?'x':'y';
+        if(dominant==='x'){nx=snapEditorValue(nx,snap);ny=Math.max(0.01,sx!==0?sy*(nx/sx):ny);}
+        else {ny=snapEditorValue(ny,snap);nx=Math.max(0.01,sy!==0?sx*(ny/sy):nx);}
+      }else{
+        nx=snapEditorValue(nx,snap);ny=snapEditorValue(ny,snap);
+      }
+      t.scale[0]=Number(nx.toFixed(12));t.scale[1]=Number(ny.toFixed(12));
     }
     drawWorkplace();
   }
@@ -1399,7 +1417,7 @@
     makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
     const saveHeading=document.createElement('div');saveHeading.className='editor-snap-heading';saveHeading.textContent='Saving';settingsWrap.append(saveHeading);
     const autoRow=document.createElement('div');autoRow.className='editor-snap-row';const autoLabel=document.createElement('label');autoLabel.className='game-setting-check';const autoCheck=document.createElement('input');autoCheck.type='checkbox';autoCheck.checked=!!settings.autoSave;const autoText=document.createElement('span');autoText.textContent='Auto Save';autoLabel.append(autoCheck,autoText);autoRow.append(autoLabel);settingsWrap.append(autoRow);
-    const intervalRow=document.createElement('div');intervalRow.className='editor-snap-row';const intervalName=document.createElement('div');intervalName.className='keybind-name';intervalName.textContent='Auto Save Interval';const intervalControl=document.createElement('div');intervalControl.className='editor-snap-control';const intervalInput=document.createElement('input');intervalInput.className='editor-snap-input';intervalInput.type='number';intervalInput.min='1';intervalInput.step='1';intervalInput.value=String(settings.autoSaveIntervalSec);const intervalUnit=document.createElement('span');intervalUnit.className='editor-snap-unit';intervalUnit.textContent='s';intervalControl.append(intervalInput,intervalUnit);intervalRow.append(intervalName,intervalControl);settingsWrap.append(intervalRow);
+    const intervalRow=document.createElement('div');intervalRow.className='editor-snap-row';const intervalName=document.createElement('div');intervalName.className='keybind-name';intervalName.textContent='Auto Save Interval';const intervalControl=document.createElement('div');intervalControl.className='editor-snap-control';const intervalInput=document.createElement('input');intervalInput.className='editor-snap-input';intervalInput.type='number';intervalInput.min='1';intervalInput.step='1';intervalInput.value=String(settings.autoSaveIntervalSec);const intervalUnit=document.createElement('span');intervalUnit.className='editor-snap-unit';intervalUnit.textContent='Seconds';intervalControl.append(intervalInput,intervalUnit);intervalRow.append(intervalName,intervalControl);settingsWrap.append(intervalRow);
     const syncSaveUI=()=>{intervalRow.hidden=!autoCheck.checked;};syncSaveUI();
     autoCheck.addEventListener('change',()=>{const next=getEditorSettings();next.autoSave=autoCheck.checked;next.autoSaveIntervalSec=clamp(Number(intervalInput.value)||30,1,86400);saveEditorSettings(next);syncSaveUI();});
     intervalInput.addEventListener('change',()=>{const next=getEditorSettings();next.autoSave=autoCheck.checked;next.autoSaveIntervalSec=clamp(Number(intervalInput.value)||30,1,86400);intervalInput.value=String(next.autoSaveIntervalSec);saveEditorSettings(next);});
@@ -1423,20 +1441,72 @@
     const defs=window.UIXKeyBinds?.getAll?.()||[];const map=new Map(defs.map(d=>[d.command,d.keys]));
     $$('[data-action]').forEach(b=>{const cmdMap={'save':'save','new-project':'new','load-local':'open','import-project':'open','undo':'undo','redo':'redo','cut-node':'cut','copy-node':'copy','paste-node':'paste','delete-selection':'delete','toggle-fullscreen':'fullscreen'};const cmd=cmdMap[b.dataset.action];if(!cmd)return;let h=b.querySelector('.shortcut-hint');if(!h){h=document.createElement('span');h.className='shortcut-hint';b.append(h);}h.textContent=window.UIXKeyBinds?.display?.(map.get(cmd)||'')||'';h.hidden=!h.textContent;});
   }
+  function importEditorPreferences(){
+    let input=$('#editorPreferencesImportInput');
+    if(!input){
+      input=document.createElement('input');
+      input.type='file';
+      input.accept='application/json,.json';
+      input.id='editorPreferencesImportInput';
+      input.hidden=true;
+      document.body.append(input);
+      input.addEventListener('change',()=>{
+        const file=input.files?.[0];
+        input.value='';
+        if(!file)return;
+        const reader=new FileReader();
+        reader.onload=()=>{
+          try{
+            const payload=JSON.parse(String(reader.result||''));
+            if(!payload||typeof payload!=='object')throw new Error('Invalid preferences file.');
+            if(payload.localStorage&&typeof payload.localStorage==='object'){
+              Object.entries(payload.localStorage).forEach(([key,value])=>{
+                if(typeof key!=='string')return;
+                if(value===null)localStorage.removeItem(key);
+                else localStorage.setItem(key,String(value));
+              });
+            }
+            if(payload.editorSettings&&typeof payload.editorSettings==='object'){
+              const next={...getEditorSettings(),...payload.editorSettings};
+              saveEditorSettings(next);
+            }
+            const imported=payload.shortcuts&&typeof payload.shortcuts==='object'?payload.shortcuts:null;
+            if(imported){
+              const defs=window.UIXKeyBinds?.getAll?.()||[];
+              defs.forEach(def=>{
+                const key=def.command+'|'+def.name;
+                if(typeof imported[key]==='string')def.keys=imported[key];
+              });
+              window.UIXKeyBinds?.save?.();
+            }
+            openEditorSettings();
+            renderKeybindHints();
+            status('Editor preferences imported');
+          }catch(err){
+            showInfo('Import Preferences',err?.message||'Could not import the preferences file.');
+          }
+        };
+        reader.onerror=()=>showInfo('Import Preferences','Could not read the preferences file.');
+        reader.readAsText(file);
+      });
+    }
+    input.click();
+  }
+
   function downloadEditorPreferences(){
     const storage={};
     try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key)storage[key]=localStorage.getItem(key);}}catch{}
     let keybinds={};
     try{const defs=window.UIXKeyBinds?.getAll?.()||[];keybinds=Object.fromEntries(defs.map(k=>[k.command+'|'+k.name,k.keys||'']));}catch{}
     const payload={
-      format:'UIX Editor Preferences',
+      format:'Node2D Editor Preferences',
       version:2,
       editorSettings:getEditorSettings(),
       shortcuts:keybinds,
       localStorage:storage
     };
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='uix-editor-preferences.json';a.style.display='none';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    a.href=url;a.download='node2d-editor-preferences.json';a.style.display='none';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
     status('Editor preferences downloaded');
   }
   function action(name,source=null){
@@ -1457,9 +1527,17 @@
       case 'export-ndc': exportProjectNDC(); break;
       case 'game-settings': openGameSettings(); break;
       case 'editor-settings': openEditorSettings(); break;
-      case 'reset-keybinds': window.UIXKeyBinds?.reset?.(); openEditorSettings(); status('Shortcut defaults restored'); break;
+      case 'reset-keybinds': {
+        window.UIXKeyBinds?.reset?.();
+        try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(DEFAULT_EDITOR_SETTINGS));}catch{}
+        resetAutoSaveTimer();
+        openEditorSettings();
+        status('Editor defaults restored');
+        break;
+      }
       case 'download-preferences': downloadEditorPreferences(); break;
-      case 'exit': askConfirm('Exit Editor','Close the current UIX editor session?',resetToProjectMenu,'Exit'); break;
+      case 'import-preferences': importEditorPreferences(); break;
+      case 'exit': askConfirm('Exit Editor','Close the current Node2D editor session?',resetToProjectMenu,'Exit'); break;
       case 'add-scene': addScene(); break;
       case 'add-node': addNode(); break;
       case 'add-folder': addFolder(); break;
@@ -1670,7 +1748,7 @@
     return {name:String(s.name||state.project.name||'My Project'),version:String(s.version||'1.0.0'),iconAssetId:s.iconAssetId||'',iconName:s.iconName||'',pwa:!!s.pwa,manifest:clone(s.manifest||{})};
   }
   function defaultPwaManifest(name,version){
-    return {name,short_name:String(name).slice(0,32),version,start_url:'./',display:'standalone',orientation:'any',theme_color:state.camera?.bgColor||'#202020',background_color:state.camera?.bgColor||'#202020',description:`${name} — UIX Project`};
+    return {name,short_name:String(name).slice(0,32),version,start_url:'./',display:'standalone',orientation:'any',theme_color:state.camera?.bgColor||'#202020',background_color:state.camera?.bgColor||'#202020',description:`${name} — Node2D Project`};
   }
   function getExportIconAsset(){
     const s=getExportSettings();return (state.assets.Sprite||[]).find(a=>a.id===s.iconAssetId)||null;
@@ -1994,10 +2072,8 @@
   function addScriptNode(def){
     if(!def||!state.script.nodeId)return;
     if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return null;}
-    const canvas=$('#scriptCanvas');
-    const rect=canvas?.getBoundingClientRect?.();
-    const x=rect?((rect.width/2)-state.script.pan.x)/state.script.zoom:0;
-    const y=rect?((rect.height/2)-state.script.pan.y)/state.script.zoom:0;
+    const x=-state.script.pan.x/state.script.zoom;
+    const y=-state.script.pan.y/state.script.zoom;
     const list=state.script.nodesByNode[state.script.nodeId] ||= [];
     const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x,y,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
     list.push(sn);renderScriptCanvas();status(`${def.name} ScriptNode added`);return sn;
