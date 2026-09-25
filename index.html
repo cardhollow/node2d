@@ -34,10 +34,10 @@
           </div>
           <div class="menu-separator"></div>
           <button data-action="export-project"><span>⇧</span>Export Project</button>
+          <button data-action="game-settings"><span>⚙</span>Game Settings</button>
           <button data-action="editor-settings"><span>⚙</span>Editor Settings</button>
           <button data-action="help"><span>?</span>Help</button>
           <div class="menu-separator"></div>
-          <button data-action="game-settings"><span>⚙</span>Game Settings</button>
           <button data-action="exit"><span>⏻</span>Exit</button>
         </div>
       </div>
@@ -161,6 +161,8 @@
     <div class="game-settings-body">
       <div class="property-row"><span class="property-label">Preferred Scene</span><div class="property-control" id="preferredSceneControl"></div></div>
       <div class="property-row"><span class="property-label">Screen Type</span><div class="property-control" id="screenTypeControl"></div></div>
+      <div class="game-settings-section"><div class="game-settings-subheading">Required Features</div><div id="gameRequirementsControl" class="game-requirements-control"></div></div>
+      <div id="micSettingsSection" class="game-settings-section" hidden><div class="game-settings-subheading">Microphone &amp; Speech</div><div class="property-row"><span class="property-label">Speech Language</span><div class="property-control"><input id="micSpeechLanguage" class="text-input" type="text" placeholder="en-US"></div></div><label class="game-setting-check"><input id="micSpeechContinuous" type="checkbox"><span>Continuous Speech</span></label><label class="game-setting-check"><input id="micSpeechInterim" type="checkbox"><span>Live Interim Results</span></label></div>
       <div class="game-settings-note">Windowboxing preserves the 16:9 landscape ratio and adds black space around the game when needed. Stretch fills the screen.</div>
     </div>
   </section>
