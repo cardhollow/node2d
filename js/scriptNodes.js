@@ -67,14 +67,24 @@
     },
     {
       name:'Follow Object', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],
-      func:(ctx,v)=>{ctx.followObject?.(v.Target);return {out:true};}
+      editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'Speed',type:'int',value:100}],
+      func:(ctx,v)=>{ctx.followObject?.(v.Target,v.Speed);return {out:true};}
     },
     {name:'Destroy Object',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.destroyObject?.();return {out:true};}},
     {
+      name:'Chase', receiver:true, group:'Actions', output:[{id:'out'}],
+      editor:[{name:'Map',type:'selector',selectFolder:true,value:ctx=>(ctx?.folderOptions||[]),selected:''},{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'Speed',type:'int',value:100}],
+      func:(ctx,v)=>{ctx.chase?.(v.Map,v.Target,v.Speed);return {out:true};}
+    },
+    {
+      name:'Avoid', receiver:true, group:'Actions', output:[{id:'out'}],
+      editor:[{name:'Map',type:'selector',selectFolder:true,value:ctx=>(ctx?.folderOptions||[]),selected:''},{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'Speed',type:'int',value:100}],
+      func:(ctx,v)=>{ctx.avoid?.(v.Map,v.Target,v.Speed);return {out:true};}
+    },
+    {
       name:'Create Object', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Object',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'PosX',type:'int',value:0},{name:'PosY',type:'int',value:0},{name:'VelocityX',type:'int',value:null},{name:'VelocityY',type:'int',value:null},{name:'AngularVelocity',type:'int',value:null}],
-      func:(ctx,v)=>{ctx.createObject?.(v.Object,v.PosX,v.PosY,v.VelocityX,v.VelocityY,v.AngularVelocity);return {out:true};}
+      editor:[{name:'Object',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'PosX',type:'int',value:0},{name:'PosY',type:'int',value:0},{name:'Angle',type:'int',value:0},{name:'VelocityX',type:'int',value:null},{name:'VelocityY',type:'int',value:null},{name:'AngularVelocity',type:'int',value:null}],
+      func:(ctx,v)=>{ctx.createObject?.(v.Object,v.PosX,v.PosY,v.Angle,v.VelocityX,v.VelocityY,v.AngularVelocity);return {out:true};}
     },
     {
       name:'setVelocity', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -106,7 +116,7 @@
     {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target);return {next:true,truth:yes,falsy:!yes};}}
   ];
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onUnload','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onUnload','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();

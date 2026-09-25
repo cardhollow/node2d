@@ -45,7 +45,7 @@
     },
     script: {
       nodeId: null, selectedNodeId: null, selectedNodeIds: [], selectionAnchorId: null, pan: { x: 0, y: 0 }, zoom: 1,
-      nodesByNode: Object.create(null), connectionsByNode: Object.create(null),
+      nodesByNode: Object.create(null), connectionsByNode: Object.create(null), viewsByNode: Object.create(null),
       editingInput: null, clipboard: null, panelWidths:{left:260,right:250}, leftCollapsed:false, rightCollapsed:false
     },
     dragTree: null,
@@ -1450,7 +1450,7 @@
   function refreshModalBackdrop(){const any=$$('.modal').some(m=>!m.hidden);$('#modalBackdrop').hidden=!any;}
   function showModal(modal){if(!modal)return;closeMenus();modal.hidden=false;modalStack=modalStack.filter(id=>id!==modal.id);modalStack.push(modal.id);modal.style.zIndex=String(200010+modalStack.length);modal.classList.add('modal-stack-active');refreshModalBackdrop();requestAnimationFrame(()=>{modal.style.zIndex=String(200010+modalStack.length);});}
   function hideAllModals(){closeContextMenu();$$('.modal').forEach(x=>x.hidden=true);$('#modalBackdrop').hidden=true;modalStack=[];}
-  function closeModal(target=null){const modal=typeof target==='string'?$('#'+target):target||$('#'+modalStack.at(-1));if(!modal)return;modal.hidden=true;modal.classList.remove('modal-stack-active');modalStack=modalStack.filter(id=>id!==modal.id);if(modal.id==='expressionModal')state.script.editingInput=null;if(modal.id==='scriptModal')resetScriptCanvasInteraction?.();refreshModalBackdrop();const topId=modalStack.at(-1),top=topId?$('#'+topId):null;if(top)top.style.zIndex=String(200010+modalStack.length);if(modal.dataset.removeOnClose==='true')queueMicrotask(()=>modal.remove());}
+  function closeModal(target=null){const modal=typeof target==='string'?$('#'+target):target||$('#'+modalStack.at(-1));if(!modal)return;modal.hidden=true;modal.classList.remove('modal-stack-active');modalStack=modalStack.filter(id=>id!==modal.id);if(modal.id==='expressionModal')state.script.editingInput=null;if(modal.id==='scriptModal'){saveScriptViewport();resetScriptCanvasInteraction?.();}refreshModalBackdrop();const topId=modalStack.at(-1),top=topId?$('#'+topId):null;if(top)top.style.zIndex=String(200010+modalStack.length);if(modal.dataset.removeOnClose==='true')queueMicrotask(()=>modal.remove());}
   function closeMenus(){ $$('.context-menu.open').forEach(x=>{x.classList.remove('open');x.style.display='';x.style.visibility='';x.style.left='';x.style.top='';});if(activeSelectMenu){activeSelectMenu.remove();activeSelectMenu=null;}if(activeNativeSelect){activeNativeSelect.select.setAttribute('aria-expanded','false');activeNativeSelect.menu.remove();activeNativeSelect=null;}$$('.select-menu').forEach(x=>{x.hidden=true;if(x.classList.contains('floating-select-menu'))x.remove();}); }
   function toggleMenu(id){const m=$('#'+id);if(!m)return;const open=!m.classList.contains('open');closeMenus();if(open){m.classList.add('open');positionMenu(m,m.previousElementSibling||m.parentElement);}}
   function hideMenuElement(menu){if(!menu)return;menu.classList.remove('open');menu.style.display='';menu.style.visibility='';menu.style.left='';menu.style.top='';}
@@ -1472,7 +1472,7 @@
     state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera'; state.selectedIds=[]; state.selectionAnchorId=null;
     state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
     state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing',requirements:{'Use Mic':false},mic:{speechLanguage:'en-US',continuous:true,interimResults:true}};
-    state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),editingInput:null,clipboard:null};
+    state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),viewsByNode:Object.create(null),editingInput:null,clipboard:null};
     state.history={undo:[],redo:[],busy:false}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
     clearCurrentProjectSession();
@@ -1667,7 +1667,7 @@
       sceneVariablesByScene: clone(state.sceneVariablesByScene),
       localVarsByNode: clone(state.localVarsByNode),
       uiComponentsByScene: clone(state.uiComponentsByScene),
-      script: clone({nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode}),
+      script: clone({nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode}),
       game: clone(state.game),
       camera: clone(state.camera),
       assets: clone(state.assets)
@@ -1692,7 +1692,7 @@
     state.localVarsByNode=clone(data.localVarsByNode||{});
     enforceVariableUniqueness();
     state.uiComponentsByScene=clone(data.uiComponentsByScene||{});
-    state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),editingInput:null};
+    state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),viewsByNode:clone(data.script?.viewsByNode||{}),editingInput:null};
     state.game=clone(data.game||{preferredSceneId:'',screenType:'Windowboxing'});
     ensureGameSettings();
     state.camera=clone(data.camera||defaultCamera());
@@ -2063,7 +2063,21 @@
 
   // ---------------- Script editor ----------------
   let resetScriptCanvasInteraction=null;
-  function openScriptEditor(node){resetScriptCanvasInteraction?.();state.script.nodeId=node.id;state.script.selectedNodeId=null;state.script.selectedNodeIds=[];state.script.selectionAnchorId=null;state.script.pan={x:0,y:0};state.script.zoom=1;state.script.nodesByNode[node.id] ||= [];state.script.connectionsByNode[node.id] ||= [];$('#scriptTarget').textContent=node.name;renderLocalVariables();renderScriptLibrary();renderScriptCanvas();renderScriptInspector();applyScriptPanelState();showModal($('#scriptModal'));setTimeout(()=>{applyScriptPanelState();resetScriptCanvasInteraction?.();renderScriptConnections();},0);}
+  function saveScriptViewport(){
+    const id=state.script.nodeId;if(!id)return;
+    if(!state.script.viewsByNode)state.script.viewsByNode=Object.create(null);
+    const pan={x:Number(state.script.pan?.x)||0,y:Number(state.script.pan?.y)||0},zoom=Number(state.script.zoom);
+    state.script.viewsByNode[id]={pan,zoom:Number.isFinite(zoom)?clamp(zoom,.25,4):1};
+  }
+  function openScriptEditor(node){
+    resetScriptCanvasInteraction?.();
+    saveScriptViewport();
+    state.script.nodeId=node.id;state.script.selectedNodeId=null;state.script.selectedNodeIds=[];state.script.selectionAnchorId=null;
+    const view=state.script.viewsByNode?.[node.id];
+    state.script.pan={x:Number(view?.pan?.x)||0,y:Number(view?.pan?.y)||0};state.script.zoom=Number.isFinite(Number(view?.zoom))?clamp(Number(view.zoom),.25,4):1;
+    state.script.nodesByNode[node.id] ||= [];state.script.connectionsByNode[node.id] ||= [];
+    $('#scriptTarget').textContent=node.name;renderLocalVariables();renderScriptLibrary();renderScriptCanvas();renderScriptInspector();applyScriptPanelState();showModal($('#scriptModal'));setTimeout(()=>{applyScriptPanelState();resetScriptCanvasInteraction?.();renderScriptConnections();},0);
+  }
   function renderLocalVariables(){
     const host=$('#localVariablesContent'); if(!host)return; host.innerHTML='';
     const vars=Array.isArray(state.localVarsByNode[state.script.nodeId]) ? state.localVarsByNode[state.script.nodeId] : (state.localVarsByNode[state.script.nodeId]=[]);
@@ -2251,12 +2265,22 @@
       });wrap.append(select);return wrap;
     }
     const b=document.createElement('button');b.type='button';b.className='script-input';
+    const effectiveType=scriptEntryTypeForSetVariable(sn,item);
+    let sliding=false,slideStartX=0,slideLastX=0,slideAccum=0,slideValue=0,slideStep=1;
+    const decimalPlaces=n=>{const text=String(n??'');const m=text.toLowerCase().match(/(?:\.(\d+))?(?:e([+-]?\d+))?$/);if(!m)return 0;const decimals=(m[1]||'').length,exp=Number(m[2]||0);return Math.max(0,decimals-exp);};
+    const calcStep=n=>{const d=decimalPlaces(n);return d>0?Math.pow(10,-d):1;};
+    if(effectiveType==='int'&&!isExpression){
+      let suppressClick=false;
+      const begin=e=>{slideStartX=e.clientX;slideLastX=e.clientX;slideAccum=0;slideValue=Number(scriptEditorValue(sn,item));if(!Number.isFinite(slideValue))slideValue=0;slideStep=calcStep(slideValue);sliding=false;suppressClick=false;b.setPointerCapture?.(e.pointerId);};
+      const move=e=>{if(e.pointerId==null)return;const dx=e.clientX-slideLastX;if(!sliding&&Math.abs(e.clientX-slideStartX)<8)return;if(Math.abs(e.clientX-slideStartX)>=8){sliding=true;suppressClick=true;e.preventDefault();e.stopPropagation();b.classList.add('sliding');}if(!sliding)return;slideAccum+=dx;const units=Math.trunc(slideAccum/20);if(units!==0){slideAccum-=units*20;slideValue+=units*slideStep;const places=decimalPlaces(slideStep);slideValue=places?Number(slideValue.toFixed(places)):Math.round(slideValue);entry.value=slideValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);const label=b.querySelector('.script-input-value');if(label)label.textContent=String(slideValue);}slideLastX=e.clientX;};
+      const end=()=>{if(sliding)b.classList.remove('sliding');sliding=false;};
+      b.addEventListener('pointerdown',begin);b.addEventListener('pointermove',move);b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);b.addEventListener('click',e=>{if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;}});
+    }
     if(isExpression){
       const label=document.createElement('span');label.className='script-input-value';label.textContent=String(value??'');
       const type=document.createElement('span');type.className='script-input-type';type.textContent='expr';b.append(label,type);
       b.addEventListener('click',e=>{e.stopPropagation();openExpressionEditor(sn,item.path,entry);});
     }else{
-      const effectiveType=scriptEntryTypeForSetVariable(sn,item);
       if(effectiveType==='bool') value=entry.value===null||entry.value===undefined?'':!!entry.value;
       const label=document.createElement('span');label.className='script-input-value';label.textContent=value===null||value===undefined?'':String(value);
       const type=document.createElement('span');type.className='script-input-type';type.textContent=effectiveType;b.append(label,type);
@@ -2536,6 +2560,7 @@
       sceneData:currentScene(),sceneList:state.scenes,
       audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],spriteAssets:state.assets.Sprite||[],
       allNodes:allNodes().map(x=>x.node),
+      folderOptions:allNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.numericId}]`),
       animations:(component(node,'animationsprite')?.animations||[]),
       inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},mic:{decibel:-100,speech:'',active:false,speechActive:false},node,
       TouchUpX:Number(state.runtime?.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime?.inputs?.TouchUpY)||0,
@@ -2717,12 +2742,12 @@
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
-  function runtimeAddObject(sourceId,x,y,vx,vy,angularVelocity){
+  function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
     const source=runtimeFindNode(sourceId);if(!source)return null;const copy=clone(source);const oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;const t=component(copy,'transform');if(t)t.position=[Number(x)||0,Number(y)||0];
+    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
     state.runtime.scene.nodes.push(copy);state.runtime.dynamicScriptsByNode[copy.id]=clone(state.runtime.dynamicScriptsByNode[oldId]||[]);state.runtime.dynamicConnectionsByNode[copy.id]=clone(state.runtime.dynamicConnectionsByNode[oldId]||[]);state.runtime.localVarsByNode[copy.id]=clone(state.runtime.localVarsByNode[oldId]||[]);const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;state.runtime.bodies.push(body);runScriptGraphForNode(copy);return copy;
   }
-  function runtimeDestroyNode(node){const container=runtimeContainerForNode(node.id);if(container){const i=container.findIndex(x=>x.id===node.id);if(i>=0)container.splice(i,1);}state.runtime.bodies=state.runtime.bodies.filter(b=>b.node?.id!==node.id);delete state.runtime.dynamicScriptsByNode[node.id];delete state.runtime.dynamicConnectionsByNode[node.id];delete state.runtime.localVarsByNode[node.id];delete state.runtime.followTargets[node.id];}
+  function runtimeDestroyNode(node){const container=runtimeContainerForNode(node.id);if(container){const i=container.findIndex(x=>x.id===node.id);if(i>=0)container.splice(i,1);}state.runtime.bodies=state.runtime.bodies.filter(b=>b.node?.id!==node.id);delete state.runtime.dynamicScriptsByNode[node.id];delete state.runtime.dynamicConnectionsByNode[node.id];delete state.runtime.localVarsByNode[node.id];delete state.runtime.followTargets[node.id];delete state.runtime.aiTargets[node.id];}
 
   function vec(x=0,y=0){return{x:Number(x)||0,y:Number(y)||0};}
   function addV(a,b){return{x:a.x+b.x,y:a.y+b.y};}
@@ -2844,14 +2869,114 @@
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
   function drawRuntimeColliders(ctx){if(!state.runtime.debug)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+  function runtimeFindFolderByLabel(label){
+    let found=null;const wanted=String(label||'');
+    const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='folder'){if(`${item.name} [${item.numericId}]`===wanted){found=item;return true;}if(walk(item.children))return true;}}return false;};
+    walk(state.runtime.scene?.nodes);return found;
+  }
+  function runtimeFolderColliderBodies(label,bodyById=null){
+    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];
+    const ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=bodyById?.get(item.id)||(state.runtime.bodies||[]).find(b=>b.node?.id===item.id);if(body?.collider?.collidable!==false && body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
+  }
+  function runtimeBodyRadius(body){const g=runtimeColliderShape(body);if(!g)return 0;const a=shapeAABB(g);return Math.max(a.w,a.h)*.5;}
+  function pointInPolygon(p,vertices){
+    let inside=false;
+    for(let i=0,j=vertices.length-1;i<vertices.length;j=i++){
+      const a=vertices[i],b=vertices[j],cross=((a.y>p.y)!==(b.y>p.y))&&(p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y||1e-12)+a.x);
+      if(cross)inside=!inside;
+    }
+    return inside;
+  }
+  function runtimeShapeClearance(shape,p){
+    if(!shape)return Infinity;
+    if(shape.type==='Circle')return Math.max(0,Math.hypot(p.x-shape.x,p.y-shape.y)-shape.radius);
+    if(pointInPolygon(p,shape.vertices||[]))return 0;
+    const q=closestPolygonPoint(shape,p);return q?.distance??Infinity;
+  }
+  function runtimeSegmentHitsShape(a,b,shape,pad=0){
+    if(!shape)return false;
+    const steps=Math.max(3,Math.min(7,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/Math.max(24,pad+18))));
+    for(let i=1;i<=steps;i++){const t=i/steps,p={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};if(runtimeShapeClearance(shape,p)<=pad)return true;}
+    return false;
+  }
+  function runtimeObstacleSignature(obstacles){
+    return obstacles.map(o=>{const t=o.t||{};const c=o.collider||{};const tr=c.transform||{};return `${o.node?.id||''}:${Number(t.position?.[0]||0).toFixed(2)},${Number(t.position?.[1]||0).toFixed(2)},${Number(t.angle?.[0]||0).toFixed(2)},${Number(t.scale?.[0]??1).toFixed(2)},${Number(t.scale?.[1]??1).toFixed(2)}:${String(c.shapeType||'')}:${Number(tr.position?.[0]||0).toFixed(2)},${Number(tr.position?.[1]||0).toFixed(2)},${Number(tr.angle?.[0]||0).toFixed(2)},${Number(tr.scale?.[0]??1).toFixed(2)},${Number(tr.scale?.[1]??1).toFixed(2)}`}).join('|');
+  }
+  function runtimePathBlocked(a,b,obstacles,pad){
+    const d=Math.hypot(b.x-a.x,b.y-a.y),steps=Math.max(4,Math.min(96,Math.ceil(d/Math.max(6,Math.min(18,pad*.35+4)))));
+    for(let i=0;i<=steps;i++){const t=i/steps,p={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};for(const sh of obstacles){if(runtimeShapeClearance(sh,p)<=pad)return true;}}
+    return false;
+  }
+  function runtimePlanChasePath(body,target,obstacles,bodyRadius){
+    const start={x:Number(body.t?.position?.[0])||0,y:Number(body.t?.position?.[1])||0};
+    const goal={x:Number(target.t?.position?.[0])||0,y:Number(target.t?.position?.[1])||0};
+    const pad=Math.max(2,bodyRadius+3);
+    if(!obstacles.length||!runtimePathBlocked(start,goal,obstacles,pad))return[start,goal];
+    let minX=Math.min(start.x,goal.x),maxX=Math.max(start.x,goal.x),minY=Math.min(start.y,goal.y),maxY=Math.max(start.y,goal.y);
+    for(const sh of obstacles){const a=shapeAABB(sh);const e=pad+24;minX=Math.min(minX,a.l-e);maxX=Math.max(maxX,a.r+e);minY=Math.min(minY,a.t-e);maxY=Math.max(maxY,a.b+e);}
+    const extent=Math.max(maxX-minX,maxY-minY,64),cell=Math.max(18,Math.min(64,Math.max(bodyRadius*1.75,extent/56)));
+    const cols=Math.max(8,Math.min(64,Math.ceil((maxX-minX)/cell)+1)),rows=Math.max(8,Math.min(64,Math.ceil((maxY-minY)/cell)+1));
+    const ox=minX,oy=minY;
+    const idx=(x,y)=>y*cols+x;
+    const points=new Array(cols*rows);const blocked=new Uint8Array(cols*rows);
+    for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+      const p={x:ox+x*cell,y:oy+y*cell};points[idx(x,y)]=p;for(const sh of obstacles){if(runtimeShapeClearance(sh,p)<=pad){blocked[idx(x,y)]=1;break;}}
+    }
+    function nearestFree(p,force=false){
+      let bx=clamp(Math.round((p.x-ox)/cell),0,cols-1),by=clamp(Math.round((p.y-oy)/cell),0,rows-1),best=null;
+      for(let r=0;r<Math.max(cols,rows);r++)for(let yy=Math.max(0,by-r);yy<=Math.min(rows-1,by+r);yy++)for(let xx=Math.max(0,bx-r);xx<=Math.min(cols-1,bx+r);xx++){
+        const id=idx(xx,yy),q=points[id];if(!force&&blocked[id])continue;const d=(q.x-p.x)*(q.x-p.x)+(q.y-p.y)*(q.y-p.y);if(!best||d<best.d)best={x:xx,y:yy,d};
+      }
+      return best;
+    }
+    const s=nearestFree(start,true),g=nearestFree(goal,false)||nearestFree(goal,true);if(!s||!g)return[start,goal];
+    const open=[{x:s.x,y:s.y,g:0,f:Math.hypot(g.x-s.x,g.y-s.y)}],came=new Map(),cost=new Map([[idx(s.x,s.y),0]]),closed=new Set();
+    const dirs=[[-1,0,1],[1,0,1],[0,-1,1],[0,1,1],[-1,-1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[1,1,Math.SQRT2]];
+    let goalId=idx(g.x,g.y);
+    while(open.length){open.sort((a,b)=>a.f-b.f);const cur=open.shift(),cid=idx(cur.x,cur.y);if(closed.has(cid))continue;closed.add(cid);if(cid===goalId)break;
+      for(const [dx,dy,m] of dirs){const nx=cur.x+dx,ny=cur.y+dy;if(nx<0||ny<0||nx>=cols||ny>=rows)continue;const nid=idx(nx,ny);if(closed.has(nid)||blocked[nid])continue;if(dx&&dy&&(blocked[idx(cur.x+dx,cur.y)]||blocked[idx(cur.x,cur.y+dy)]))continue;const a=points[cid],b=points[nid];const abx={x:(a.x+b.x)*.5,y:(a.y+b.y)*.5},ab1={x:a.x+(b.x-a.x)*.25,y:a.y+(b.y-a.y)*.25},ab3={x:a.x+(b.x-a.x)*.75,y:a.y+(b.y-a.y)*.75};let edgeBlocked=false;for(const sh of obstacles){if(runtimeShapeClearance(sh,ab1)<=pad||runtimeShapeClearance(sh,abx)<=pad||runtimeShapeClearance(sh,ab3)<=pad){edgeBlocked=true;break;}}if(edgeBlocked)continue;const ng=cur.g+m;if(ng>=(cost.get(nid)??Infinity))continue;cost.set(nid,ng);came.set(nid,cid);open.push({x:nx,y:ny,g:ng,f:ng+Math.hypot(g.x-nx,g.y-ny)});}
+    }
+    if(!came.has(goalId)&&goalId!==idx(s.x,s.y))return[start,goal];
+    const ids=[];let at=goalId;ids.push(at);while(at!==idx(s.x,s.y)){at=came.get(at);if(at==null)return[start,goal];ids.push(at);}ids.reverse();
+    const raw=ids.map(id=>points[id]);raw[0]=start;raw[raw.length-1]=goal;
+    const smooth=[raw[0]];let i=0;while(i<raw.length-1){let j=raw.length-1;for(;j>i+1;j--)if(!runtimePathBlocked(raw[i],raw[j],obstacles,pad))break;smooth.push(raw[j]);i=j;}
+    return smooth;
+  }
+  function runtimeSteeringForAI(body,ai,dt,bodyById){
+    if(!body?.physics||!ai)return null;
+    const target=bodyById.get(ai.targetId);if(!target)return null;
+    const speed=Math.max(0,Number(ai.speed)||0);if(speed<=0)return{x:0,y:0,face:null};
+    const pos={x:Number(body.t?.position?.[0])||0,y:Number(body.t?.position?.[1])||0};
+    const targetPos={x:Number(target.t?.position?.[0])||0,y:Number(target.t?.position?.[1])||0};
+    const bodyRadius=runtimeBodyRadius(body),obstacles=runtimeFolderColliderBodies(ai.map,bodyById).filter(o=>o!==body&&o!==target).map(runtimeColliderShape).filter(Boolean);
+    if(ai.kind!=='chase'){
+      const base=normV(subV(pos,targetPos));
+      return{x:base.x*speed,y:base.y*speed,face:base};
+    }
+    const targetMoved=Math.hypot(targetPos.x-(ai.lastTargetX??targetPos.x),targetPos.y-(ai.lastTargetY??targetPos.y));
+    const signature=runtimeObstacleSignature(runtimeFolderColliderBodies(ai.map,bodyById).filter(o=>o!==body&&o!==target));
+    const cellHint=Math.max(24,bodyRadius*2+18),now=performance.now();
+    if(!ai.path||!ai.path.length||now-(ai.lastPlanAt||0)>260||targetMoved>cellHint||signature!==ai.mapSignature){
+      ai.path=runtimePlanChasePath(body,target,obstacles,bodyRadius);ai.pathIndex=ai.path.length>1?1:0;ai.lastPlanAt=now;ai.lastTargetX=targetPos.x;ai.lastTargetY=targetPos.y;ai.mapSignature=signature;
+    }
+    while(ai.pathIndex<ai.path.length-1&&Math.hypot(ai.path[ai.pathIndex].x-pos.x,ai.path[ai.pathIndex].y-pos.y)<=Math.max(10,bodyRadius*.7+10))ai.pathIndex++;
+    let waypoint=ai.path[Math.min(ai.pathIndex,ai.path.length-1)]||targetPos;
+    if(runtimePathBlocked(pos,waypoint,obstacles,Math.max(2,bodyRadius+3))){ai.path=null;ai.lastPlanAt=now;return{x:0,y:0,face:null};}
+    const dir=normV(subV(waypoint,pos));return{x:dir.x*speed,y:dir.y*speed,face:dir};
+  }
+  function updateRuntimeMovementControllers(dt){
+    const bodyById=new Map((state.runtime.bodies||[]).map(b=>[b.node?.id,b]));
+    Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);if(d<=Math.max(1,speed*dt)){owner.vx=0;owner.vy=0;}else{const k=speed/d;owner.vx=dx*k;owner.vy=dy*k;}if(!owner.physics.fixedRotation&&d>1e-6)owner.t.angle[0]=Math.atan2(dy,dx)*180/Math.PI;});
+    Object.entries(state.runtime.aiTargets||{}).forEach(([ownerId,ai])=>{const owner=bodyById.get(ownerId);if(!owner||!owner.physics)return;const steer=runtimeSteeringForAI(owner,ai,dt,bodyById);if(!steer)return;owner.vx=steer.x;owner.vy=steer.y;if(!owner.physics.fixedRotation&&steer.face)owner.t.angle[0]=Math.atan2(steer.face.y,steer.face.x)*180/Math.PI;});
+  }
+  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
     updateRuntimeMic();
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
     const substeps=4,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
+      updateRuntimeMovementControllers(subDt);
       if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.bodies||[],subDt);
       else updateRuntimeCollisions(subDt);
-      Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,targetId])=>{const owner=state.runtime.bodies.find(b=>b.node?.id===ownerId),target=state.runtime.bodies.find(b=>b.node?.id===targetId);if(owner&&target){owner.t.position[0]=target.t.position[0];owner.t.position[1]=target.t.position[1];}});
     }
     processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
@@ -3017,7 +3142,7 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:runtimeAllNodes().map(x=>x.node),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
+      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:runtimeAllNodes().map(x=>x.node),folderOptions:runtimeAllNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.numericId}]`),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
@@ -3031,9 +3156,11 @@
       setProgressBar:(v)=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);})),
       setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.vx=Number(x);if(y!==null&&y!==undefined)b.vy=Number(y);if(angular!==null&&angular!==undefined)b.omega=Number(angular)*Math.PI/180;}},
       setCamera:(v)=>{const c=state.runtime.camera||{};if(v.Enabled!==null&&v.Enabled!==undefined)c.enabled=!!v.Enabled;if(v.PosX!==null&&v.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v.PosY!==null&&v.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v.Angle!==null&&v.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v.Horizontal!==null&&v.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v.Vertical!==null&&v.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v.Animation!==null&&v.Animation!==undefined)c.followAnimation=v.Animation;if(v.Speed!==null&&v.Speed!==undefined)c.speed=Number(v.Speed);if(v.Scale!==null&&v.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v['BG Color']!==null&&v['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v.Follow!==null&&v.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}},
-      followObject:(label)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.followTargets[node.id]=t.node.id;},
+      followObject:(label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.followTargets[node.id]={targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
+      chase:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t){const old=state.runtime.aiTargets[node.id];const next={...(old||{}),kind:'chase',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};if(old&& (old.map!==next.map||old.targetId!==next.targetId||old.speed!==next.speed)){next.path=null;next.pathIndex=0;}state.runtime.aiTargets[node.id]=next;}},
+      avoid:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.aiTargets[node.id]={kind:'avoid',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
       destroyObject:()=>runtimeDestroyNode(node),
-      createObject:(label,x,y,vx,vy,angular)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)runtimeAddObject(t.node.id,x,y,vx,vy,angular);},
+      createObject:(label,x,y,angle,vx,vy,angular)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)runtimeAddObject(t.node.id,x,y,angle,vx,vy,angular);},
       playAudio:(v)=>runtimePlayAudio(v),stopAudio:()=>runtimeStopAudio(),clearAudio:()=>runtimeClearAudio(),
       isCollidedWith:(label)=>runtimeIsCollided(node,label),
       runtime:state.runtime,
@@ -3412,7 +3539,7 @@
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
 
     if(window.__UIX_STANDALONE__){
