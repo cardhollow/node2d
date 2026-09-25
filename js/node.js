@@ -3,7 +3,7 @@
 
   // Change the definitions here to change how newly-created nodes are built.
   const NodeSettings = {
-    node: { default: true, removable: false },
+    node: { default: true, removable: false, index: null },
     script: { default: true, removable: false, name: 'Script' },
     transform: {
       default: true, removable: false,
@@ -76,6 +76,9 @@
     node.components.forEach(component => {
       component.removable = ['node', 'script', 'transform'].includes(component.type)
         ? false : component.removable !== false;
+      if (component.type === 'node') {
+        component.index = Number.isFinite(Number(component.index)) ? Math.max(0, Math.floor(Number(component.index))) : null;
+      }
       if (component.type === 'sprite') {
         component.sourceType = component.sourceType || 'Sprite';
         component.animation = component.animation || '';

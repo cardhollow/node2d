@@ -129,6 +129,34 @@
     walk(scene?.nodes);
     return out;
   }
+  function ensureNodeIndices(scene=currentScene()) {
+    const entries=allNodes(scene).filter(x=>x.node?.type==='node');
+    let max=-1;
+    entries.forEach(({node})=>{const c=node.components?.find(c=>c?.type==='node');if(c&&Number.isFinite(Number(c.index)))max=Math.max(max,Math.floor(Number(c.index)));});
+    let next=max+1;
+    entries.forEach(({node})=>{normalizeNode(node);const c=node.components?.find(c=>c?.type==='node');if(!c)return;if(!Number.isFinite(Number(c.index))){c.index=next++;}});
+    return entries.map(x=>x.node);
+  }
+  function nodeIndex(node) {
+    const c=node?.components?.find(c=>c?.type==='node');
+    return Number.isFinite(Number(c?.index)) ? Math.max(0,Math.floor(Number(c.index))) : 0;
+  }
+  function sortedRenderNodes(scene=currentScene()) {
+    return ensureNodeIndices(scene).filter(node=>node.type==='node').sort((a,b)=>nodeIndex(a)-nodeIndex(b));
+  }
+  function reorderNodeIndex(node,targetIndex){
+    const nodes=sortedRenderNodes();const i=nodes.indexOf(node);if(i<0)return;
+    const target=clamp(Math.floor(Number(targetIndex)||0),0,nodes.length-1);if(i===target)return;
+    const moved=nodes.splice(i,1)[0];nodes.splice(target,0,moved);nodes.forEach((n,index)=>{const c=n.components?.find(x=>x?.type==='node');if(c)c.index=index;});
+  }
+  function moveNodeIndex(node,delta){
+    if(!node)return;ensureNodeIndices();const nodes=sortedRenderNodes(),i=nodes.indexOf(node),target=i+Number(delta||0);
+    if(i<0||target<0||target>=nodes.length)return status(Number(delta)>0?'Already at top':'Already at bottom');
+    pushHistory();reorderNodeIndex(node,target);renderAll();status(`${node.name} moved ${Number(delta)>0?'up':'down'}`);
+  }
+  function setNodeIndex(node,value){
+    if(!node)return;const n=Math.max(0,Number.isFinite(Number(value))?Math.floor(Number(value)):0);pushHistory();reorderNodeIndex(node,n);renderAll();status(`${node.name} index set to ${nodeIndex(node)}`);
+  }
   function findNode(id) { return allNodes().find(x => x.node.id === id)?.node || null; }
   function findContainer(id, items = currentScene()?.nodes) {
     if (!Array.isArray(items)) return null;
@@ -493,7 +521,7 @@
     state.nextNodeId = id + 1;
     const node = createNode(`node-${Date.now()}-${id}`, id, name || `Node ${id}`);
     configure?.(node);
-    currentScene().nodes.push(node); state.selectedId = node.id;
+    currentScene().nodes.push(node); ensureNodeIndices(); state.selectedId = node.id;
     renderAll(); status(`${node.name} added`); return node;
   }
 
@@ -536,7 +564,7 @@
   function renderWorkplace(){ resizeWorkplaceCanvas(); drawWorkplace(); }
 
   function renderAll() {
-    ensureProject(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace();
+    ensureProject(); ensureNodeIndices(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace();
     $('#stageSceneName').textContent = currentScene().name; $('#activeModeLabel').textContent = modeLabel(state.mode);
     applyPanelState(); updateZoomLabel(); resizeWorkplaceCanvas(); drawWorkplace();
   }
@@ -600,7 +628,7 @@
         if(!state.selectedIds.includes(node.id)) clearNodeSelection(node.id); else state.selectedId=node.id;
         renderSelectionTree(); renderComponentPanel(); drawWorkplace();
         const count=topLevelSelectedItems().length;
-        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
+        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'↑',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'↓',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
         if(count>1)items.unshift({label:`${count} selected`,icon:'☷',disabled:true});
         showContextMenu(items,e.clientX??0,e.clientY??0);
       };
@@ -690,7 +718,8 @@
     const row = document.createElement('div'); row.className = 'property-row property-row-stack';
     const name = labeledInput('Name', node.name, v => { node.name = v; renderSelectionTree(); renderWorkplace(); $('#componentTarget').textContent = v || 'Node'; });
     const id = labeledInput('Id', node.numericId, v => changeNodeId(node, Number(v)), 'number');
-    row.append(name, id); body.append(row);
+    const nodeIndexInput = labeledInput('Index', nodeIndex(node), v => setNodeIndex(node, Number(v)), 'number');
+    row.append(name, id, nodeIndexInput); body.append(row);
     const nodeComp=nodeComponents(node).find(c=>c.type==='node');
     return componentCard('Node', body, false, null, `node:${node.id}`, {node,comp:nodeComp});
   }
@@ -1207,7 +1236,7 @@
     // Editor Workplace stays neutral; camera BG Color is runtime-only.
     ctx.fillStyle='#202020';ctx.fillRect(0,0,rect.width,rect.height);drawGrid(ctx,rect);
     ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);drawAxes(ctx);drawCameraViewport(ctx,rect);
-    const nodes=allNodes();nodes.forEach(({node})=>{if(node.type!=='node')return;const t=component(node,'transform');const x=Number(t?.position?.[0]||0),y=Number(t?.position?.[1]||0),sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);drawNodeVisual(ctx,node,x,y,sx,sy,angle);});
+    sortedRenderNodes().forEach(node=>{const t=component(node,'transform');const x=Number(t?.position?.[0]||0),y=Number(t?.position?.[1]||0),sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);drawNodeVisual(ctx,node,x,y,sx,sy,angle);});
     const selected=selectedNode();if(selected)drawGizmo(ctx,selected);drawSelectedCollider(ctx,selected);drawEditorUIComponents(ctx);ctx.restore();
     updateZoomLabel();
     ensureEditorAnimationLoop();
@@ -2755,8 +2784,15 @@
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
   function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
     const source=runtimeFindNode(sourceId);if(!source)return null;const copy=clone(source);const oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
-    state.runtime.scene.nodes.push(copy);state.runtime.dynamicScriptsByNode[copy.id]=clone(state.runtime.dynamicScriptsByNode[oldId]||[]);state.runtime.dynamicConnectionsByNode[copy.id]=clone(state.runtime.dynamicConnectionsByNode[oldId]||[]);state.runtime.localVarsByNode[copy.id]=clone(state.runtime.localVarsByNode[oldId]||[]);const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;state.runtime.bodies.push(body);runScriptGraphForNode(copy);return copy;
+    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;
+    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
+    const sourceScripts=clone(state.runtime.dynamicScriptsByNode[oldId]||[]),sourceConnections=clone(state.runtime.dynamicConnectionsByNode[oldId]||[]),scriptMap=new Map();
+    sourceScripts.forEach(sn=>{const old=sn.id;sn.id=`snode-runtime-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;scriptMap.set(old,sn.id);});
+    const sourceContainer=runtimeContainerForNode(oldId);if(sourceContainer)sourceContainer.push(copy);else state.runtime.scene.nodes.push(copy);
+    state.runtime.dynamicScriptsByNode[copy.id]=sourceScripts;
+    state.runtime.dynamicConnectionsByNode[copy.id]=sourceConnections.map(c=>({...c,from:scriptMap.get(c.from)||c.from,to:scriptMap.get(c.to)||c.to}));
+    state.runtime.localVarsByNode[copy.id]=clone(state.runtime.localVarsByNode[oldId]||[]);
+    const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;state.runtime.bodies.push(body);runScriptGraphForNode(copy);return copy;
   }
   function runtimeDestroyNode(node){const container=runtimeContainerForNode(node.id);if(container){const i=container.findIndex(x=>x.id===node.id);if(i>=0)container.splice(i,1);}state.runtime.bodies=state.runtime.bodies.filter(b=>b.node?.id!==node.id);delete state.runtime.dynamicScriptsByNode[node.id];delete state.runtime.dynamicConnectionsByNode[node.id];delete state.runtime.localVarsByNode[node.id];delete state.runtime.followTargets[node.id];delete state.runtime.aiTargets[node.id];}
 
@@ -2875,7 +2911,7 @@
     }
   }
   function solvePositionContacts(contacts){for(let iter=0;iter<6;iter++){let changed=false;for(const c of contacts){const fresh=collideShapes(runtimeColliderShape(c.A),runtimeColliderShape(c.B));if(!fresh)continue;c.hit=fresh;c.n=normV(fresh.normal);const total=c.ap.invMass+c.bp.invMass;if(total<=0)continue;const correction=Math.min(1.0,Math.max(fresh.penetration-0.25,0)*0.22);if(correction<=0)continue;const move=mulV(c.n,correction/total);if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;}if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}changed=true;}if(!changed)break;}}
-  function updateRuntimeCollisions(dt=1/120){const bodies=state.runtime.bodies||[];bodies.forEach(b=>b.colliding=false);const contacts=[];for(let i=0;i<bodies.length;i++){const A=runtimeColliderShape(bodies[i]);if(!A)continue;const aabbA=shapeAABB(A);for(let j=i+1;j<bodies.length;j++){const B=runtimeColliderShape(bodies[j]);if(!B)continue;const aabbB=shapeAABB(B);if(aabbA.r<aabbB.l||aabbA.l>aabbB.r||aabbA.b<aabbB.t||aabbA.t>aabbB.b)continue;const hit=collideShapes(A,B);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;if(!(bodies[i].physics?.isCollider===true||bodies[j].physics?.isCollider===true))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<12;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}}
+  function updateRuntimeCollisions(dt=1/120){const bodies=state.runtime.bodies||[];bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if(!(bodies[i].physics?.isCollider===true||bodies[j].physics?.isCollider===true))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
   function runtimeIsCollided(aNode,targetLabel){
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
@@ -2980,16 +3016,16 @@
     Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);if(d<=Math.max(1,speed*dt)){owner.vx=0;owner.vy=0;}else{const k=speed/d;owner.vx=dx*k;owner.vy=dy*k;}if(!owner.physics.fixedRotation&&d>1e-6)owner.t.angle[0]=Math.atan2(dy,dx)*180/Math.PI;});
     Object.entries(state.runtime.aiTargets||{}).forEach(([ownerId,ai])=>{const owner=bodyById.get(ownerId);if(!owner||!owner.physics)return;const steer=runtimeSteeringForAI(owner,ai,dt,bodyById);if(!steer)return;owner.vx=steer.x;owner.vy=steer.y;if(!owner.physics.fixedRotation&&steer.face)owner.t.angle[0]=Math.atan2(steer.face.y,steer.face.x)*180/Math.PI;});
   }
-  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);state.runtime.activeCollisionPairs=new Set();state.runtime.frameCollisionPairs=new Map();runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
     updateRuntimeMic();
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
     const substeps=4,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
       updateRuntimeMovementControllers(subDt);
-      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.bodies||[],subDt);
-      else updateRuntimeCollisions(subDt);
+      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.bodies||[],subDt,pairs=>queueRuntimeCollisionPairs(pairs));
+      else queueRuntimeCollisionPairs(updateRuntimeCollisions(subDt));
     }
-    processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
+    flushRuntimeCollisionEvents();processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
   function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=(state.runtime.bodies||[]).find(b=>b.node?.id===id);return body?body.t:null;}
   function updateRuntimeCamera(dt){
@@ -3345,6 +3381,20 @@
   function runRuntimeUnloadScripts(){
     runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>runtimeScriptList(node.id).filter(sn=>sn.defName==='onUnload').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true)));
   }
+  function runtimeCollisionKey(a,b){const ai=String(a?.node?.id||''),bi=String(b?.node?.id||'');return ai<bi?`${ai}|${bi}`:`${bi}|${ai}`;}
+  function queueRuntimeCollisionPairs(pairs){
+    const current=state.runtime.frameCollisionPairs||(state.runtime.frameCollisionPairs=new Map());
+    for(const pair of (Array.isArray(pairs)?pairs:[])){const a=pair?.[0],b=pair?.[1];if(!a?.node||!b?.node||a===b)continue;const key=runtimeCollisionKey(a,b);if(!key)continue;current.set(key,[a,b]);}
+  }
+  function flushRuntimeCollisionEvents(){
+    const current=state.runtime.frameCollisionPairs||new Map(),previous=state.runtime.activeCollisionPairs||new Set(),next=new Set();
+    current.forEach((pair,key)=>{next.add(key);if(previous.has(key))return;const [a,b]=pair;[[a,b],[b,a]].forEach(([body,other])=>{
+      const node=body?.node,target=other?.node;if(!node||!target)return;
+      const label=`${target.name} [${target.numericId}]`;
+      runtimeScriptList(node.id).forEach(sn=>{if(sn.defName!=='onCollideWith')return;const def=scriptNodeDefinition(sn.defName);if(!def)return;const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'&&String(first.selected??'')!==label)return;executeRuntimeScriptNode(sn,def,node,true);});
+    });});
+    state.runtime.activeCollisionPairs=next;state.runtime.frameCollisionPairs=new Map();
+  }
   function processRuntimeTimers(now){
     const due=(state.runtime.timers||[]);state.runtime.timers=[];
     due.forEach(t=>{if(t.kind==='timeout'&&now>=t.at){const node=runtimeFindNode(t.nodeId);const sn=runtimeScriptList(t.nodeId).find(x=>x.id===t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else state.runtime.timers.push(t);});
@@ -3597,7 +3647,7 @@
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
@@ -3670,7 +3720,8 @@
     }
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
-    for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);
+    const renderBodies=(state.runtime.bodies||[]).slice().sort((a,b)=>nodeIndex(a.node)-nodeIndex(b.node));
+    for(const b of renderBodies)drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);
     drawRuntimeColliders(ctx);
     ctx.restore();
 

@@ -236,46 +236,47 @@
     if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}
   }
 
-  function stepPhysics(bodies,dt){
+  function stepPhysics(bodies,dt,onCollisions){
     const h=Math.min(Math.max(Number(dt)||0,0),1/30);
-    if(h<=0)return;
+    if(h<=0)return 0;
 
-    for(const b of bodies){
-      b.colliding=false;
-      const type=b.physics?.body;
-      if(type==='Dynamic'){
-        b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
-      }
-      if(type==='Dynamic'||type==='Kinematic'){
-        b.t.position[0]+=(Number(b.vx)||0)*h;
-        b.t.position[1]+=(Number(b.vy)||0)*h;
-        if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;
-      }
+    const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length),entries=[];
+    for(let i=0;i<bodies.length;i++){
+      const b=bodies[i];b.colliding=false;const type=b.physics?.body;
+      if(type==='Dynamic')b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
+      if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;}
+      const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const box=aabb(shape);aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
     }
 
-    const contacts=[];
-    for(let i=0;i<bodies.length;i++){
-      const AShape=colliderShape(bodies[i]);if(!AShape)continue;const aa=aabb(AShape);
-      for(let j=i+1;j<bodies.length;j++){
-        const BShape=colliderShape(bodies[j]);if(!BShape)continue;const bb=aabb(BShape);
+    // Sweep-and-prune broadphase: only pairs whose AABBs overlap on X are tested further.
+    entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);
+    const contacts=[],detectedPairs=[];
+    for(let ai=0;ai<entries.length;ai++){
+      const i=entries[ai],A=shapes[i],aa=aabbs[i];
+      for(let aj=ai+1;aj<entries.length;aj++){
+        const j=entries[aj],bb=aabbs[j];
+        if(bb.l>aa.r)break;
         if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;
-        const hit=collide(AShape,BShape);if(!hit)continue;
-        bodies[i].colliding=true;bodies[j].colliding=true;
+        const hit=collide(A,shapes[j]);if(!hit)continue;
+        bodies[i].colliding=true;bodies[j].colliding=true;detectedPairs.push([bodies[i],bodies[j]]);
         if(!(bodies[i].physics?.isCollider===true||bodies[j].physics?.isCollider===true))continue;
-        const ap=massProps(bodies[i],AShape),bp=massProps(bodies[j],BShape);if(ap.invMass===0&&bp.invMass===0)continue;
+        const ap=props[i],bp=props[j];if(ap.invMass===0&&bp.invMass===0)continue;
         contacts.push({A:bodies[i],B:bodies[j],normal:norm(hit.normal),penetration:hit.penetration,points:hit.points,ap,bp,friction:Math.sqrt(Math.max(0,Number(bodies[i].physics?.friction)||0)*Math.max(0,Number(bodies[j].physics?.friction)||0)),restitution:clamp(Math.max(Number(bodies[i].physics?.bounciness)||0,Number(bodies[j].physics?.bounciness)||0),0,1)});
       }
     }
 
-    for(let iter=0;iter<8;iter++)for(const c of contacts)solveContact(c);
-    for(let iter=0;iter<3;iter++)for(const c of contacts)positionalCorrection(c);
+    // Fewer solver passes are enough with the cached broadphase/manifold data and avoid
+    // multiplying collision work unnecessarily when several objects touch at once.
+    for(let iter=0;iter<6;iter++)for(const c of contacts)solveContact(c);
+    for(let iter=0;iter<2;iter++)for(const c of contacts)positionalCorrection(c);
 
     for(const b of bodies){
       if(!Number.isFinite(b.vx))b.vx=0;if(!Number.isFinite(b.vy))b.vy=0;if(!Number.isFinite(b.omega))b.omega=0;
-      const maxSpeed=3000,s=Math.hypot(b.vx,b.vy);if(s>maxSpeed){const k=maxSpeed/s;b.vx*=k;b.vy*=k;}
+      const maxSpeed=3000,sp=Math.hypot(b.vx,b.vy);if(sp>maxSpeed){const k=maxSpeed/sp;b.vx*=k;b.vy*=k;}
       if(Math.abs(b.omega)>60)b.omega=Math.sign(b.omega)*60;
       if(b.physics?.fixedRotation)b.omega=0;
     }
+    if(typeof onCollisions==='function'&&detectedPairs.length)onCollisions(detectedPairs);
     return contacts.length;
   }
 
