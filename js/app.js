@@ -74,6 +74,17 @@
   const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
   const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
   const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
+  async function loadNode2DVersion(){
+    const label=$('#node2dVersion');
+    if(!label)return;
+    try{
+      const response=await fetch('manifest.json',{cache:'no-store'});
+      if(!response.ok)throw new Error('manifest '+response.status);
+      const manifest=await response.json();
+      const version=String(manifest?.version||'').trim();
+      label.textContent=version?`v${version.replace(/^v/i,'')}`:'v—';
+    }catch{label.textContent='v—';}
+  }
   let autoSaveTimer=0;
   function getEditorSettings(){
     let out={...DEFAULT_EDITOR_SETTINGS};
@@ -3870,7 +3881,7 @@
     document.documentElement.classList.add('uix-standalone');
   }else{
     state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;ensureGameSettings();
-    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();applyTopbarAnchors();
+    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();applyTopbarAnchors();loadNode2DVersion();
     const bootURL=new URLSearchParams(location.search).get('load');
     if(bootURL)bootstrapURLLoad();
     else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
