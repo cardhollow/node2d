@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v13';
+const CACHE_NAME='uix-node2d-v18';
 const ROOT=new URL('./',self.location.href);
 
 function sameOrigin(url){return url.origin===self.location.origin;}
