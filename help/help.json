@@ -21,6 +21,10 @@
       {
         "subtitle": "Small screen warning",
         "contents": "<h2>Small screen warning</h2><p>When the editor is too narrow for comfortable editing, it shows a full-screen warning and temporarily blocks editing. Widen the window or rotate your device to continue.</p>"
+      },
+      {
+        "subtitle": "Build a game from start to finish",
+        "contents": "<h2>Build a game from start to finish</h2><p>A practical Node2D workflow is to build one small playable idea first, then grow it. Start with a Scene, add a player Node, give it a Sprite and Collider, then add the Nodes it needs to interact with.</p><ol><li><strong>Create a project.</strong> Give the project a name you can recognize later.</li><li><strong>Set up the starting Scene.</strong> Add or rename the first Scene and choose it as the Preferred Scene in Game Settings.</li><li><strong>Create the player.</strong> Add a Node, choose a Sprite asset for it, and position it in the Scene.</li><li><strong>Add game objects.</strong> Create ground, enemies, collectibles, buttons, UI elements, or other Nodes.</li><li><strong>Add Components.</strong> Use Collider for collision shapes, Physics for physical motion, Text for labels, Progress Bar for meters, and Joystick for touch controls.</li><li><strong>Add behavior.</strong> Open the Node's Script and connect an Event to the Actions and Controls that should happen.</li><li><strong>Test early.</strong> Press Play often. It is easier to find a wrong position, collision, input, or script connection before the Scene becomes large.</li><li><strong>Save and export.</strong> Save the project so it can be restored, then use Export Project when you have a playable web build.</li></ol><p>You can build a simple game without putting every object into one giant script. Keep each Node responsible for the behavior that belongs to that object.</p>"
       }
     ]
   },
@@ -57,7 +61,15 @@
       },
       {
         "subtitle": "Snapping",
-        "contents": "<h2>Snapping</h2><p>Snapping means the editor changes an object by fixed intervals while you drag it instead of allowing unlimited tiny values.</p><p>Move and Scale use the Move / Scale Snap setting. Rotate uses Rotate Snap. These settings affect editing with the corresponding viewport tools.</p>"
+        "contents": "<h2>Snapping</h2><p>Snapping makes editing use fixed intervals instead of letting values land at arbitrary decimal positions or scales. It is useful when you want objects to line up on a predictable grid or you want repeated size changes to be consistent.</p><p><strong>Move / Scale Snap</strong> controls the interval used by Node movement and scaling. For example, a value of <code>0.1</code> means a position or scale value is rounded to steps such as <code>2.0</code>, <code>2.1</code>, <code>2.2</code>, and so on.</p><p><strong>Rotate Snap</strong> controls the angle interval. <code>0°</code> turns rotation snapping off; a value such as <code>90°</code> makes rotations land at 0°, 90°, 180°, 270°, and so on.</p><p>Snapping applies while dragging the Move, Scale, and Rotate gizmos, including their center/axis controls. It is an editing aid, not a physics rule: it changes the values you create in the editor.</p>"
+      },
+      {
+        "subtitle": "Scale gizmo",
+        "contents": "<h2>Scale gizmo</h2><p>The Scale gizmo appears around the selected Node when Scale or All mode is active. Its small boxes are resize handles.</p><ul><li><strong>Corner handles</strong> resize in both directions while preserving the object's starting width-to-height ratio.</li><li><strong>Left / right handles</strong> resize horizontally.</li><li><strong>Top / bottom handles</strong> resize vertically.</li></ul><p>When a scale handle is being dragged, the active handle is given an additional outline so you can see exactly which resize point is being used.</p><p>The scale operation still follows your Move / Scale Snap setting. A snap value of <code>0.1</code> prevents tiny floating-point changes from producing values such as <code>1.0000000001</code> during normal gizmo editing.</p>"
+      },
+      {
+        "subtitle": "Reload and close protection",
+        "contents": "<h2>Reload and close protection</h2><p>When a project is loaded, Node2D can prevent an accidental browser refresh or tab close from happening silently. The browser may show its standard confirmation dialog so you have a chance to stay on the page.</p><p>This browser protection does not replace saving. Use Save or Auto Save so your work is actually stored before leaving.</p>"
       }
     ]
   },
@@ -136,7 +148,7 @@
       },
       {
         "subtitle": "Sprite",
-        "contents": "<h2>Sprite Component</h2><p>Sprite displays an image asset.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Type</td><td>Sprite or Animation.</td></tr><tr><td>Sprite</td><td>Image asset used when Type is Sprite.</td></tr><tr><td>Animation</td><td>Animation used when Type is Animation.</td></tr><tr><td>Pixelated</td><td>Controls pixel-art style rendering.</td></tr><tr><td>Position X/Y</td><td>Sprite offset relative to the Node transform.</td></tr><tr><td>Size X/Y</td><td>Sprite size relative to the Node transform.</td></tr></tbody></table><p>Sprite position and size are local to the Node, so changing the Node transform also affects the sprite.</p>"
+        "contents": "<h2>Sprite Component</h2><p>Sprite displays an image from your Asset Manager.</p><table><thead><tr><th>Property</th><th>What you can do</th></tr></thead><tbody><tr><td>Type</td><td>Choose between a normal Sprite and an Animation presentation.</td></tr><tr><td>Sprite</td><td>Choose the image asset to display.</td></tr><tr><td>Animation</td><td>Choose an animation when the Sprite is using an animation source.</td></tr><tr><td>Pixelated</td><td>Keep hard pixel edges for pixel-art style images.</td></tr><tr><td>Position X/Y</td><td>Move the image relative to the Node's Transform.</td></tr><tr><td>Size X/Y</td><td>Set the Sprite's local size relative to the Node Transform.</td></tr></tbody></table><p>Because Sprite Position and Size are local to the Node, moving, scaling, or rotating the Node also affects the Sprite. This lets one Node act as the parent transform for its visual.</p><p>You can also click a Sprite in the Asset Manager to create a new Node that already has a Sprite component pointing to that exact asset. The Asset Manager closes after the Node is created so you can immediately continue editing the new Node.</p>"
       },
       {
         "subtitle": "Animation Sprite",
@@ -230,11 +242,11 @@
       },
       {
         "subtitle": "onConnectionChange",
-        "contents": "<h2>onConnectionChange</h2><p>Starts when the browser connection state changes between Online and Offline while the game is running.</p><p>Input: <code>Connection</code> selector with <code>Online</code> or <code>Offline</code>. Output: <code>out</code>.</p><p>Use it when your game needs to react to losing or regaining a network connection.</p>"
+        "contents": "<h2>onConnectionChange</h2><p>Runs when the device's network state changes between online and offline.</p><p>Input: <code>Connection</code>. Choose <strong>Online</strong> or <strong>Offline</strong>.</p><p>Output: <code>out</code>.</p><p>This is useful for games that need to change behavior when connectivity is lost or restored—for example, showing an offline message, pausing online-only actions, or starting a locally available fallback.</p>"
       },
       {
         "subtitle": "onAudioPickup",
-        "contents": "<h2>onAudioPickup</h2><p>Starts when the microphone detects a new audible pickup above the runtime microphone threshold.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p><p>The current microphone level is available through <code>ctx.mic.decibel</code>.</p>"
+        "contents": "<h2>onAudioPickup</h2><p>Runs when the microphone audio level is detected as a pickup event while microphone use is enabled.</p><p>Output: <code>out</code>.</p><p>Read the current microphone loudness with <code>ctx.mic.decibel</code>. A simple use is to react when someone claps, speaks loudly, or creates another sound above the pickup threshold.</p><p>Microphone use must first be enabled in Game Settings. The browser may also ask the user for microphone permission.</p>"
       }
     ]
   },
@@ -299,7 +311,7 @@
       },
       {
         "subtitle": "playAudio",
-        "contents": "<h2>playAudio</h2><p>Plays a selected Audio or MIDI asset.</p><p>Inputs: <code>src</code>, <code>duration</code>, <code>loop</code>, <code>fadein</code>, <code>fadeout</code>. Output: <code>out</code>.</p>"
+        "contents": "<h2>playAudio</h2><p>Plays an Audio or MIDI asset at runtime.</p><table><thead><tr><th>Input</th><th>What it controls</th></tr></thead><tbody><tr><td><code>src</code></td><td>The Audio or MIDI asset to play.</td></tr><tr><td><code>start</code></td><td>Starting position in milliseconds. Use <code>0</code> to start at the beginning.</td></tr><tr><td><code>duration</code></td><td>How long to play in milliseconds. Use <code>0</code> to play until the source finishes.</td></tr><tr><td><code>loop</code></td><td>Repeat playback while enabled.</td></tr><tr><td><code>fadein</code></td><td>Fade in over the selected time.</td></tr><tr><td><code>fadeout</code></td><td>Fade out over the selected time.</td></tr></tbody></table><p>Example: <code>start = 5000</code> begins around five seconds into the source, while <code>duration = 1000</code> plays for one second.</p>"
       },
       {
         "subtitle": "stopAudio",
@@ -311,11 +323,11 @@
       },
       {
         "subtitle": "startSpeechRecognition",
-        "contents": "<h2>startSpeechRecognition</h2><p>Starts browser speech recognition when Use Mic is enabled.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p><p>While recognition is active, the recognized text is available live through <code>ctx.mic.speech</code>.</p>"
+        "contents": "<h2>startSpeechRecognition</h2><p>Starts browser speech recognition when microphone use is enabled and the browser supports speech recognition.</p><p>You can use it when you want spoken words to become text during gameplay.</p><p>The current recognized text is available through <code>ctx.mic.speech</code> while recognition is running.</p>"
       },
       {
         "subtitle": "stopSpeechRecognition",
-        "contents": "<h2>stopSpeechRecognition</h2><p>Stops active browser speech recognition.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p>"
+        "contents": "<h2>stopSpeechRecognition</h2><p>Stops active speech recognition.</p><p>Use it when you no longer need speech input, such as when leaving a voice-controlled menu or ending a voice command.</p>"
       }
     ]
   },
@@ -377,7 +389,31 @@
       },
       {
         "subtitle": "Microphone expressions",
-        "contents": "<h2>Microphone expressions</h2><p>When Use Mic is enabled, the Expression Library provides microphone values.</p><table><thead><tr><th>Expression</th><th>Meaning</th></tr></thead><tbody><tr><td><code>ctx.mic.decibel</code></td><td>Current microphone level in decibels.</td></tr><tr><td><code>ctx.mic.speech</code></td><td>Current speech-recognition text while recognition is active.</td></tr><tr><td><code>ctx.mic.active</code></td><td>Whether the microphone is active.</td></tr><tr><td><code>ctx.mic.speechActive</code></td><td>Whether speech recognition is currently running.</td></tr></tbody></table>"
+        "contents": "<h2>Microphone expressions</h2><p>When microphone use is enabled and permission is available, the Expression Library provides a Mic group.</p><table><thead><tr><th>Expression</th><th>Meaning</th></tr></thead><tbody><tr><td><code>ctx.mic.decibel</code></td><td>Current microphone loudness level.</td></tr><tr><td><code>ctx.mic.speech</code></td><td>Current speech-recognition text while recognition is active.</td></tr><tr><td><code>ctx.mic.active</code></td><td>Whether microphone input is currently active.</td></tr><tr><td><code>ctx.mic.speechActive</code></td><td>Whether speech recognition is currently running.</td></tr></tbody></table><p>These values are intended for runtime expressions, such as showing a live microphone meter, reacting to a sound level, or displaying recognized speech.</p>"
+      },
+      {
+        "subtitle": "JavaScript values and operators",
+        "contents": "<h2>JavaScript values and operators</h2><p>Expression fields use JavaScript-style expressions for calculations and conditions. The basic pieces you will use most often are numbers, strings, booleans, properties, arithmetic, comparisons, and logical operators.</p><table><thead><tr><th>Syntax</th><th>Example</th><th>Meaning</th></tr></thead><tbody><tr><td>Arithmetic</td><td><code>10 + 5 * 2</code></td><td>Calculate numbers.</td></tr><tr><td>Comparison</td><td><code>ctx.global.score &gt;= 100</code></td><td>Check a condition.</td></tr><tr><td>Equality</td><td><code>ctx.local.state === \"dead\"</code></td><td>Check whether two values are equal.</td></tr><tr><td>Not equal</td><td><code>ctx.local.health !== 0</code></td><td>Check whether values differ.</td></tr><tr><td>AND</td><td><code>a &amp;&amp; b</code></td><td>Both conditions must be true.</td></tr><tr><td>OR</td><td><code>a || b</code></td><td>At least one condition must be true.</td></tr><tr><td>NOT</td><td><code>!ctx.local.dead</code></td><td>Reverse a boolean value.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Ternary operator",
+        "contents": "<h2>Ternary operator</h2><p>The ternary operator chooses one of two values using a condition:</p><pre><code>condition ? truth : falsy</code></pre><p>For example:</p><pre><code>ctx.global.score &gt;= 100 ? \"Winner\" : \"Keep Playing\"</code></pre><p>If the condition is true, the expression produces <code>\"Winner\"</code>. Otherwise it produces <code>\"Keep Playing\"</code>.</p><p>This is useful when an input needs one value for one case and another value for the opposite case.</p>"
+      },
+      {
+        "subtitle": "Optional chaining",
+        "contents": "<h2>Optional chaining <code>?.</code></h2><p>Optional chaining lets you safely read a property when an earlier value might not exist.</p><pre><code>ctx.node?.name</code></pre><p>Without optional chaining, trying to read a property from a missing value can cause an error. With <code>?.</code>, the result becomes <code>undefined</code> instead of stopping the expression at that point.</p><p>It can also be used through a chain:</p><pre><code>ctx.node?.sprite?.src</code></pre><p>Use it when an object or Component may be absent.</p>"
+      },
+      {
+        "subtitle": "Nullish coalescing",
+        "contents": "<h2>Nullish coalescing <code>??</code></h2><p><code>??</code> supplies a fallback when the value on its left is <code>null</code> or <code>undefined</code>.</p><pre><code>ctx.local.name ?? \"Player\"</code></pre><p>If <code>ctx.local.name</code> has a real value, that value is used. If it is missing, <code>\"Player\"</code> is used instead.</p><p>This is different from using <code>||</code> when you need to keep valid values such as <code>0</code> or <code>false</code>.</p>"
+      },
+      {
+        "subtitle": "Property and bracket access",
+        "contents": "<h2>Property and bracket access</h2><p>Use a dot to read a normal property:</p><pre><code>ctx.position.x\nctx.global.score</code></pre><p>Use brackets when the property name is dynamic or is not a convenient identifier:</p><pre><code>ctx.events.key[\"1\"]\nctx.local[\"player-name\"]</code></pre><p>Bracket access is also useful when a value comes from another expression.</p>"
+      },
+      {
+        "subtitle": "Parentheses and order",
+        "contents": "<h2>Parentheses and order</h2><p>Parentheses let you make the intended order of a calculation explicit.</p><pre><code>(ctx.global.score + 10) * 2</code></pre><p>Without parentheses, multiplication is evaluated before addition. Use parentheses whenever a long expression could be confusing or when a comparison is combined with several logical operators.</p>"
       }
     ]
   },
@@ -427,11 +463,11 @@
       },
       {
         "subtitle": "Required Features",
-        "contents": "<h2>Required Features</h2><p>Some ScriptNodes need optional browser features. Their requirement appears in Game Settings. A required ScriptNode stays visible in the ScriptNode Library, but it is disabled until its feature is enabled.</p><p>Clicking a disabled ScriptNode asks you to open Game Settings and enable the required feature.</p>"
+        "contents": "<h2>Required features</h2><p>Some ScriptNodes can depend on a feature that your game must explicitly enable. A Node can still show those ScriptNodes in the library, but the ScriptNode is disabled until its requirement is enabled.</p><p>When you click a disabled required ScriptNode, the editor can offer to take you to Game Settings so you can enable the required feature.</p>"
       },
       {
         "subtitle": "Use Mic",
-        "contents": "<h2>Use Mic</h2><p><strong>Use Mic</strong> enables microphone features. When the game starts, the browser asks for microphone permission if needed. If permission was already granted, the game can continue using the microphone.</p><p>Microphone access is required for microphone-dependent ScriptNodes and the <code>ctx.mic</code> values.</p>"
+        "contents": "<h2>Use Mic</h2><p><strong>Use Mic</strong> enables microphone features for the game.</p><p>When enabled, the runtime requests microphone permission from the browser the first time the running game needs the microphone. If permission was already granted, the game can continue without asking again.</p><p>Microphone-powered features include <code>ctx.mic.decibel</code>, <code>onAudioPickup</code>, and speech recognition actions.</p><p>Turning the setting off prevents microphone-dependent features from being usable.</p>"
       },
       {
         "subtitle": "Speech recognition settings",
@@ -481,6 +517,14 @@
       {
         "subtitle": "Click a Sprite to create a Node",
         "contents": "<h2>Click a Sprite to create a Node</h2><p>Clicking a Sprite in the Asset Manager creates a new Node using the same normal Node creation path as <strong>+ Add Node</strong>. The new Node receives a Sprite Component whose source points to the selected Sprite asset.</p><p>The Asset Manager closes automatically after the Node is created.</p>"
+      },
+      {
+        "subtitle": "Sprite asset shortcut",
+        "contents": "<h2>Sprite asset shortcut</h2><p>Clicking an image in the Sprites section can immediately create a new Node using that image.</p><ol><li>Open the Asset Manager.</li><li>Click the Sprite image you want.</li><li>Node2D creates a Node using the same Node-creation path as <strong>+ Add Node</strong>.</li><li>A Sprite Component is added to that Node.</li><li>The Sprite's source is set to the exact asset you clicked.</li><li>The Asset Manager closes automatically.</li></ol><p>This is useful when you want to place an imported image in the Scene without manually creating a Node and then searching for the same asset again.</p>"
+      },
+      {
+        "subtitle": "Audio preview",
+        "contents": "<h2>Audio preview</h2><p>Clicking an Audio asset opens a preview modal before you use it in a ScriptNode. Use the preview controls to test whether you imported the expected sound.</p><p>This lets you check a sound directly from the Asset Manager instead of repeatedly starting the game just to hear the asset.</p>"
       }
     ]
   },
@@ -555,6 +599,14 @@
       {
         "subtitle": "Import and Export",
         "contents": "<h2>Import and Export</h2><p>Import loads a MIDI file into the editor. Export writes the edited MIDI sequence back to a MIDI file.</p>"
+      },
+      {
+        "subtitle": "Changing the MIDI name",
+        "contents": "<h2>Changing the MIDI name</h2><p>The MIDI name is shown beside <strong>MIDI Editor</strong>.</p><ol><li>Double-click the name.</li><li>The normal text becomes directly editable.</li><li>Type the new name.</li><li>Press <strong>Enter</strong> or click somewhere else to apply it.</li></ol><p>The rename changes the project asset name rather than changing the musical notes.</p>"
+      },
+      {
+        "subtitle": "Cancel editing",
+        "contents": "<h2>Cancel editing</h2><p>Cancel asks for confirmation before leaving the MIDI Editor. This gives you a chance to stop the cancellation if you changed your mind and want to keep editing.</p>"
       }
     ]
   },
@@ -608,7 +660,7 @@
       },
       {
         "subtitle": "Current project on reload",
-        "contents": "<h2>Current project on reload</h2><p>When you load a project in the editor, its name and local project ID are remembered for the current browser session. After you reload the editor, it automatically tries to load that same saved project.</p><p>This uses the projects saved on the device. A project that has not been saved locally may not be available for automatic restore.</p>"
+        "contents": "<h2>Current project on reload</h2><p>Node2D remembers which local project is currently loaded during the browser session. When you reload the page, the editor can automatically reopen that project instead of dropping you back at the project chooser.</p><p>This is especially useful when refreshing the page during development. Closing the tab or ending the browser session clears session-only information according to normal browser session storage behavior.</p>"
       }
     ]
   },
@@ -646,27 +698,35 @@
       },
       {
         "subtitle": "Download Preferences",
-        "contents": "<h2>Download Preferences</h2><p><strong>Download Pref...</strong> downloads your editor preference data as JSON.</p><p>The export includes all stored editor preference values, including settings added by newer versions later, instead of being limited to a fixed list of known settings.</p>"
+        "contents": "<h2>Download Preferences</h2><p><strong>Download Pref...</strong> saves your editor preferences as JSON.</p><p>The export includes the stored editor preference data rather than only a manually selected list. This allows preferences introduced by a future editor version to travel with the downloaded settings when they are stored in the preference data.</p><p>Your chosen keyboard shortcuts, Move / Scale Snap, Rotate Snap, Auto Save, and Auto Save Interval are included when they are stored as editor preferences.</p>"
       },
       {
         "subtitle": "Move / Scale Snap",
-        "contents": "<h2>Move / Scale Snap</h2><p>Move / Scale Snap sets the fixed editing interval used while moving or scaling a Node with the viewport tools.</p><p>With the default <code>0.1</code>, movement and scale changes snap to 0.1 intervals instead of changing by arbitrary tiny amounts.</p><p>Set it to <code>0</code> to turn the snap interval off.</p>"
+        "contents": "<h2>Move / Scale Snap</h2><p>Sets the fixed editing interval used by Node movement and scaling.</p><p>Default: <code>1</code>.</p><p>Examples:</p><ul><li><code>1</code> → values move/scale in whole-unit steps.</li><li><code>0.5</code> → values use half-unit steps.</li><li><code>0.1</code> → values use one-tenth-unit steps.</li><li><code>0</code> → no movement/scale snapping.</li></ul><p>The setting is saved with your editor preferences.</p>"
       },
       {
         "subtitle": "Rotate Snap",
-        "contents": "<h2>Rotate Snap</h2><p>Rotate Snap sets the angle interval used by the Rotate tool.</p><p><code>0°</code> turns rotation snapping off. Other choices such as <code>15°</code>, <code>30°</code>, <code>45°</code>, <code>90°</code>, and <code>180°</code> make rotation lock to fixed angle steps.</p>"
+        "contents": "<h2>Rotate Snap</h2><p>Sets the fixed angle interval used by the Rotate gizmo.</p><p><code>0° (Off)</code> allows free rotation. A value such as <code>90°</code> makes the rotation land on right-angle increments.</p><p>Rotation snapping is independent from Move / Scale Snap.</p>"
       },
       {
         "subtitle": "Auto Save",
-        "contents": "<h2>Auto Save</h2><p>Turn <strong>Auto Save</strong> on to save the current project automatically at a fixed interval.</p><p>The Auto Save preference is an editor preference and is included when you use <strong>Download Pref...</strong>.</p>"
+        "contents": "<h2>Auto Save</h2><p>Enable Auto Save when you want Node2D to periodically save the currently loaded project instead of relying only on manual saves.</p><p>Auto Save applies to the loaded project. It does not replace exporting a project when you need a portable file.</p>"
       },
       {
         "subtitle": "Auto Save Interval",
-        "contents": "<h2>Auto Save Interval</h2><p><strong>Auto Save Interval</strong> is the number of seconds between automatic project saves. The field appears when Auto Save is checked.</p>"
+        "contents": "<h2>Auto Save Interval</h2><p>This controls how often Auto Save runs, in seconds.</p><p>For example, <code>30 s</code> means the current project is automatically saved about every 30 seconds while Auto Save is enabled.</p><p>Set a shorter interval when you are doing frequent small edits. Use a longer interval when you are making large groups of changes.</p>"
       },
       {
         "subtitle": "Prevent accidental reload or close",
         "contents": "<h2>Prevent accidental reload or close</h2><p>When a project is loaded, the editor prevents common accidental reload shortcuts such as F5 and Ctrl/Cmd+R and asks the browser for confirmation when the page is being reloaded or closed.</p>"
+      },
+      {
+        "subtitle": "Reset Defaults",
+        "contents": "<h2>Reset Defaults</h2><p><strong>Reset Defaults</strong> restores the editor settings to their default values and restores the default keyboard shortcuts. The current editor preference values are replaced by the defaults.</p><table><thead><tr><th>Setting</th><th>Default</th></tr></thead><tbody><tr><td>Move / Scale Snap</td><td>1</td></tr><tr><td>Rotate Snap</td><td>0° (Off)</td></tr><tr><td>Auto Save</td><td>Off</td></tr><tr><td>Auto Save Interval</td><td>30 Seconds</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Import Preferences",
+        "contents": "<h2>Import Preferences</h2><p><strong>Import Pref...</strong> loads an editor preference JSON file previously downloaded from Node2D. Stored editor settings and saved shortcut choices are restored from the file, so the editor changes to match the imported preferences.</p><p>The import can also restore stored preference keys contained in the exported preference data, allowing newer preference values to be carried between editor versions.</p>"
       }
     ]
   },
@@ -696,7 +756,7 @@
     "items": [
       {
         "subtitle": "Automatic offline mode",
-        "contents": "<h2>Automatic offline mode</h2><p>The editor can automatically cache the web app for offline use. When the editor has a network connection, it can load the newest version and update its saved offline copy.</p><p>When there is no network connection, the saved offline copy can be loaded instead.</p>"
+        "contents": "<h2>Automatic offline mode</h2><p>Node2D can maintain a saved browser copy of the editor for offline use.</p><ol><li><strong>Online:</strong> the editor loads the current files and updates the saved offline copy.</li><li><strong>Offline:</strong> the browser loads the saved copy when the network is unavailable.</li><li><strong>Back online:</strong> the editor can request the newest files again so your offline copy can catch up.</li></ol><p>This caching is browser storage for web resources; it is not a normal file download into your Downloads folder.</p>"
       },
       {
         "subtitle": "Offline toast",
@@ -730,6 +790,14 @@
       {
         "subtitle": "The editor is too narrow",
         "contents": "<h2>Editor too narrow</h2><p>Rotate the device or expand the window when the editor displays the small-screen warning. Editing is intentionally blocked while the screen is too narrow.</p>"
+      },
+      {
+        "subtitle": "Objects move by tiny decimal amounts",
+        "contents": "<h2>Objects move by tiny decimal amounts</h2><p>Check <strong>Editor Settings → Move / Scale Snap</strong>. A value such as <code>0.1</code> makes the position and scale use tenth-unit steps while the gizmo is dragged.</p><p>Snapping is applied to the Move gizmo center/axes and to the Scale gizmo handles. Rotation has its own separate snap setting.</p>"
+      },
+      {
+        "subtitle": "Scale corner does not keep the ratio",
+        "contents": "<h2>Scale corner behavior</h2><p>Use a corner handle when you want a proportional resize. Corner handles preserve the starting width-to-height ratio. Use a side handle when you intentionally want to change only width or only height.</p>"
       }
     ]
   },
@@ -738,7 +806,7 @@
     "items": [
       {
         "subtitle": "Components",
-        "contents": "<h2>Components</h2><p><code>Node</code>, <code>Script</code>, <code>Transform</code>, <code>Text</code>, <code>Sprite</code>, <code>Animation Sprite</code>, <code>Physics</code>, <code>Collider</code>, <code>Progress Bar</code>, and <code>Joystick</code>.</p>"
+        "contents": "<h2>Components</h2><p><code>Node</code> — object identity. <code>Script</code> — visual script graph. <code>Transform</code> — position, scale, rotation. <code>Text</code> — displayed text. <code>Sprite</code> — images and animated presentation. <code>Animation Sprite</code> — collections of sprite frames. <code>Physics</code> — physical movement. <code>Collider</code> — collision shape. <code>Progress Bar</code> — value meter. <code>Joystick</code> — touch control.</p>"
       },
       {
         "subtitle": "Events",
@@ -758,7 +826,7 @@
       },
       {
         "subtitle": "Editor Snap",
-        "contents": "<h2>Editor Snap</h2><p>Default Move / Scale Snap: <code>0.1</code>. Default Rotate Snap: <code>0° (Off)</code>. Both settings can be changed in Editor Settings and are saved on your device.</p>"
+        "contents": "<h2>Editor Snap</h2><p>Default Move / Scale Snap: <code>1</code>. Default Rotate Snap: <code>0° (Off)</code>. Both settings can be changed in Editor Settings and are saved on your device.</p>"
       },
       {
         "subtitle": "Audio playback inputs",
@@ -771,6 +839,77 @@
       {
         "subtitle": "Requirements",
         "contents": "<h2>ScriptNode requirements</h2><p>A ScriptNode can require a Game Settings feature. Required ScriptNodes remain visible but are disabled until the required feature is enabled.</p>"
+      },
+      {
+        "subtitle": "Editor Settings defaults",
+        "contents": "<h2>Editor Settings defaults</h2><p>Default editing snap is <code>1</code>, Rotate Snap is <code>0° (Off)</code>, Auto Save is off, and Auto Save Interval is <code>30 Seconds</code>. Use Reset Defaults to restore these values and the default shortcuts.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Standalone Export and PWA",
+    "items": [
+      {
+        "subtitle": "Export Project",
+        "contents": "<h2>Export Project</h2><p>Export Project creates a playable web package from the project you are editing. It is meant for sharing or hosting the game, not for continuing to edit the project.</p><p>The exported package contains a launcher page, the project data, and the runtime files needed to load the project. Your Scenes, Nodes, Components, ScriptNode graphs, variables, camera/game settings, and project assets are represented in the project data.</p><p>The export process reads the current engine files at export time, so a newly exported package uses the runtime build from the editor you exported from.</p><h3>Typical use</h3><ol><li>Save the project.</li><li>Choose Export Project.</li><li>Wait for the export progress to finish.</li><li>Open the resulting web package from a web-capable location.</li><li>Test the exported game separately from the editor.</li></ol><p>Use NDC export when you want the editable project data. Use Project Export when you want a playable web build.</p>"
+      },
+      {
+        "subtitle": "PWA export and offline use",
+        "contents": "<h2>PWA export and offline use</h2><p>A PWA-capable export includes the information a browser needs to treat the exported game as an installable web application when the browser and hosting environment support it.</p><p>Offline caching lets the browser keep a local copy of the web app so the exported game can continue to open without downloading the same files again while offline.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Expression Syntax — JavaScript Basics",
+    "items": [
+      {
+        "subtitle": "Numbers and arithmetic",
+        "contents": "<h2>Numbers and arithmetic</h2><p>Use normal arithmetic in expressions: <code>+</code> add, <code>-</code> subtract, <code>*</code> multiply, <code>/</code> divide, and <code>%</code> get the remainder.</p><pre><code>ctx.local.speed * 2\nctx.global.score + 10\nctx.velocity.velocityX / 60</code></pre>"
+      },
+      {
+        "subtitle": "Comparisons",
+        "contents": "<h2>Comparisons</h2><p>Comparisons produce <code>true</code> or <code>false</code>.</p><pre><code>ctx.local.health &gt; 0\nctx.global.score &gt;= 100\nctx.local.state === \"ready\"\nctx.local.state !== \"dead\"</code></pre>"
+      },
+      {
+        "subtitle": "Logical operators",
+        "contents": "<h2>Logical operators</h2><p><code>&amp;&amp;</code> means AND, <code>||</code> means OR, and <code>!</code> means NOT.</p><pre><code>ctx.local.health &gt; 0 &amp;&amp; ctx.global.score &gt; 100\nctx.local.state === \"win\" || ctx.local.state === \"draw\"\n!ctx.local.dead</code></pre>"
+      },
+      {
+        "subtitle": "Ternary",
+        "contents": "<h2>Ternary</h2><p>Choose between two values:</p><pre><code>condition ? truth : falsy</code></pre><pre><code>ctx.local.health &gt; 0 ? \"Alive\" : \"Dead\"</code></pre>"
+      },
+      {
+        "subtitle": "Optional chaining",
+        "contents": "<h2>Optional chaining</h2><p><code>?.</code> safely reads through a value that might be missing.</p><pre><code>ctx.node?.name\nctx.node?.sprite?.src</code></pre>"
+      },
+      {
+        "subtitle": "Nullish fallback",
+        "contents": "<h2>Nullish fallback</h2><p><code>??</code> uses the value on the left unless it is <code>null</code> or <code>undefined</code>.</p><pre><code>ctx.local.name ?? \"Player\"</code></pre>"
+      },
+      {
+        "subtitle": "Property access",
+        "contents": "<h2>Property access</h2><p>Use <code>.</code> to access named properties.</p><pre><code>ctx.position.x\nctx.scale.y\nctx.global.score</code></pre>"
+      },
+      {
+        "subtitle": "Bracket access",
+        "contents": "<h2>Bracket access</h2><p>Use brackets when a property name needs to be written as a string.</p><pre><code>ctx.events.key[\"1\"]\nctx.local[\"player-name\"]</code></pre>"
+      },
+      {
+        "subtitle": "Parentheses",
+        "contents": "<h2>Parentheses</h2><p>Use parentheses to control the order of a calculation and make complex expressions easier to read.</p><pre><code>(ctx.global.score + 10) * 2</code></pre>"
+      },
+      {
+        "subtitle": "Combining syntax",
+        "contents": "<h2>Combining syntax</h2><p>These pieces can be combined into one expression.</p><pre><code>ctx.node?.name === \"Player\" &amp;&amp; (ctx.global.score &gt;= 100 ? true : false)</code></pre><p>Build complex expressions from small understandable pieces and test them in the input where they will be used.</p>"
+      }
+    ]
+  },
+  {
+    "title": "ScriptNodes",
+    "items": [
+      {
+        "subtitle": "New ScriptNode placement",
+        "contents": "<h2>New ScriptNode placement</h2><p>When you add a ScriptNode from the ScriptNode Library, Node2D places it at the center of the ScriptNode canvas view. If you have already panned or zoomed the graph, the new ScriptNode is placed at the center of the area you are currently looking at rather than at a fixed screen corner.</p><p>Dragging a ScriptNode from the library onto the canvas is different: it is placed at the exact drop location.</p>"
       }
     ]
   }
