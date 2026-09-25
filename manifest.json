@@ -15,5 +15,6 @@
       "purpose": "any maskable"
     }
   ],
-  "description": "Node2D Game Engine — 2D game creation and visual scripting for the web"
+  "description": "Node2D Game Engine — 2D game creation and visual scripting for the web",
+  "version": "22.0.0"
 }
