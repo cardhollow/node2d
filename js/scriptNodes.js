@@ -105,7 +105,7 @@
     },
     {
       name:'playAudio', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'src',type:'selector',value:ctx=>(ctx?.audioAssets||[]).map(a=>a.name),selected:''},{name:'start',type:'int',value:0},{name:'duration',type:'int',value:0},{name:'loop',type:'bool',value:false},{name:'fadein',type:'int',value:0},{name:'fadeout',type:'int',value:0}],
+      editor:[{name:'src',type:'selector',value:ctx=>(ctx?.audioAssets||[]).map(a=>a.name),selected:''},{name:'volume',type:'int',value:100},{name:'start',type:'int',value:0},{name:'duration',type:'int',value:0},{name:'loop',type:'bool',value:false},{name:'fadein',type:'int',value:0},{name:'fadeout',type:'int',value:0}],
       func:(ctx,v)=>{ctx.playAudio?.(v);return {out:true};}
     },
     {name:'stopAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.stopAudio?.();return {out:true};}},

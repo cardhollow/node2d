@@ -3180,6 +3180,8 @@
     sceneJoysticks(state.runtime.scene).forEach(j=>{const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;});
     return ctx;
   }
+  let runtimeAudioContext=null,runtimeAudioMaster=null;
+  const runtimeAudioBuffers=new Map(),runtimeAudioLoading=new Map();
   let runtimeMIDIContext=null;
   function runtimeMIDIBytes(value){
     if(value instanceof Uint8Array)return value;
@@ -3227,7 +3229,7 @@
     if(!runtimeMIDIContext)runtimeMIDIContext=new (window.AudioContext||window.webkitAudioContext)();
     const audio=runtimeMIDIContext;
     if(audio.state==='suspended')audio.resume();
-    const master=audio.createGain();master.gain.value=1;master.connect(audio.destination);
+    const volume=clamp(Number(v?.volume??100),0,100)/100;const master=audio.createGain();master.gain.value=volume;master.connect(audio.destination);
     const oscillators=new Set();let timer=0,cursor=0,loops=0,stopped=false;
     const lookAhead=0.18,intervalMs=40,startAt=Math.min(songDuration,Math.max(0,Number(v?.start)||0)/1000),maxDuration=Math.max(0,Number(v?.duration)||0)/1000;
     const stopAt=maxDuration>0?Math.min(songDuration,startAt+maxDuration):songDuration;
@@ -3237,7 +3239,8 @@
     const wave=['sine','triangle','square','sawtooth'];
     let player;
     const cleanup=()=>{if(stopped)return;stopped=true;if(timer)clearTimeout(timer);oscillators.forEach(o=>{try{o.stop();}catch{}});oscillators.clear();try{master.disconnect();}catch{}};
-    if(fadeIn>0){master.gain.setValueAtTime(0,base);master.gain.linearRampToValueAtTime(1,base+fadeIn);}
+    if(fadeIn>0){master.gain.setValueAtTime(0,base);master.gain.linearRampToValueAtTime(volume,base+fadeIn);}
+    else master.gain.setValueAtTime(volume,base);
     const finish=()=>{cleanup();state.runtime.audio=state.runtime.audio.filter(x=>x!==player);};
     const scheduleNote=(n,when)=>{
       const osc=audio.createOscillator(),gain=audio.createGain(),dur=Math.max(0.01,n.end-Math.max(n.start,startAt)),vol=0.2*(n.velocity/127);
@@ -3251,7 +3254,7 @@
       if(stopped)return;
       const now=audio.currentTime-base;
       if(now>=stopAt){
-        if(v?.loop&&maxDuration<=0){loops++;base=audio.currentTime-startAt;cursor=0;while(cursor<notes.length&&notes[cursor].end<=startAt)cursor++;master.gain.cancelScheduledValues(audio.currentTime);master.gain.setValueAtTime(1,audio.currentTime);return schedule();}
+        if(v?.loop&&maxDuration<=0){loops++;base=audio.currentTime-startAt;cursor=0;while(cursor<notes.length&&notes[cursor].end<=startAt)cursor++;master.gain.cancelScheduledValues(audio.currentTime);master.gain.setValueAtTime(volume,audio.currentTime);return schedule();}
         if(fadeOut>0){const t=audio.currentTime;master.gain.cancelScheduledValues(t);master.gain.setValueAtTime(master.gain.value,t);master.gain.linearRampToValueAtTime(0,t+fadeOut);setTimeout(finish,fadeOut*1000+60);}else finish();
         return;
       }
@@ -3261,17 +3264,61 @@
     };
     state.runtime.audio.push(player);schedule();return player;
   }
+  function runtimeEnsureAudioContext(){
+    const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext)return null;
+    if(!runtimeAudioContext){
+      try{runtimeAudioContext=new AudioContext({latencyHint:'interactive'});}catch{runtimeAudioContext=new AudioContext();}
+      runtimeAudioMaster=runtimeAudioContext.createGain();runtimeAudioMaster.gain.value=1;runtimeAudioMaster.connect(runtimeAudioContext.destination);
+    }
+    if(runtimeAudioContext.state==='suspended')runtimeAudioContext.resume?.().catch?.(()=>{});
+    return runtimeAudioContext;
+  }
+  async function runtimeDecodeAudio(asset){
+    const key=asset?.name||asset?.value||'';if(!key)throw new Error('Invalid audio asset');
+    if(runtimeAudioBuffers.has(key))return runtimeAudioBuffers.get(key);
+    if(runtimeAudioLoading.has(key))return runtimeAudioLoading.get(key);
+    const ctx=runtimeEnsureAudioContext();if(!ctx)throw new Error('Web Audio is unavailable');
+    const promise=(async()=>{
+      const response=await fetch(asset.value);if(!response.ok)throw new Error(`Audio load failed (${response.status})`);
+      const data=await response.arrayBuffer();const buffer=await ctx.decodeAudioData(data.slice(0));if(ctx!==runtimeAudioContext)return buffer;runtimeAudioBuffers.set(key,buffer);return buffer;
+    })().catch(err=>{runtimeAudioLoading.delete(key);throw err;});
+    runtimeAudioLoading.set(key,promise);
+    try{return await promise;}finally{runtimeAudioLoading.delete(key);}
+  }
+  function runtimeFallbackPlayAudio(asset,v){
+    const audio=new Audio();audio.preload='auto';audio.src=asset.value;audio.loop=!!v?.loop;audio.volume=clamp(Number(v?.volume??100),0,100)/100;
+    const start=Math.max(0,Number(v?.start)||0),duration=Math.max(0,Number(v?.duration)||0);let stopped=false,timer=0;
+    const player={type:'audio-media',pause:()=>{if(stopped)return;stopped=true;if(timer)clearTimeout(timer);try{audio.pause();}catch{}state.runtime.audio=state.runtime.audio.filter(a=>a!==player);}};
+    const begin=()=>{if(stopped)return;try{audio.currentTime=start;}catch{}audio.play?.().catch?.(err=>{state.runtime.lastError=String(err?.message||err);});if(duration>0)timer=setTimeout(()=>player.pause(),duration);};
+    audio.addEventListener('loadedmetadata',begin,{once:true});audio.addEventListener('error',()=>{if(!stopped)state.runtime.lastError='Audio playback failed';},{once:true});state.runtime.audio.push(player);try{audio.load();}catch{}if(audio.readyState>=1)begin();return player;
+  }
+  function runtimeWarmAudioAssets(){
+    const assets=[...(state.assets.Audio||[])].filter(a=>a?.value&&String(a.value).length<=3000000);
+    const warm=()=>{let i=0;const next=()=>{if(i>=assets.length)return;runtimeDecodeAudio(assets[i++]).catch(()=>{});if(window.requestIdleCallback)window.requestIdleCallback(next,{timeout:250});else setTimeout(next,40);};next();};
+    if(window.requestIdleCallback)window.requestIdleCallback(warm,{timeout:1200});else setTimeout(warm,200);
+  }
   function runtimePlayAudio(v){
-    const name=typeof v==='string'?v:v?.src;
-    const asset=[...(state.assets.Audio||[]),...(state.assets.MIDI||[])].find(a=>a.name===name);if(!asset?.value)return;
+    const name=typeof v==='string'?v:v?.src;const asset=[...(state.assets.Audio||[]),...(state.assets.MIDI||[])].find(a=>a.name===name);if(!asset?.value)return;
     try{
-      const isMIDI=asset.kind==='MIDI'||asset.type==='audio/midi'||/\.(mid|midi)$/i.test(asset.filename||'');
-      if(isMIDI){runtimePlayMIDI(asset,v);return;}
-      const audio=new Audio(asset.value);audio.loop=!!v?.loop;const start=Math.max(0,Number(v?.start)||0),duration=Math.max(0,Number(v?.duration)||0);audio.addEventListener('loadedmetadata',()=>{try{audio.currentTime=Math.min(start,Math.max(0,(audio.duration||start)-0.001));}catch{}});if(duration>0)setTimeout(()=>{try{audio.pause();}catch{}},duration);audio.play?.();state.runtime.audio.push(audio);audio.onended=()=>{state.runtime.audio=state.runtime.audio.filter(a=>a!==audio);};
+      const isMIDI=asset.kind==='MIDI'||asset.type==='audio/midi'||/\.(mid|midi)$/i.test(asset.filename||'');if(isMIDI){runtimePlayMIDI(asset,v);return;}
+      const ctx=runtimeEnsureAudioContext();if(!ctx||String(asset.value).length>8000000){runtimeFallbackPlayAudio(asset,v);return;}
+      const key=asset?.name||asset?.value||'';if(!runtimeAudioBuffers.has(key)){runtimeDecodeAudio(asset).catch(()=>{});runtimeFallbackPlayAudio(asset,v);return;}
+      const volume=clamp(Number(v?.volume??100),0,100)/100,start=Math.max(0,Number(v?.start)||0),duration=Math.max(0,Number(v?.duration)||0),fadeIn=Math.max(0,Number(v?.fadein)||0)/1000,fadeOut=Math.max(0,Number(v?.fadeout)||0)/1000,loop=!!v?.loop;
+      let stopped=false,source=null,gain=null;
+      const player={type:'audio',pause:()=>{if(stopped)return;stopped=true;try{source?.stop();}catch{}try{source?.disconnect();gain?.disconnect();}catch{}state.runtime.audio=state.runtime.audio.filter(a=>a!==player);}};state.runtime.audio.push(player);
+      runtimeDecodeAudio(asset).then(buffer=>{
+        if(stopped)return;source=ctx.createBufferSource();source.buffer=buffer;source.loop=loop;gain=ctx.createGain();source.connect(gain).connect(runtimeAudioMaster);
+        const when=ctx.currentTime+0.005,offset=Math.min(start,Math.max(0,buffer.duration-0.001)),playLength=duration>0?duration:(loop?0:Math.max(0,buffer.duration-offset));
+        if(fadeIn>0){gain.gain.setValueAtTime(0,when);gain.gain.linearRampToValueAtTime(volume,when+fadeIn);}else gain.gain.setValueAtTime(volume,when);
+        if(fadeOut>0&&playLength>0){const from=Math.max(0,playLength-fadeOut);gain.gain.setValueAtTime(volume,when+from);gain.gain.linearRampToValueAtTime(0,when+playLength);}
+        source.onended=()=>{if(stopped)return;stopped=true;try{source.disconnect();gain.disconnect();}catch{}state.runtime.audio=state.runtime.audio.filter(a=>a!==player);};
+        if(playLength>0)source.start(when,offset,Math.min(playLength,Math.max(0,buffer.duration-offset)));else source.start(when,offset);
+      }).catch(err=>{if(!stopped){state.runtime.audio=state.runtime.audio.filter(a=>a!==player);runtimeFallbackPlayAudio(asset,v);}state.runtime.lastError=String(err?.message||err);});
     }catch(err){state.runtime.lastError=String(err?.message||err);}
   }
-  function runtimeStopAudio(){(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});}
+  function runtimeStopAudio(){[...(state.runtime.audio||[])].forEach(a=>{try{a.pause();}catch{}});}
   function runtimeClearAudio(){runtimeStopAudio();state.runtime.audio=[];}
+  function runtimeCloseAudio(){runtimeStopAudio();runtimeAudioBuffers.clear();runtimeAudioLoading.clear();try{runtimeAudioMaster?.disconnect();}catch{}try{runtimeAudioContext?.close();}catch{}runtimeAudioMaster=null;runtimeAudioContext=null;try{runtimeMIDIContext?.close();}catch{}runtimeMIDIContext=null;}
   function routeRuntimeOutput(sourceSn,outputId){
     const sourceNode=runtimeNodeForScript(sourceSn);if(!sourceNode)return;
     const lists=Object.values(state.runtime.dynamicConnectionsByNode||{});
@@ -3552,6 +3599,7 @@
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
     state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
+    runtimeEnsureAudioContext();
 
     if(window.__UIX_STANDALONE__){
       const root=$('#runtimeRoot')||document.body;
@@ -3560,16 +3608,16 @@
       applyRuntimeScreenType(root,canvas,state.game.screenType);
       canvas.style.touchAction='none';
       installRuntimeInputHandlers(root);
-      runRuntimeSceneScripts();
+      runRuntimeSceneScripts();runtimeWarmAudioAssets();
       runtimeLast=performance.now();
       runtimeFrame=requestAnimationFrame(runtimeTick);
       return;
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);(state.runtime.audio||[]).forEach(a=>{try{a.pause();}catch{}});cleanupRuntimeMic();state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
