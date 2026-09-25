@@ -29,6 +29,8 @@
     assetSelection: null,
     componentClipboard: null,
     nodeClipboard: null,
+    selectedIds: [],
+    selectionAnchorId: null,
     history: { undo: [], redo: [], busy: false },
     camera: {
       enabled: true,
@@ -42,12 +44,12 @@
       transform: { position: [0, 0], angle: [0] }
     },
     script: {
-      nodeId: null, selectedNodeId: null, pan: { x: 0, y: 0 }, zoom: 1,
+      nodeId: null, selectedNodeId: null, selectedNodeIds: [], selectionAnchorId: null, pan: { x: 0, y: 0 }, zoom: 1,
       nodesByNode: Object.create(null), connectionsByNode: Object.create(null),
-      editingInput: null
+      editingInput: null, clipboard: null
     },
     dragTree: null,
-    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '' },
+    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' } },
     game: { preferredSceneId: '', screenType: 'Windowboxing' },
     ui: {
       componentCollapsed: Object.create(null),
@@ -134,6 +136,63 @@
     return findNode(state.selectedId);
   }
   function selectionLabel() { return currentSelection()?.name || 'Nothing'; }
+  function visibleTreeItems(scene=currentScene()){
+    const out=[];
+    const walk=(items)=>{(Array.isArray(items)?items:[]).forEach(n=>{out.push(n);if(n.type==='folder'&&!n.collapsed)walk(n.children);});};
+    walk(scene?.nodes);return out;
+  }
+  function selectedSceneNodes(){
+    const ids=new Set(Array.isArray(state.selectedIds)?state.selectedIds:[]);
+    return visibleTreeItems().filter(n=>ids.has(n.id));
+  }
+  function normalizeSelectionState(){
+    const valid=new Set(allNodes().map(x=>x.node.id));
+    state.selectedIds=(Array.isArray(state.selectedIds)?state.selectedIds:[]).filter(id=>valid.has(id));
+    if(state.selectedId&&!valid.has(state.selectedId)&&!['scene-camera','global-variables','ui-components'].includes(state.selectedId))state.selectedId=state.selectedIds.at(-1)||'scene-camera';
+    if(state.selectionAnchorId&&!valid.has(state.selectionAnchorId))state.selectionAnchorId=null;
+    if(state.selectedIds.length===1)state.selectedId=state.selectedIds[0];
+  }
+  function setNodeSelection(node,e={}){
+    const id=node?.id;if(!id)return;
+    const list=visibleTreeItems();const ids=list.map(n=>n.id);const primary=state.selectedId;
+    if(e.shiftKey&&state.selectionAnchorId&&ids.includes(state.selectionAnchorId)){
+      const a=ids.indexOf(state.selectionAnchorId),b=ids.indexOf(id),lo=Math.min(a,b),hi=Math.max(a,b);state.selectedIds=ids.slice(lo,hi+1);state.selectedId=id;
+    }else if(e.ctrlKey||e.metaKey){
+      const set=new Set(state.selectedIds||[]);if(set.has(id))set.delete(id);else set.add(id);state.selectedIds=list.filter(n=>set.has(n.id)).map(n=>n.id);state.selectedId=set.has(id)?id:(state.selectedIds.at(-1)||null);
+    }else{state.selectedIds=[id];state.selectedId=id;}
+    state.selectionAnchorId=id;state.ui.selectedComponentKey='';
+    return primary!==state.selectedId||state.selectedIds.length>1;
+  }
+  function clearNodeSelection(fallback='scene-camera'){if(fallback&&findNode(fallback)){state.selectedIds=[fallback];state.selectionAnchorId=fallback;}else{state.selectedIds=[];state.selectionAnchorId=null;}state.selectedId=fallback;state.ui.selectedComponentKey='';}
+  function topLevelSelectedItems(){
+    const items=selectedSceneNodes(),set=new Set(items.map(n=>n.id));
+    return items.filter(item=>!items.some(parent=>parent!==item&&parent.type==='folder'&&set.has(parent.id)&&isDescendant(parent,item.id)));
+  }
+  function packTreeScripts(item,out={}){
+    if(!item)return out;
+    if(item.type==='folder'){(item.children||[]).forEach(child=>packTreeScripts(child,out));}
+    else out[item.id]={nodes:clone(state.script.nodesByNode[item.id]||[]),connections:clone(state.script.connectionsByNode[item.id]||[])};
+    return out;
+  }
+  function packClipboardItem(item){const data=clone(item);return {sourceId:item.id,item:data,scripts:packTreeScripts(item)};}
+  function remapPastedTree(item,packed,map){
+    const old=item.id;item.id=`${item.type==='folder'?'folder':'node'}-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;item.numericId=nextNodeNumericId();map.set(old,item.id);
+    if(item.type==='folder'){item.children=(Array.isArray(item.children)?item.children:[]).map(ch=>remapPastedTree(ch,packed,map));}
+    else normalizeNode(item);
+    return item;
+  }
+  function restorePackedScripts(packed,map){
+    const source=packed?.scripts||{};
+    Object.entries(source).forEach(([oldId,g])=>{
+      const newId=map.get(oldId);if(!newId)return;
+      const scripts=clone(g.nodes||[]),con=clone(g.connections||[]),sm=new Map();
+      scripts.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sm.set(old,sn.id);});
+      state.script.nodesByNode[newId]=scripts;state.script.connectionsByNode[newId]=con.map(c=>({...c,from:sm.get(c.from)||c.from,to:sm.get(c.to)||c.to}));
+    });
+  }
+  function selectedMainItemsForCommand(){
+    const selected=topLevelSelectedItems();return selected.length?selected:(selectedNode()?[selectedNode()]:[]);
+  }
 
   function sceneUIComponents(scene = currentScene()) {
     const key = scene?.id || '__none__';
@@ -203,24 +262,49 @@
     clearTimeout(status.timer);
     status.timer = setTimeout(() => el.textContent = 'Ready', 1800);
   }
+  function showOfflineToast(message='Loaded in Offline Mode'){
+    let el=$('#uixOfflineToast');
+    if(!el){
+      el=document.createElement('div');el.id='uixOfflineToast';el.className='uix-offline-toast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.append(el);
+    }
+    el.textContent=message;el.classList.add('open');clearTimeout(showOfflineToast.timer);showOfflineToast.timer=setTimeout(()=>el.classList.remove('open'),2600);
+  }
+  function installEditorServiceWorker(){
+    if(window.__UIXServiceWorkerInstalled)return;
+    window.__UIXServiceWorkerInstalled=true;
+    if(!('serviceWorker' in navigator))return;
+    navigator.serviceWorker.addEventListener('message',e=>{
+      if(e.data?.type==='uix-offline-mode')showOfflineToast('Loaded in Offline Mode');
+      if(e.data?.type==='uix-online-update')showOfflineToast('Online — newest files are being saved');
+    });
+    window.addEventListener('offline',()=>showOfflineToast('Offline Mode'));
+    navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).then(reg=>{
+      reg.update().catch(()=>{});
+      if(!navigator.onLine)showOfflineToast('Loaded in Offline Mode');
+    }).catch(()=>{});
+  }
 
-  function historySnapshot(){return clone({scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
-  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
+  function historySnapshot(){return clone({scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,selectedIds:state.selectedIds,selectionAnchorId:state.selectionAnchorId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
+  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.selectedIds=clone(snap.selectedIds||[]);state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
   function pushHistory(){if(state.history.busy)return;state.history.undo.push(historySnapshot());if(state.history.undo.length>80)state.history.undo.shift();state.history.redo=[];}
   function undo(){const prev=state.history.undo.pop();if(!prev)return status('Nothing to undo');state.history.busy=true;state.history.redo.push(historySnapshot());restoreHistorySnapshot(prev);state.history.busy=false;status('Undo');}
   function redo(){const next=state.history.redo.pop();if(!next)return status('Nothing to redo');state.history.busy=true;state.history.undo.push(historySnapshot());restoreHistorySnapshot(next);state.history.busy=false;status('Redo');}
   function nextNodeNumericId(){const used=new Set(allNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Math.max(1,state.nextNodeId||1);while(used.has(n))n++;state.nextNodeId=n+1;return n;}
   function uniqueNodeName(base,items){const names=new Set((items||[]).map(n=>String(n.name||'').toLowerCase()));let name=base||'Node';if(!names.has(name.toLowerCase()))return name;let i=2;while(names.has(`${name} ${i}`.toLowerCase()))i++;return `${name} ${i}`;}
   function remapScriptNodeIds(sourceId,targetId){const nodes=clone(state.script.nodesByNode[sourceId]||[]),con=clone(state.script.connectionsByNode[sourceId]||[]),map=new Map();nodes.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;map.set(old,sn.id);});state.script.nodesByNode[targetId]=nodes;state.script.connectionsByNode[targetId]=con.map(x=>({...x,from:map.get(x.from)||x.from,to:map.get(x.to)||x.to}));}
-  function isNodeItem(item){ return !!item && item.type === 'node'; }
-  function copyNode(node){
-    if(!isNodeItem(node)) return status('Only Nodes can be copied here');
-    const data=clone(node); delete data.id; delete data.numericId;
-    state.nodeClipboard={node:data,sourceId:node.id}; status(`${node.name} copied`);
+  function isNodeItem(item){ return !!item && (item.type === 'node' || item.type === 'folder'); }
+  function copyNode(node=null){
+    const items=selectedMainItemsForCommand().filter(isNodeItem);
+    if(!items.length)return status('Nothing selected to copy');
+    state.nodeClipboard={items:items.map(packClipboardItem),sourceIds:items.map(x=>x.id)};
+    status(items.length===1?`${items[0].name} copied`:`${items.length} items copied`);
   }
-  function cutNode(node=selectedNode()){
-    if(!isNodeItem(node)) return status('Only Nodes can be cut here');
-    copyNode(node); askConfirm('Cut Node',`Cut “${node.name}”?`,()=>deleteTreeItem(node,true));
+  function cutNode(node=null){
+    const items=topLevelSelectedItems().filter(isNodeItem);
+    if(!items.length)return status('Nothing selected to cut');
+    state.selectedIds=items.map(x=>x.id);state.selectedId=items.at(-1)?.id||node?.id||state.selectedId;copyNode();
+    const names=items.map(x=>x.name).join(', ');
+    askConfirm('Cut Selection',`Cut ${items.length===1?'“'+names+'”':items.length+' selected items'}?`,()=>deleteSelectedNodesNow(items), 'Cut');
   }
   function cloneTreeItem(item, options={}){
     if(!item)return null;
@@ -247,21 +331,35 @@
     if(folder?.type!=='folder')return status('Select a Folder to clone');
     const scene=currentScene(); if(!scene)return;
     const container=findContainer(folder.id)||scene.nodes; const copy=cloneTreeItem(folder,{siblingItems:container});
-    pushHistory(); const at=Math.max(0,container.findIndex(x=>x.id===folder.id)+1); container.splice(at,0,copy); state.selectedId=copy.id; renderAll(); status(`${copy.name} cloned`);
+    pushHistory(); const at=Math.max(0,container.findIndex(x=>x.id===folder.id)+1); container.splice(at,0,copy); clearNodeSelection(copy.id); renderAll(); status(`${copy.name} cloned`);
   }
   function pasteNode(){
-    const clip=state.nodeClipboard?.node; if(!clip)return status('Paste is disabled until a Node is copied');
-    const scene=currentScene(); if(!scene)return;
+    const clips=Array.isArray(state.nodeClipboard?.items)?state.nodeClipboard.items:state.nodeClipboard?.node?[{sourceId:state.nodeClipboard.sourceId,item:state.nodeClipboard.node,scripts:{[state.nodeClipboard.sourceId]:{nodes:clone(state.script.nodesByNode[state.nodeClipboard.sourceId]||[]),connections:clone(state.script.connectionsByNode[state.nodeClipboard.sourceId]||[])}}}]:[];
+    if(!clips.length)return status('Paste is disabled until something is copied');
+    const scene=currentScene();if(!scene)return;
     const selected=currentSelection();
-    const targetContainer=selected?.type==='folder' ? (selected.children ||= []) : selectedNode() ? (findContainer(selectedNode().id)||scene.nodes) : scene.nodes;
+    const targetContainer=selected?.type==='folder'?(selected.children ||= []):selectedNode()?findContainer(selectedNode().id)||scene.nodes:scene.nodes;
     pushHistory();
-    const data=clone(clip); data.id=`node-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; data.numericId=nextNodeNumericId(); data.name=uniqueNodeName(data.name,targetContainer); normalizeNode(data);
-    const selectedNodeValue=selectedNode(); const at=selectedNodeValue&&targetContainer.findIndex(n=>n.id===selectedNodeValue.id)>=0?targetContainer.findIndex(n=>n.id===selectedNodeValue.id)+1:targetContainer.length;
-    targetContainer.splice(at,0,data);
-    const sourceId=state.nodeClipboard.sourceId; if(state.script.nodesByNode[sourceId])remapScriptNodeIds(sourceId,data.id);
-    state.selectedId=data.id; renderAll(); status(`${data.name} pasted`);
+    const inserted=[];
+    clips.forEach((packed,index)=>{
+      const data=clone(packed.item);const oldName=data.name;const map=new Map();remapPastedTree(data,packed,map);data.name=uniqueNodeName(index===0?oldName:`${oldName}`,targetContainer);restorePackedScripts(packed,map);
+      const anchor=selectedNode();const at=anchor&&targetContainer.findIndex(n=>n.id===anchor.id)>=0?targetContainer.findIndex(n=>n.id===anchor.id)+1+inserted.length:targetContainer.length;
+      targetContainer.splice(at,0,data);inserted.push(data);
+    });
+    state.selectedIds=inserted.map(x=>x.id);state.selectionAnchorId=inserted.at(-1)?.id||null;state.selectedId=inserted.at(-1)?.id||state.selectedId;renderAll();status(inserted.length===1?`${inserted[0].name} pasted`:`${inserted.length} items pasted`);
   }
-
+  function deleteSelectedNodesNow(items=selectedMainItemsForCommand()){
+    const scene=currentScene();if(!scene)return;
+    const targets=items.filter(x=>findNode(x.id));if(!targets.length)return;
+    pushHistory();
+    targets.forEach(node=>{const source=findContainer(node.id);if(!source)return;const i=source.findIndex(x=>x.id===node.id);if(i>=0)source.splice(i,1);delete state.script.nodesByNode[node.id];delete state.script.connectionsByNode[node.id];});
+    clearNodeSelection('scene-camera');renderAll();status(targets.length===1?`${targets[0].name} deleted`:`${targets.length} items deleted`);
+  }
+  function deleteSelectedNodes(){
+    const targets=topLevelSelectedItems();if(!targets.length){const n=selectedNode();if(n)targets.push(n);}
+    if(!targets.length)return status('Nothing selected');
+    askConfirm('Delete Selection',`Delete ${targets.length===1?'“'+targets[0].name+'”':targets.length+' selected items'}${targets.some(x=>x.type==='folder')?' and everything inside the selected folders':''}?`,()=>deleteSelectedNodesNow(targets));
+  }
   function ensureProject() {
     if (!state.scenes.length) {
       const scene = makeScene('Main');
@@ -362,7 +460,7 @@
       const selectedSpecial = state.selectedId === id || (id === 'ui-components' && !!sceneJoysticks().find(j => j.id === state.selectedId));
       const row = document.createElement('div'); row.className = `tree-node special-node${selectedSpecial ? ' selected' : ''}${id === 'ui-components' ? ' future-node' : ''}`; row.dataset.nodeId = id;
       row.innerHTML = `<div class="node-row" role="button" aria-selected="${state.selectedId === id}"><span class="twisty">+</span><span class="node-icon">${icon}</span><span class="node-name">${name}</span></div>`;
-      row.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); state.selectedId = id; renderAll(); status(`Selected ${name}`); });
+      row.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearNodeSelection(id); renderAll(); status(`Selected ${name}`); });
       row.addEventListener('contextmenu', e => { e.preventDefault(); showContextMenu([{ label: 'Select', action: () => { state.selectedId = id; renderAll(); } }], e.clientX, e.clientY); });
       host.append(row);
     });
@@ -379,17 +477,17 @@
 
   function renderTreeItems(host, items, depth) {
     (Array.isArray(items) ? items : []).forEach(node => {
-      const wrap = document.createElement('div'); wrap.className = `tree-node scene-node${state.selectedId === node.id ? ' selected' : ''}`; wrap.dataset.nodeId = node.id; wrap.dataset.nodeType = node.type; wrap.draggable = true; wrap.style.paddingLeft = `${depth * 12}px`;
+      normalizeSelectionState(); const wrap = document.createElement('div'); wrap.className = `tree-node scene-node${state.selectedIds.includes(node.id) ? ' selected' : ''}${state.selectedIds.length>1 && state.selectedIds.includes(node.id) ? ' multi-selected' : ''}`; wrap.dataset.nodeId = node.id; wrap.dataset.nodeType = node.type; wrap.draggable = true; wrap.style.paddingLeft = `${depth * 12}px`;
       wrap.style.width = '100%';
       const folder = node.type === 'folder'; const hasChildren = folder && Array.isArray(node.children) && node.children.length;
       wrap.innerHTML = `<div class="node-row"><span class="twisty">${folder ? (hasChildren ? (node.collapsed ? '+' : '−') : '·') : ''}</span><span class="node-icon ${folder ? 'folder-node-icon' : 'node-node-icon'}">${folder ? '▰' : '◇'}</span><span class="node-name">${esc(node.name)}</span><button type="button" class="tree-delete" title="Delete">×</button></div>`;
-      $('.tree-delete', wrap).addEventListener('click', e => {e.stopPropagation();deleteTreeItem(node);});
+      $('.tree-delete', wrap).addEventListener('click', e => {e.stopPropagation();if(state.selectedIds.length>1&&state.selectedIds.includes(node.id))deleteSelectedNodes();else deleteTreeItem(node);});
       $('.node-row', wrap).addEventListener('contextmenu', e => {if(e.target.closest('.tree-delete'))return;});
       $('.node-row', wrap).addEventListener('click', e => {
         if (Date.now() < suppressClickUntil) return;
         if (e.target.closest('.tree-delete')) return;
         if (folder && e.target.closest('.twisty')) { node.collapsed = !node.collapsed; renderSelectionTree(); return; }
-        state.selectedId = node.id; state.ui.selectedComponentKey=''; renderSelectionTree(); renderComponentPanel(); drawWorkplace(); status(`Selected ${node.name}`);
+        setNodeSelection(node,e); renderSelectionTree(); renderComponentPanel(); drawWorkplace(); status(state.selectedIds.length>1?`${state.selectedIds.length} items selected`:`Selected ${node.name}`);
       });
       wrap.addEventListener('dragstart', e => { state.dragTree = { nodeId: node.id }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', node.id); wrap.classList.add('dragging'); });
       wrap.addEventListener('dragend', () => { state.dragTree = null; $$('.drag-over').forEach(x => x.classList.remove('drag-over')); wrap.classList.remove('dragging'); });
@@ -397,8 +495,12 @@
       wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
       wrap.addEventListener('drop', e => { e.preventDefault(); wrap.classList.remove('drag-over'); const moving = findNode(state.dragTree?.nodeId); if (!moving || moving.id === node.id) return; folder ? moveIntoFolder(moving, node) : moveToRoot(moving.id); });
       const openTreeContext=e=>{
-        e.preventDefault(); e.stopPropagation(); state.selectedId=node.id; renderSelectionTree(); renderComponentPanel(); drawWorkplace();
-        const items=folder ? [{label:'Clone Folder',action:()=>cloneFolder(node)},{label:'Delete',action:()=>deleteTreeItem(node)}] : [{label:'Cut',action:()=>cutNode(node)},{label:'Copy',action:()=>copyNode(node)},{label:'Paste',disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',action:()=>deleteTreeItem(node)}];
+        e.preventDefault(); e.stopPropagation();
+        if(!state.selectedIds.includes(node.id)) clearNodeSelection(node.id); else state.selectedId=node.id;
+        renderSelectionTree(); renderComponentPanel(); drawWorkplace();
+        const count=topLevelSelectedItems().length;
+        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
+        if(count>1)items.unshift({label:`${count} selected`,icon:'☷',disabled:true});
         showContextMenu(items,e.clientX??0,e.clientY??0);
       };
       wrap.addEventListener('contextmenu', openTreeContext);
@@ -420,7 +522,7 @@
   }
   function deleteTreeItem(node,skipConfirm=false) {
     const source=findContainer(node.id); if(!source)return;
-    const perform=()=>{pushHistory();const i=source.findIndex(x=>x.id===node.id);if(i>=0)source.splice(i,1);if(state.selectedId===node.id){state.selectedId='scene-camera';state.ui.selectedComponentKey='';}renderAll();status(`${node.name} deleted`);};
+    const perform=()=>{pushHistory();const i=source.findIndex(x=>x.id===node.id);if(i>=0)source.splice(i,1);state.selectedIds=(state.selectedIds||[]).filter(id=>id!==node.id);if(state.selectedId===node.id){state.selectedId=state.selectedIds.at(-1)||'scene-camera';state.ui.selectedComponentKey='';}renderAll();status(`${node.name} deleted`);};
     if(skipConfirm)perform();else askConfirm(`Delete ${node.type==='folder'?'Folder':'Node'}`,`Delete “${node.name}”${node.type==='folder'?' and everything inside it':''}?`,perform);
   }
 
@@ -508,7 +610,7 @@
       case 'text': rows = renderTextRows(node, comp); break;
       case 'sprite': {
         const animComp=component(node,'animationsprite');
-        rows=[field('Type',comp.sourceType||'Sprite','custom-select',v=>{comp.sourceType=v;renderComponentPanel();drawWorkplace();},['Sprite','Animation']),checkboxField('Pixelated',!!comp.pixelated,v=>{comp.pixelated=v;drawWorkplace();})];
+        rows=[field('Type',comp.sourceType||'Sprite','custom-select',v=>{comp.sourceType=v;renderComponentPanel();drawWorkplace();},['Sprite','Animation']),checkboxField('Pixelated',!!comp.pixelated,v=>{comp.pixelated=v;drawWorkplace();}),axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[x,y];drawWorkplace();}),axisVectorField('Size',comp.size||[0,0],(x,y)=>{comp.size=[Math.max(0,Number(x)||0),Math.max(0,Number(y)||0)];drawWorkplace();})];
         if((comp.sourceType||'Sprite')==='Animation'){
           const opts=(animComp?.animations||[]).map(a=>a.name);rows.push(field('Animation',comp.animation||opts[0]||'','custom-select',v=>{comp.animation=v;drawWorkplace();},opts));
           if(!animComp)rows.push(readOnlyField('Animation','Add Animation Sprite component first'));
@@ -747,11 +849,26 @@
     return state.globalVariables ||= [];
   }
   function variableExists(scope,name,ignore=null){
-    const wanted=String(name||'').trim().toLowerCase();if(!wanted)return false;
-    return variableList(scope).some(v=>v!==ignore&&String(v.name||'').trim().toLowerCase()===wanted);
+    const wanted=String(name??'').trim().toLowerCase();if(!wanted)return false;
+    return variableList(scope).some(v=>v!==ignore&&String(v?.name??'').trim().toLowerCase()===wanted);
   }
   function nextVariableName(scope,base){
-    let name=base,i=2;while(variableExists(scope,name))name=`${base}${i++}`;return name;
+    let name=String(base||'Variable').trim()||'Variable',i=2;while(variableExists(scope,name))name=`${base}${i++}`;return name;
+  }
+  function enforceVariableUniqueness(){
+    const fixList=list=>{
+      if(!Array.isArray(list))return [];
+      const seen=new Set();
+      for(const v of list){
+        let base=String(v?.name??'').trim()||'Variable',name=base,i=2,key=name.toLowerCase();
+        while(seen.has(key)){name=`${base}${i++}`;key=name.toLowerCase();}
+        v.name=name;seen.add(key);
+      }
+      return list;
+    };
+    fixList(state.globalVariables);
+    Object.values(state.sceneVariablesByScene||{}).forEach(fixList);
+    Object.values(state.localVarsByNode||{}).forEach(fixList);
   }
   function makeVariable(name,dataType,value,access='Scene',debug=false){return {id:`var-${Date.now()}-${state.nextVariableId++}`,name,dataType,value,access,debug:!!debug};}
   function addVariable(scopeOrGlobal){
@@ -778,6 +895,14 @@
     renderVariableSection(host,'Global Variables','Global','globalVariablesCollapsed');
     renderVariableSection(host,'Scene Variables','Scene','sceneVariablesCollapsed');
   }
+  function flashValidationError(el){
+    if(!el)return;
+    el.classList.remove('uix-validation-error-flash');
+    void el.offsetWidth;
+    el.classList.add('uix-validation-error-flash');
+    clearTimeout(el.__uixValidationTimer);
+    el.__uixValidationTimer=setTimeout(()=>el.classList.remove('uix-validation-error-flash'),700);
+  }
   function variableEditor(v,scope){
     const global=scope==='Global';
     const card=document.createElement('div');card.className='variable-block';
@@ -791,7 +916,17 @@
     toggle.addEventListener('click',e=>{e.stopPropagation();state.ui.variableCollapsed[key]=!state.ui.variableCollapsed[key];const c=!!state.ui.variableCollapsed[key];body.classList.toggle('hidden',c);toggle.textContent=c?'+':'−';toggle.title=c?'Expand':'Collapse';});
     del.addEventListener('click',e=>{e.stopPropagation();askConfirm('Delete Variable',`Delete “${v.name||'Variable'}”?`,()=>{const list=variableList(scope),i=list.indexOf(v);if(i>=0)list.splice(i,1);delete state.ui.variableCollapsed[key];scope==='Local'?renderLocalVariables():renderComponentPanel();if(state.script.nodeId)renderScriptCanvas();});});
     actions.append(toggle,del);head.append(title,actions);card.append(head);
-    body.append(field('Name',v.name,'text',x=>{const next=String(x||'').trim();if(!next)return status('Variable name cannot be empty');if(variableExists(scope,next,v))return status('A variable with that name already exists in this scope');v.name=next;title.textContent=next;renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();}));
+    const nameRow=field('Name',v.name,'text',x=>{
+      const input=nameRow.querySelector('input');
+      const previous=String(v.name??'');
+      const next=String(x??'').trim();
+      if(!next){flashValidationError(input);if(input)input.value=previous;return status('Variable name cannot be empty');}
+      if(variableExists(scope,next,v)){flashValidationError(input);if(input)input.value=previous;return status('A variable with that name already exists in this scope');}
+      v.name=next;title.textContent=next;
+      input?.classList.remove('uix-validation-error-flash');
+      renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();
+    });
+    body.append(nameRow);
     body.append(field('Data Type',v.dataType,'custom-select',x=>{
       const next=String(x); if(!['String','Bool','Int'].includes(next))return;
       const oldType=String(v.dataType||'String'), oldValue=v.value;
@@ -832,6 +967,7 @@
     dock.style.gridTemplateColumns = a&&b ? `${state.panelWidths.split}% ${100-state.panelWidths.split}%` : '1fr';
     $('#selectionPanelIcon').textContent=a?'☑':'☐';$('#componentPanelIcon').textContent=b?'☑':'☐';
     if(!a&&!b)dock.hidden=true;
+    updateTopbarModeRailPosition();
   }
   function togglePanel(id){state.panels[id]=!state.panels[id];applyPanelState();}
 
@@ -857,6 +993,7 @@
         const split=clamp((e.clientX-r.left)/Math.max(1,r.width)*100,20,80);
         state.panelWidths.split=split;dock.style.gridTemplateColumns=`${split}% ${100-split}%`;
       }
+      updateTopbarModeRailPosition();
     };
     const end=e=>{if(!active)return;if(e?.pointerId!=null&&e.pointerId!==active.pointerId)return;active=null;document.documentElement.classList.remove('resizing-panels');};
     const bind=(selector,type)=>{const handle=document.querySelector(selector);if(!handle)return;handle.addEventListener('pointerdown',e=>begin(handle,type,e),{passive:false});};
@@ -908,6 +1045,13 @@
     }
     return {src:'',pixelated:true,animated:false};
   }
+  function spriteLocalGeometry(node,now=performance.now()){
+    const sprite=component(node,'sprite'),visual=nodeVisualSource(node,now);
+    if(!sprite||!visual.src)return null;
+    const img=getAssetImage(visual.src);if(!img?.complete||!img.naturalWidth)return null;
+    const base=constrainImageSize(img),p=Array.isArray(sprite.position)?sprite.position:[0,0],size=Array.isArray(sprite.size)?sprite.size:[0,0];
+    return {x:Number(p[0])||0,y:Number(p[1])||0,w:Number(size[0])>0?Number(size[0]):base.w,h:Number(size[1])>0?Number(size[1]):base.h};
+  }
   function hasAnimatedVisuals(){
     return allNodes().some(({node})=>node.type==='node' && !!getAnimationForNode(node)?.sprites?.filter(f=>f?.src).length);
   }
@@ -920,7 +1064,7 @@
   }
   function getNodeVisualSize(node,ctx){
     const text=component(node,'text');if(text)return getTextMetrics(node,text,ctx);
-    const source=nodeVisualSource(node);if(source.src&&getAssetImage(source.src))return constrainImageSize(getAssetImage(source.src));
+    const source=nodeVisualSource(node),sprite=component(node,'sprite');if(source.src&&getAssetImage(source.src)){const img=getAssetImage(source.src),base=constrainImageSize(img);return sprite?{w:Number(sprite.size?.[0])>0?Number(sprite.size[0]):base.w,h:Number(sprite.size?.[1])>0?Number(sprite.size[1]):base.h}:base;}
     const progress=component(node,'progressbar');if(progress)return {w:Math.max(1,Number(progress.width)||1),h:Math.max(1,Number(progress.height)||1)};
     return {w:90,h:54};
   }
@@ -1007,11 +1151,12 @@
     if(visual.src){
       const img=getAssetImage(visual.src);
       if(img?.complete&&img.naturalWidth){
-        const m=constrainImageSize(img);
+        const m=spriteLocalGeometry(node);
         const prevSmooth=ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled=!visual.pixelated;
         ctx.imageSmoothingQuality='nearest';
-        ctx.drawImage(img,-m.w/2,-m.h/2,m.w,m.h);
+        if(m)ctx.drawImage(img,m.x-m.w/2,m.y-m.h/2,m.w,m.h);
+        else {const auto=constrainImageSize(img);ctx.drawImage(img,-auto.w/2,-auto.h/2,auto.w,auto.h);}
         ctx.imageSmoothingEnabled=prevSmooth;
       }
     }
@@ -1060,7 +1205,35 @@
   function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;for(const p of [[g.w/2,0,'right'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br'],[-g.w/2,-g.h/2,'tl'],[g.w/2,-g.h/2,'tr'],[-g.w/2,g.h/2,'bl']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate'};}if(mode==='move'||mode==='all'){const hit=12/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free'};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<g.w*.62)return {type:'move',axis:'x'};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-g.h*.62)return {type:'move',axis:'y'};}return null;}
 
   function nodeAt(world){
-    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;const size=getNodeVisualSize(node,ctx),bw=Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),bh=Math.max(45,size.h*Math.abs(t.scale?.[1]||1));const dx=world.x-t.position[0],dy=world.y-t.position[1],rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c;if(Math.abs(lx)<=bw/2&&Math.abs(ly)<=bh/2)return node;}return null;
+    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;let dx=world.x-t.position[0],dy=world.y-t.position[1],rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
+      const geo=spriteLocalGeometry(node);
+      if(geo){if(Math.abs(lx/sx-geo.x)<=geo.w/2&&Math.abs(ly/sy-geo.y)<=geo.h/2)return node;continue;}
+      const size=getNodeVisualSize(node,ctx),bw=Math.max(70,size.w*sx),bh=Math.max(45,size.h*sy);if(Math.abs(lx)<=bw/2&&Math.abs(ly)<=bh/2)return node;}return null;
+  }
+
+  function moveMainSelection(delta){const list=visibleTreeItems(),id=state.selectedId,i=list.findIndex(n=>n.id===id);if(!list.length)return;const next=list[clamp((i<0?0:i)+delta,0,list.length-1)];setNodeSelection(next,{});renderAll();}
+  function snapSelectedMainNode(){
+    const n=selectedNode() || findNode(state.selectedIds?.at(-1));
+    if(!n)return status('Select a Node to snap');
+    const t=gizmoTarget(n)?.transform||component(n,'transform')?.transform||component(n,'transform')||{};
+    const p=t.position||n.position||[0,0];
+    state.pan.x=-Number(p[0]||0)*state.zoom;state.pan.y=-Number(p[1]||0)*state.zoom;drawWorkplace();status(`Snapped to ${n.name}`);
+  }
+  function mainNodeContextMenu(node,x,y){
+    if(node){if(!state.selectedIds.includes(node.id)){clearNodeSelection(node.id);}else state.selectedId=node.id;renderSelectionTree();renderComponentPanel();drawWorkplace();}
+    const many=topLevelSelectedItems().length>1;
+    showContextMenu([
+      ...(many?[{label:`${topLevelSelectedItems().length} selected`,icon:'☷',disabled:true}]:[]),
+      {label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),disabled:!topLevelSelectedItems().length,action:()=>cutNode()},
+      {label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),disabled:!topLevelSelectedItems().length,action:()=>copyNode()},
+      {label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},
+      {label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:!topLevelSelectedItems().length,action:()=>{copyNode();pasteNode();}},
+      {label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),disabled:!topLevelSelectedItems().length,action:()=>deleteSelectedNodes()},
+      {label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),disabled:!selectedNode(),action:()=>snapSelectedMainNode()},
+      {label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('selectAll',{scope:'editor'})},
+      {label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('deselectAll',{scope:'editor'})},
+      {label:'Add Node',icon:'◇',action:()=>addNode()}
+    ],x,y);
   }
 
   function enableWorkplace(){
@@ -1078,7 +1251,7 @@
       }
       const worldPoint=screenToWorld(e.clientX,e.clientY),selected=selectedNode();
       if(selected){const giz=getGizmoHit(selected,worldPoint);if(giz){{const target=gizmoTarget(selected);workspace.gizmoDrag={node:selected,type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransform:clone(target.transform)};}canvas.setPointerCapture(e.pointerId);return;}}
-      const node=nodeAt(worldPoint);if(node){state.selectedId=node.id;state.ui.selectedComponentKey='';renderSelectionTree();renderComponentPanel();drawWorkplace();return;}
+      const node=nodeAt(worldPoint);if(node){setNodeSelection(node,e);renderSelectionTree();renderComponentPanel();drawWorkplace();return;}
       if(state.selectedId!==null){state.selectedId=null;renderSelectionTree();renderComponentPanel();}
       clearTimeout(longPressTimer);startPan(e);
     });
@@ -1110,7 +1283,7 @@
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
     canvas.addEventListener('wheel',e=>{e.preventDefault();const rect=canvas.getBoundingClientRect(),before=screenToWorld(e.clientX,e.clientY),next=clamp(state.zoom*Math.exp(-e.deltaY*.0012),.2,5);state.zoom=next;const screenAfter=worldToScreen(before.x,before.y);state.pan.x+=e.clientX-rect.left-screenAfter.x;state.pan.y+=e.clientY-rect.top-screenAfter.y;drawWorkplace();},{passive:false});
     canvas.addEventListener('dblclick',()=>{state.pan={x:0,y:0};state.zoom=1;drawWorkplace();});
-    canvas.addEventListener('contextmenu',e=>{e.preventDefault();});
+    canvas.addEventListener('contextmenu',e=>{e.preventDefault();const world=screenToWorld(e.clientX,e.clientY),node=nodeAt(world);mainNodeContextMenu(node,e.clientX,e.clientY);});
     new ResizeObserver(()=>{resizeWorkplaceCanvas();drawWorkplace();}).observe($('#workplace'));
   }
 
@@ -1123,14 +1296,14 @@
   function refreshModalBackdrop(){const any=$$('.modal').some(m=>!m.hidden);$('#modalBackdrop').hidden=!any;}
   function showModal(modal){if(!modal)return;closeMenus();modal.hidden=false;modalStack=modalStack.filter(id=>id!==modal.id);modalStack.push(modal.id);modal.style.zIndex=String(1010+modalStack.length*20);refreshModalBackdrop();}
   function hideAllModals(){closeContextMenu();$$('.modal').forEach(x=>x.hidden=true);$('#modalBackdrop').hidden=true;modalStack=[];}
-  function closeModal(target=null){const modal=typeof target==='string'?$('#'+target):target||$('#'+modalStack.at(-1));if(!modal)return;modal.hidden=true;modalStack=modalStack.filter(id=>id!==modal.id);if(modal.id==='expressionModal')state.script.editingInput=null;refreshModalBackdrop();if(modal.dataset.removeOnClose==='true')queueMicrotask(()=>modal.remove());}
+  function closeModal(target=null){const modal=typeof target==='string'?$('#'+target):target||$('#'+modalStack.at(-1));if(!modal)return;modal.hidden=true;modalStack=modalStack.filter(id=>id!==modal.id);if(modal.id==='expressionModal')state.script.editingInput=null;if(modal.id==='scriptModal')resetScriptCanvasInteraction?.();refreshModalBackdrop();if(modal.dataset.removeOnClose==='true')queueMicrotask(()=>modal.remove());}
   function closeMenus(){ $$('.context-menu.open').forEach(x=>{x.classList.remove('open');x.style.display='';x.style.visibility='';x.style.left='';x.style.top='';});if(activeSelectMenu){activeSelectMenu.remove();activeSelectMenu=null;}if(activeNativeSelect){activeNativeSelect.select.setAttribute('aria-expanded','false');activeNativeSelect.menu.remove();activeNativeSelect=null;}$$('.select-menu').forEach(x=>{x.hidden=true;if(x.classList.contains('floating-select-menu'))x.remove();}); }
   function toggleMenu(id){const m=$('#'+id);if(!m)return;const open=!m.classList.contains('open');closeMenus();if(open){m.classList.add('open');positionMenu(m,m.previousElementSibling||m.parentElement);}}
   function hideMenuElement(menu){if(!menu)return;menu.classList.remove('open');menu.style.display='';menu.style.visibility='';menu.style.left='';menu.style.top='';}
   function toggleSubMenu(id,anchor){const m=$('#'+id);if(!m)return;const open=!m.classList.contains('open');$$('.context-menu.nested-menu').forEach(x=>{if(x!==m)hideMenuElement(x);});if(!open){hideMenuElement(m);return;}m.classList.add('open');positionSubMenu(m,anchor);}
   function positionMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor?.getBoundingClientRect?.()||{left:0,right:0,top:0,bottom:0},mr=menu.getBoundingClientRect(),pad=6;let left=ar.left,top=ar.bottom+2;if(top+mr.height>innerHeight-pad)top=ar.top-mr.height-2;if(left+mr.width>innerWidth-pad)left=innerWidth-mr.width-pad;if(left<pad)left=pad;if(top<pad)top=pad;menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function positionSubMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor.getBoundingClientRect(),mr=menu.getBoundingClientRect(),pad=6;let left=ar.right+2,top=ar.top;if(left+mr.width>innerWidth-pad)left=ar.left-mr.width-2;if(top+mr.height>innerHeight-pad)top=innerHeight-mr.height-pad;if(top<pad)top=pad;menu.style.left=`${Math.max(pad,left)}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
-  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);b.innerHTML=`<span>${item.icon||'×'}</span>${esc(item.label)}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
+  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function closeContextMenu(){const m=$('#floatingContextMenu');m.hidden=true;m.classList.remove('open');m.innerHTML='';}
   function askConfirm(title,text,onConfirm,okText='Delete'){ $('#confirmModalTitle').textContent=title;$('#confirmModalText').textContent=text;$('#confirmModalOk').textContent=okText;confirmAction=onConfirm;showModal($('#confirmModal')); }
   function doConfirm(){const fn=confirmAction;confirmAction=null;closeModal($('#confirmModal'));fn?.();}
@@ -1142,15 +1315,52 @@
   function resetToProjectMenu(){
     hideAllModals(); closeMenus(); stopRuntime();
     state.project={name:'Untitled Node2D',created:false};
-    state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera';
+    state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera'; state.selectedIds=[]; state.selectionAnchorId=null;
     state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
     state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing'};
-    state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),editingInput:null};
+    state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),editingInput:null,clipboard:null};
     state.history={undo:[],redo:[],busy:false}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
     showModal($('#projectModal'));
   }
 
+  function openEditorSettings(){
+    const host=$('#editorKeybindList');if(!host)return;host.innerHTML='';
+    const defs=window.UIXKeyBinds?.getAll?.()||[];const groups={editor:'Editor',all:'Global / All Editors',script:'Script Editor',sprite:'Sprite Editor',midi:'MIDI Editor'};
+    defs.forEach((def,i)=>{
+      if(i===0||defs[i-1].scope!==def.scope){const g=document.createElement('div');g.className='keybind-group';g.textContent=groups[def.scope]||def.scope;host.append(g);}
+      const row=document.createElement('div');row.className='keybind-row';
+      const name=document.createElement('div');name.className='keybind-name';name.textContent=def.name;
+      const scope=document.createElement('div');scope.className='keybind-scope';scope.textContent=def.scope;
+      const input=document.createElement('input');input.className='keybind-input';input.value=def.keys||'';input.placeholder='Example: Ctrl+Shift+K';input.dataset.command=def.command;input.dataset.name=def.name;input.readOnly=true;
+      const reset=document.createElement('button');reset.className='btn keybind-reset';reset.type='button';reset.textContent='Clear';
+      const commit=()=>{def.keys=input.value.trim();window.UIXKeyBinds?.save?.();renderKeybindHints();};
+      input.addEventListener('keydown',e=>{e.preventDefault();e.stopPropagation();if(e.key==='Escape'){input.blur();return;}if(e.key==='Backspace'){input.value='';commit();return;}const parts=[];if(e.ctrlKey)parts.push('Ctrl');if(e.metaKey)parts.push('Meta');if(e.altKey)parts.push('Alt');if(e.shiftKey)parts.push('Shift');let k=e.key;if(k===' ')k='Space';else if(k==='Escape')k='Escape';else if(k.length===1)k=k.toUpperCase();else k=k.charAt(0).toUpperCase()+k.slice(1);if(!['Control','Meta','Alt','Shift'].includes(k)){parts.push(k);input.value=parts.join('+');commit();input.blur();}});
+      reset.onclick=()=>{def.keys='';input.value='';window.UIXKeyBinds?.save?.();renderKeybindHints();};
+      row.append(name,scope,input,reset);host.append(row);
+    });
+    showModal($('#editorSettingsModal'));
+  }
+  function renderKeybindHints(){
+    const defs=window.UIXKeyBinds?.getAll?.()||[];const map=new Map(defs.map(d=>[d.command,d.keys]));
+    $$('[data-action]').forEach(b=>{const cmdMap={'save':'save','new-project':'new','load-local':'open','import-project':'open','undo':'undo','redo':'redo','cut-node':'cut','copy-node':'copy','paste-node':'paste','delete-selection':'delete','toggle-fullscreen':'fullscreen'};const cmd=cmdMap[b.dataset.action];if(!cmd)return;let h=b.querySelector('.shortcut-hint');if(!h){h=document.createElement('span');h.className='shortcut-hint';b.append(h);}h.textContent=window.UIXKeyBinds?.display?.(map.get(cmd)||'')||'';h.hidden=!h.textContent;});
+  }
+  function downloadEditorPreferences(){
+    const storage={};
+    try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key)storage[key]=localStorage.getItem(key);}}catch{}
+    let keybinds={};
+    try{const defs=window.UIXKeyBinds?.getAll?.()||[];keybinds=Object.fromEntries(defs.map(k=>[k.command+'|'+k.name,k.keys||'']));}catch{}
+    const payload={
+      format:'UIX Editor Preferences',
+      version:1,
+      editorSettings:{},
+      shortcuts:keybinds,
+      localStorage:storage
+    };
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='uix-editor-preferences.json';a.style.display='none';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    status('Editor preferences downloaded');
+  }
   function action(name,source=null){
     closeMenus();
     switch(name){
@@ -1160,8 +1370,17 @@
       case 'import-project': openProjectImport(); break;
       case 'save-project': saveProjectToProjectStorage(); break;
       case 'export-project': openExportProjectModal(); break;
+      case 'help': {
+        const frame=$('#helpFrame');
+        if(frame && !frame.getAttribute('src')) frame.src='help/index.html';
+        showModal($('#helpModal'));
+        break;
+      }
       case 'export-ndc': exportProjectNDC(); break;
       case 'game-settings': openGameSettings(); break;
+      case 'editor-settings': openEditorSettings(); break;
+      case 'reset-keybinds': window.UIXKeyBinds?.reset?.(); openEditorSettings(); status('Shortcut defaults restored'); break;
+      case 'download-preferences': downloadEditorPreferences(); break;
       case 'exit': askConfirm('Exit Editor','Close the current UIX editor session?',resetToProjectMenu,'Exit'); break;
       case 'add-scene': addScene(); break;
       case 'add-node': addNode(); break;
@@ -1174,6 +1393,8 @@
       case 'cut-node': cutNode(selectedNode()); break;
       case 'copy-node': copyNode(selectedNode()); break;
       case 'paste-node': pasteNode(); break;
+      case 'delete-selection': deleteSelectedNodes(); break;
+      case 'snap-node': snapSelectedMainNode(); break;
       case 'add-local-variable': addVariable(false); break;
       case 'collapse-selection': togglePanel('selectionPanel'); break;
       case 'collapse-components': togglePanel('componentPanel'); break;
@@ -1232,12 +1453,14 @@
     state.scenes=clone(data.scenes);
     state.currentSceneId=data.currentSceneId&&state.scenes.some(s=>s.id===data.currentSceneId)?data.currentSceneId:state.scenes[0].id;
     state.selectedId=data.selectedId||'scene-camera';
+    state.selectedIds=[];state.selectionAnchorId=null;
     state.mode=data.mode||'select';
     state.nextNodeId=Number(data.nextNodeId)||1;
     state.nextVariableId=Number(data.nextVariableId)||1;
     state.globalVariables=clone(data.globalVariables||[]);
     state.sceneVariablesByScene=clone(data.sceneVariablesByScene||{});
     state.localVarsByNode=clone(data.localVarsByNode||{});
+    enforceVariableUniqueness();
     state.uiComponentsByScene=clone(data.uiComponentsByScene||{});
     state.script={nodeId:null,selectedNodeId:null,pan:{x:0,y:0},zoom:1,nodesByNode:restoreScriptNodeDefinitions(data.script?.nodesByNode||{}),connectionsByNode:clone(data.script?.connectionsByNode||{}),editingInput:null};
     state.game=clone(data.game||{preferredSceneId:'',screenType:'Windowboxing'});
@@ -1468,7 +1691,14 @@
       else preview.textContent='◉';
       const actions=document.createElement('div'); actions.className='asset-card-actions';
       const edit=document.createElement('button'); edit.type='button'; edit.className='asset-edit'; edit.title='Edit'; edit.setAttribute('aria-label','Edit asset'); edit.textContent='✎';
-      edit.onclick=e=>{e.stopPropagation();if(type==='Sprite')window.UIXSpriteEditor?.openEdit(asset);else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);else status('Audio Editor is reserved for later');};
+      edit.onclick=e=>{e.stopPropagation();if(type==='Sprite')window.UIXSpriteEditor?.openEdit(asset);else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);else if(type==='Audio'){
+        promptModal('Rename Audio','Audio name',asset.name||asset.filename||'Audio',value=>{
+          const raw=String(value||'').trim();if(!raw)return;
+          const name=uniqueAssetName(raw,'Audio',asset);
+          const ext=(String(asset.filename||'').match(/\.[^.]+$/)||['.uixaudio'])[0];
+          asset.name=name;asset.filename=name+ext;renderAssetManager();status(`Audio renamed to ${name}`);
+        });
+      }};
       const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); del.textContent='×';
       del.onclick=e=>{e.stopPropagation();if(type==='Sprite')deleteSpriteAsset(asset);else if(type==='MIDI')deleteMIDIAsset(asset);}; actions.append(edit,del); preview.append(actions);
       const name=document.createElement('div'); name.className='asset-name'; name.textContent=asset.filename||`${asset.name||type}.asset`;
@@ -1524,7 +1754,16 @@
   }
 
   function openAssetSelector(type,onSelect){state.assetSelection={type,onSelect};$('#assetSelectorTitle').textContent=`Select ${type}`;const host=$('#assetSelectorGrid');host.innerHTML='';const list=state.assets[type]||[];if(!list.length)host.append(Object.assign(document.createElement('div'),{className:'asset-empty',textContent:`No ${type.toLowerCase()} assets available.`}));list.forEach(asset=>{const b=document.createElement('button');b.className='asset-selector-item';const p=document.createElement('div');p.className='asset-selector-preview';if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;p.append(img);}else p.textContent='◉';const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.name;b.append(p,n);b.onclick=()=>{const fn=state.assetSelection?.onSelect;state.assetSelection=null;closeModal();fn?.(asset);renderComponentPanel();drawWorkplace();};host.append(b);});showModal($('#assetSelectorModal'));}
-  function importAssets(files){Promise.all([...files].map(fileToDataUrl)).then(results=>{results.forEach(({file,value})=>{const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);const type=isMIDI?'MIDI':(file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(file.name))?'Audio':'Sprite';let stem=file.name.replace(/\.[^.]+$/,'');let name=stem;let i=2;while(state.assets[type].some(a=>a.name===name))name=`${stem} ${i++}`;state.assets[type].push({name,value,type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename:file.name,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml' ? 'SVG' : 'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name)});});renderAssetManager();status(`${files.length} asset${files.length===1?'':'s'} imported`);});}
+  function importAssets(files){
+    const accepted=[],rejected=[];
+    [...files].forEach(file=>{
+      const name=String(file?.name||''),typeName=String(file?.type||'').toLowerCase(),isMIDI=/\.(mid|midi)$/i.test(name)||typeName.includes('midi'),isAudio=typeName.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name),isImage=typeName.startsWith('image/')||/\.svg$/i.test(name);
+      if(isImage||isAudio||isMIDI)accepted.push(file);else rejected.push(name||'Unnamed file');
+    });
+    if(rejected.length)status(`Rejected: ${rejected.join(', ')}. Only image or audio files are allowed.`);
+    if(!accepted.length)return;
+    Promise.all(accepted.map(fileToDataUrl)).then(results=>{results.forEach(({file,value})=>{const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);const type=isMIDI?'MIDI':(file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(file.name))?'Audio':'Sprite';let stem=file.name.replace(/\.[^.]+$/,'');let name=stem;let i=2;while(state.assets[type].some(a=>a.name===name))name=`${stem} ${i++}`;state.assets[type].push({name,value,type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename:file.name,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml' ? 'SVG' : 'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name)});});renderAssetManager();status(`${accepted.length} asset${accepted.length===1?'':'s'} imported`);}).catch(()=>status('Could not import assets'));
+  }
   function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve({file,value:r.result});r.onerror=reject;r.readAsDataURL(file);});}
 
   // ---------------- Color ----------------
@@ -1545,7 +1784,8 @@
   function renderAnimationEditor(){const host=$('#spriteEditor');host.innerHTML='';const {comp}=state.animationEdit;host.append(field('Name',comp.name||'','text',v=>comp.name=v),field('FPS',comp.fps||8,'number',v=>comp.fps=Math.max(1,Number(v)||1)));(comp.sprites||[]).forEach((sprite,i)=>{const row=document.createElement('div');row.className='sprite-row';const label=document.createElement('div');label.className='sprite-row-label';label.textContent=`Sprite ${i+1}`;const btn=document.createElement('button');btn.className='asset-select-button';btn.textContent=sprite.name||'Edit';btn.onclick=()=>openAssetSelector('Sprite',a=>{sprite.name=a.name;sprite.src=a.value;renderAnimationEditor();drawWorkplace();});const del=document.createElement('button');del.className='mini-action danger';del.textContent='×';del.title='Delete Sprite';del.onclick=()=>{comp.sprites.splice(i,1);renderAnimationEditor();drawWorkplace();};row.append(label,btn,del);host.append(row);});const add=document.createElement('button');add.className='add-component-button';add.innerHTML='<span>＋</span>Add Sprite';add.onclick=()=>openAssetSelector('Sprite',a=>{comp.sprites.push({name:a.name,src:a.value});renderAnimationEditor();drawWorkplace();});host.append(add);}
 
   // ---------------- Script editor ----------------
-  function openScriptEditor(node){state.script.nodeId=node.id;state.script.selectedNodeId=null;state.script.pan={x:0,y:0};state.script.zoom=1;state.script.nodesByNode[node.id] ||= [];state.script.connectionsByNode[node.id] ||= [];$('#scriptTarget').textContent=node.name;renderLocalVariables();renderScriptLibrary();renderScriptCanvas();renderScriptInspector();showModal($('#scriptModal'));setTimeout(renderScriptConnections,0);}
+  let resetScriptCanvasInteraction=null;
+  function openScriptEditor(node){resetScriptCanvasInteraction?.();state.script.nodeId=node.id;state.script.selectedNodeId=null;state.script.selectedNodeIds=[];state.script.selectionAnchorId=null;state.script.pan={x:0,y:0};state.script.zoom=1;state.script.nodesByNode[node.id] ||= [];state.script.connectionsByNode[node.id] ||= [];$('#scriptTarget').textContent=node.name;renderLocalVariables();renderScriptLibrary();renderScriptCanvas();renderScriptInspector();showModal($('#scriptModal'));setTimeout(()=>{resetScriptCanvasInteraction?.();renderScriptConnections();},0);}
   function renderLocalVariables(){
     const host=$('#localVariablesContent'); if(!host)return; host.innerHTML='';
     const vars=Array.isArray(state.localVarsByNode[state.script.nodeId]) ? state.localVarsByNode[state.script.nodeId] : (state.localVarsByNode[state.script.nodeId]=[]);
@@ -1557,7 +1797,7 @@
     head.innerHTML=`<span>${collapsed?'+':'−'}</span>Local Variables`;
     head.onclick=()=>{state.ui.localVariablesCollapsed=!state.ui.localVariablesCollapsed;body.classList.toggle('hidden',state.ui.localVariablesCollapsed);head.firstElementChild.textContent=state.ui.localVariablesCollapsed?'+':'−';};
     if(!vars.length) body.append(empty('No local variables yet.'));
-    vars.forEach(v=>body.append(variableEditor(v,false)));
+    vars.forEach(v=>body.append(variableEditor(v,'Local')));
     const add=document.createElement('button'); add.className='add-component-button local-add-variable'; add.innerHTML='<span>＋</span>Add Variable'; add.onclick=()=>addVariable(false); body.append(add);
     section.append(head,body); host.append(section);
   }
@@ -1627,9 +1867,12 @@
   }
   function addScriptNode(def){
     if(!def||!state.script.nodeId)return;
+    const canvas=$('#scriptCanvas');
+    const rect=canvas?.getBoundingClientRect?.();
+    const x=rect?(-state.script.pan.x/state.script.zoom):0;
+    const y=rect?(-state.script.pan.y/state.script.zoom):0;
     const list=state.script.nodesByNode[state.script.nodeId] ||= [];
-    const offset=list.length*26;
-    const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x:-70+offset,y:-45+offset,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
+    const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x,y,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
     list.push(sn);renderScriptCanvas();status(`${def.name} ScriptNode added`);return sn;
   }
   function flattenEditor(entries,path='',out=[]){
@@ -1667,9 +1910,10 @@
     const prev=String(valueItem.entry.type||'str').toLowerCase();
     if(prev!==next){
       const old=valueItem.entry.value;
-      if(next==='bool') valueItem.entry.value=typeof old==='boolean'?old:['true','1','yes','on'].includes(String(old??'').toLowerCase());
+      if(old===null||old===undefined) valueItem.entry.value=null;
+      else if(next==='bool') valueItem.entry.value=typeof old==='boolean'?old:['true','1','yes','on'].includes(String(old).toLowerCase());
       else if(next==='int'){const n=typeof old==='boolean'?(old?1:0):Number(old);valueItem.entry.value=Number.isFinite(n)?n:0;}
-      else valueItem.entry.value=String(old??'');
+      else valueItem.entry.value=String(old);
       valueItem.entry.type=next;
       delete sn.expressions[valueItem.path];
     }
@@ -1684,7 +1928,8 @@
       const options=evaluateSelector(entry.value);const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{entry.selected=v;delete sn.expressions[item.path];renderScriptCanvas();});return select;
     }
     if(type==='bool'){
-      const select=customSelect(entry.value?'true':'false',['true','false'],v=>finish(v==='true'));return select;
+      const current=entry.value===null||entry.value===undefined?'':(entry.value?'true':'false');
+      const select=customSelect(current,['','true','false'],v=>finish(v===''?null:v==='true'));return select;
     }
     const input=document.createElement('input');input.className='script-inline-editor-input';input.type=type==='int'?'number':'text';input.value=String(scriptEditorValue(sn,item)??'');input.step='1';
     input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(type==='int'?(Number(input.value)||0):input.value);}else if(e.key==='Escape'){e.preventDefault();finish('',true);}};
@@ -1718,25 +1963,26 @@
       b.addEventListener('click',e=>{e.stopPropagation();openExpressionEditor(sn,item.path,entry);});
     }else{
       const effectiveType=scriptEntryTypeForSetVariable(sn,item);
-      if(effectiveType==='bool') value=!!entry.value;
+      if(effectiveType==='bool') value=entry.value===null||entry.value===undefined?'':!!entry.value;
       const label=document.createElement('span');label.className='script-input-value';label.textContent=value===null||value===undefined?'':String(value);
       const type=document.createElement('span');type.className='script-input-type';type.textContent=effectiveType;b.append(label,type);
       b.addEventListener('click',e=>{e.stopPropagation();const editor=openScriptInlineEdit(sn,item);if(editor){b.replaceWith(editor);}});
     }
-    const showContext=(x,y)=>{showContextMenu([{label:'Expression',action:()=>openExpressionEditor(sn,item.path,entry)},{label:'Clear',action:()=>{delete sn.expressions[item.path];if(entry.type==='bool')entry.value=false;else if(entry.type==='int')entry.value=0;else entry.value='';renderScriptCanvas();}}],x,y);};
+    const showContext=(x,y)=>{showContextMenu([{label:'Expression',action:()=>openExpressionEditor(sn,item.path,entry)},{label:'Clear',action:()=>{delete sn.expressions[item.path];entry.value=null;if(Object.prototype.hasOwnProperty.call(entry,'selected'))entry.selected=null;renderScriptCanvas();}}],x,y);};
     b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showContext(e.clientX,e.clientY);});
     setupLongPress(b,e=>showContext(e.clientX,e.clientY));
     return b;
   }
   function renderScriptNodeCard(sn,def){
-    const card=document.createElement('article');card.className=`script-node-card${state.script.selectedNodeId===sn.id?' selected':''}`;card.dataset.scriptNodeId=sn.id;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;
+    const card=document.createElement('article');card.className=`script-node-card${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}`;card.dataset.scriptNodeId=sn.id;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;
     const title=document.createElement('div');title.className='script-node-title';title.textContent=def.name;card.append(title);
     if(def.receiver){const input=document.createElement('button');input.className='script-input-port';input.title='Input';input.addEventListener('click',e=>e.stopPropagation());card.append(input);}
     const fields=document.createElement('div');fields.className='script-editor-fields';
     flattenEditor(sn.values).forEach(item=>{const row=document.createElement('div');row.className='script-editor-row';const label=document.createElement('div');label.className='script-editor-label';label.textContent=item.entry.name;row.append(label,scriptInputButton(sn,item));fields.append(row);});
     if(fields.children.length)card.append(fields);
     const outputs=document.createElement('div');outputs.className='script-output-list';(Array.isArray(def.output)?def.output:[]).forEach(out=>{const row=document.createElement('div');row.className='script-output';const label=document.createElement('span');label.textContent=out.id;const port=document.createElement('button');port.className='script-output-port';port.dataset.outputId=out.id;port.title=`Output ${out.id}`;if(out.col)port.style.background=out.col;attachOutputDrag(port);row.append(label,port);outputs.append(row);});if(outputs.children.length)card.append(outputs);
-    card.addEventListener('click',e=>{if(e.target.closest('.script-input,.script-input-port,.script-output-port'))return;state.script.selectedNodeId=sn.id;renderScriptCanvas();});
+    card.addEventListener('click',e=>{if(e.target.closest('.script-input,.script-input-port,.script-output-port'))return;selectScriptNode(sn,e);renderScriptCanvas();});
+    card.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();scriptContextMenu(sn,e.clientX,e.clientY);});
     attachScriptDrag(card,sn);return card;
   }
   function deleteScriptNodeNow(id){
@@ -1745,7 +1991,7 @@
     state.script.nodesByNode[state.script.nodeId]=list.filter(n=>n.id!==id);
     const con=state.script.connectionsByNode[state.script.nodeId]||[];
     state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);
-    if(state.script.selectedNodeId===id)state.script.selectedNodeId=null;
+    state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(x=>x!==id);if(state.script.selectedNodeId===id)state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;
     renderScriptCanvas(); status(`${target?.defName||'ScriptNode'} removed`);
   }
   function removeScriptNode(id){
@@ -1764,6 +2010,22 @@
     return map[name]||'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor"/></svg>';
   }
 
+  function scriptList(){return state.script.nodeId?(state.script.nodesByNode[state.script.nodeId]||[]):[];}
+  function selectScriptNode(sn,e={}){
+    const list=scriptList(),ids=list.map(x=>x.id),set=new Set(state.script.selectedNodeIds||[]);
+    if(e.shiftKey&&state.script.selectionAnchorId&&ids.includes(state.script.selectionAnchorId)){const a=ids.indexOf(state.script.selectionAnchorId),b=ids.indexOf(sn.id),lo=Math.min(a,b),hi=Math.max(a,b);state.script.selectedNodeIds=ids.slice(lo,hi+1);}
+    else if(e.ctrlKey||e.metaKey){if(set.has(sn.id))set.delete(sn.id);else set.add(sn.id);state.script.selectedNodeIds=list.filter(x=>set.has(x.id)).map(x=>x.id);if(!state.script.selectedNodeIds.length)state.script.selectedNodeIds=[sn.id];}
+    else state.script.selectedNodeIds=[sn.id];
+    state.script.selectionAnchorId=sn.id;state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;
+  }
+  function selectedScriptNodes(){const set=new Set(state.script.selectedNodeIds||[]);return scriptList().filter(x=>set.has(x.id));}
+  function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
+  function cutScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to cut');copyScriptNodes();requestDeleteScriptNodes(nodes.map(n=>n.id),'Cut');}
+  function pasteScriptNodes(){const clip=state.script.clipboard;if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory();const pasted=clone(clip.nodes);pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
+  function deleteScriptNodesNow(ids){const set=new Set(ids||[]);if(!set.size)return;const list=scriptList();state.script.nodesByNode[state.script.nodeId]=list.filter(sn=>!set.has(sn.id));state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>!set.has(c.from)&&!set.has(c.to));state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(id=>!set.has(id));state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();status(`${set.size} ScriptNode${set.size===1?'':'s'} deleted`);}
+  function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
+  function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
+  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>{copyScriptNodes();pasteScriptNodes();}},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}}],x,y);}
   function renderScriptInspector(){
     const host=$('#scriptInspector');
     if(!host)return;
@@ -1794,23 +2056,19 @@
     const snapNode=sn=>{
       const canvas=$('#scriptCanvas');
       if(!canvas)return;
-      state.script.pan.x=-sn.x*state.script.zoom;
-      state.script.pan.y=-sn.y*state.script.zoom;
-      applyScriptTransform();
-      state.script.selectedNodeId=sn.id;
-      renderScriptCanvas();
+      snapScriptToNode(sn);
     };
     nodes.forEach(sn=>{
       const def=scriptNodes.find(x=>x.name===sn.defName);
       if(!def)return;
       const row=document.createElement('div');
-      row.className=`script-inspector-row${state.script.selectedNodeId===sn.id?' selected':''}`;
+      row.className=`script-inspector-row${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}`;
       const name=document.createElement('button');
       name.type='button';
       name.className='script-inspector-name';
       name.textContent=def.name;
       name.title=def.name;
-      name.addEventListener('click',()=>{state.script.selectedNodeId=sn.id;renderScriptCanvas();});
+      name.addEventListener('click',e=>{selectScriptNode(sn,e);renderScriptCanvas();});
       const actions=document.createElement('div');
       actions.className='script-inspector-actions';
       const makeIcon=(title,src,fn,cls='icon-action')=>{
@@ -1825,16 +2083,8 @@
         makeIcon('Delete','svgIcons/delete.svg',()=>removeScriptNode(sn.id))
       );
       row.append(name,actions);
-      row.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();state.script.selectedNodeId=sn.id;renderScriptCanvas();showContextMenu([
-        {label:'Snap',icon:'⌖',action:()=>snapNode(sn)},
-        {label:'Disconnect',icon:'↔',action:()=>disconnectNode(sn.id)},
-        {label:'Delete',icon:'×',action:()=>removeScriptNode(sn.id)}
-      ],e.clientX,e.clientY);});
-      setupLongPress(row,e=>{e.stopPropagation();state.script.selectedNodeId=sn.id;renderScriptCanvas();showContextMenu([
-        {label:'Snap',icon:'⌖',action:()=>snapNode(sn)},
-        {label:'Disconnect',icon:'↔',action:()=>disconnectNode(sn.id)},
-        {label:'Delete',icon:'×',action:()=>removeScriptNode(sn.id)}
-      ],e.clientX,e.clientY);});
+      row.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();scriptContextMenu(sn,e.clientX,e.clientY);});
+      setupLongPress(row,e=>{e.stopPropagation();scriptContextMenu(sn,e.clientX,e.clientY);});
       list.append(row);
     });
     host.append(list);
@@ -1847,6 +2097,7 @@
     renderScriptInspector();
     applyScriptTransform();requestAnimationFrame(renderScriptConnections);
   }
+  function snapScriptToNode(sn){const canvas=$('#scriptCanvas');if(!canvas||!sn)return;state.script.pan.x=-sn.x*state.script.zoom;state.script.pan.y=-sn.y*state.script.zoom;state.script.selectedNodeId=sn.id;if(!state.script.selectedNodeIds.includes(sn.id))state.script.selectedNodeIds=[sn.id];state.script.selectionAnchorId=sn.id;applyScriptTransform();renderScriptCanvas();status(`Snapped to ${sn.defName}`);}
   function applyScriptTransform(){
     const world=$('#scriptCanvasWorld');if(!world)return;
     world.style.transform=`translate(${state.script.pan.x}px,${state.script.pan.y}px) scale(${state.script.zoom})`;
@@ -1856,8 +2107,15 @@
   function openExpressionEditor(sn,path,entry){
     state.script.editingInput={sn,path,entry};
     $('#expressionTitle').textContent=entry.name||'Input';
-    const value=Object.prototype.hasOwnProperty.call(sn.expressions,path)?sn.expressions[path]:String(entry.value??'');
+    let value=Object.prototype.hasOwnProperty.call(sn.expressions,path)?String(sn.expressions[path]??''):String(entry.value??'');
+    // String literal fallback is intentionally applied ONLY when the expression editor opens.
+    // After opening, typing is never rewritten automatically.
+    if(String(entry?.type||'').toLowerCase()==='str' && value.trim()){
+      try{inferExpressionValue(value);}
+      catch{if(!(value.startsWith('`')&&value.endsWith('`'))) value='`'+value.replace(/`/g,'\\`')+'`';}
+    }
     $('#expressionInput').value=value;
+    if(Object.prototype.hasOwnProperty.call(sn.expressions,path)) sn.expressions[path]=value;
     renderExpressionLibrary();
     validateExpression();
     showModal($('#expressionModal'));
@@ -1882,11 +2140,14 @@
       try{
         const value=inferExpressionValue(source);
         const pathRegex=/\bctx\.(local|global|sceneVariables)\.([A-Za-z_$][\w$]*)/g;let m;
-        while((m=pathRegex.exec(source))){const list=m[1]==='local'?(state.localVarsByNode[state.script.nodeId]||[]):m[1]==='global'?state.globalVariables:sceneVariableList();if(!list.some(v=>v.name===m[2])){message=`Undefined variable: ${m[2]}`;break;}}
+        while((m=pathRegex.exec(source))){const list=m[1]==='local'?(state.localVarsByNode[state.script.nodeId]||[]):m[1]==='global'?state.globalVariables:sceneVariableList();if(!list.some(v=>v.name===m[2])){message=String(edit?.entry?.type||'').toLowerCase()==='str'?'String literal fallback will be used.':`Undefined variable: ${m[2]}`;break;}}
         if(message==='No error.'&&edit){const typeError=expressionTypeError(edit.entry,value);if(typeError)message=typeError;}
-      }catch(err){message=String(err?.message||'Syntax Error');}
+      }catch(err){
+        const isString=String(edit?.entry?.type||'').toLowerCase()==='str';
+        if(isString){message='String literal fallback will be used.';}else message=String(err?.message||'Syntax Error');
+      }
     }
-    error.textContent=message;error.classList.toggle('valid',message==='No error.');if(save)save.disabled=message!=='No error.';return message==='No error.';
+    const valid=message==='No error.'||message==='String literal fallback will be used.';error.textContent=message;error.classList.toggle('valid',valid);if(save)save.disabled=!valid;return valid;
   }
   function applyExpression(){
     if(!validateExpression())return status('Fix the expression error first');
@@ -1913,7 +2174,7 @@
       body.classList.toggle('hidden',collapsed);
       h.innerHTML=`<span>${collapsed?'+':'−'}</span>${name}`;
       if(!items.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No items'}));
-      items.forEach(item=>{const b=document.createElement('button');b.className='helper-item';b.textContent=item.label;b.title=`Insert ${item.label}`;b.onclick=e=>{e.stopPropagation();insertExpression(item.value);};body.append(b);});
+      items.forEach(item=>{const b=document.createElement('button');b.className='helper-item';b.textContent=item.label;b.title=item.title||`Insert ${item.label}`;b.onclick=e=>{e.stopPropagation();insertExpression(item.value);};body.append(b);});
       h.onclick=e=>{e.stopPropagation();state.ui.expressionGroupCollapsed[name]=!state.ui.expressionGroupCollapsed[name];body.classList.toggle('hidden',state.ui.expressionGroupCollapsed[name]);h.firstElementChild.textContent=state.ui.expressionGroupCollapsed[name]?'+':'−';};
       sec.append(h,body); host.append(sec);
     });
@@ -1942,7 +2203,7 @@
       audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],spriteAssets:state.assets.Sprite||[],
       allNodes:allNodes().map(x=>x.node),
       animations:(component(node,'animationsprite')?.animations||[]),
-      inputs:state.runtime?.inputs||{},keybinds,node,
+      inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},node,
       TouchUpX:Number(state.runtime?.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime?.inputs?.TouchUpY)||0,
       TouchDownX:Number(state.runtime?.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime?.inputs?.TouchDownY)||0,
       TouchMoveX:Number(state.runtime?.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime?.inputs?.TouchMoveY)||0,
@@ -1959,11 +2220,25 @@
   }
   function expressionGroups(){
     const node=selectedNode();
-    const customMath=['lerp','clamp','map','moveTowards','smoothstep','wrap','degToRad','radToDeg','distance','pow','min','max','abs','sign','floor','ceil','round','trunc','sqrt','cbrt','exp','log','log10','sin','cos','tan','asin','acos','atan','atan2','hypot','PI','E','random'].map(x=>({label:`Math.${x}`,value:`Math.${x}`}));
+    const customMath=[
+      ['lerp','a, b, t'],['clamp','value, min, max'],['map','value, inMin, inMax, outMin, outMax'],
+      ['moveTowards','current, target, maxDelta'],['smoothstep','edge0, edge1, x'],['wrap','value, min, max'],
+      ['degToRad','degrees'],['radToDeg','radians'],['distance','a, b'],['pow','base, exponent'],
+      ['min','a, b, ...values'],['max','a, b, ...values'],['abs','value'],['sign','value'],
+      ['floor','value'],['ceil','value'],['round','value'],['trunc','value'],['sqrt','value'],['cbrt','value'],
+      ['exp','value'],['log','value'],['log10','value'],['sin','radians'],['cos','radians'],['tan','radians'],
+      ['asin','value'],['acos','value'],['atan','value'],['atan2','y, x'],['hypot','a, b, ...values'],
+      ['randInt','min, max'],['random',''],['PI',null],['E',null]
+    ].map(([name,args])=>({
+      label:`Math.${name}${args===null?'':'('+args+')'}`,
+      value:args===null?`Math.${name}`:`Math.${name}(${args||''})`,
+      title:args===null?`Math.${name}`:`Parameters: ${args}`
+    }));
     const list={
       localVariables:(state.localVarsByNode[state.script.nodeId]||[]).map(v=>({label:v.name,value:`ctx.local.${v.name}`})),
       sceneVariables:sceneVariableList().map(v=>({label:v.name,value:`ctx.sceneVariables.${v.name}`})),
       globalVariables:state.globalVariables.map(v=>({label:v.name,value:`ctx.global.${v.name}`})),
+      Events:keybindOptions().map(k=>({label:k,value:/^\d$/.test(k)?`ctx.events.key[\"${k}\"]`:`ctx.events.key.${k}`})),
       Touch:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Touch${k}`,value:`ctx.Touch${k}`})),
       Mouse:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
       'Screen Input':['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Screen${k}`,value:`ctx.Screen${k}`})),
@@ -1971,7 +2246,12 @@
       transforms:[{label:'Position X',value:'ctx.transform.position[0]'},{label:'Position Y',value:'ctx.transform.position[1]'},{label:'Scale X',value:'ctx.transform.scale[0]'},{label:'Scale Y',value:'ctx.transform.scale[1]'},{label:'Angle',value:'ctx.transform.angle[0]'}],
       Velocity:[{label:'VelocityX',value:'ctx.velocity.velocityX'},{label:'VelocityY',value:'ctx.velocity.velocityY'},{label:'AngularVelocity',value:'ctx.velocity.angularVelocity'}],
       Math:customMath,
-      Vectors:[{label:'vec2(x,y)',value:'[x, y]'},{label:'length(v)',value:'Math.hypot(v[0], v[1])'},{label:'dot(a,b)',value:'a[0]*b[0]+a[1]*b[1]'},{label:'normalize(v)',value:'[v[0]/Math.max(1e-9,Math.hypot(v[0],v[1])),v[1]/Math.max(1e-9,Math.hypot(v[0],v[1]))]'}]
+      Vectors:[
+        {label:'vec2(x, y)',value:'[x, y]',title:'Parameters: x, y'},
+        {label:'length(v)',value:'Math.hypot(v[0], v[1])',title:'Parameter: v'},
+        {label:'dot(a, b)',value:'a[0]*b[0]+a[1]*b[1]',title:'Parameters: a, b'},
+        {label:'normalize(v)',value:'[v[0]/Math.max(1e-9,Math.hypot(v[0],v[1])),v[1]/Math.max(1e-9,Math.hypot(v[0],v[1]))]',title:'Parameter: v'}
+      ]
     };
     if(node&&component(node,'text'))list.Text=[{label:'Text Value',value:'ctx.text.txt'},{label:'Font Size',value:'ctx.text.fontSize'},{label:'Font Family',value:'ctx.text.fontFamily'}];
     if(node&&component(node,'sprite'))list.Sprite=[{label:'Sprite Name',value:'ctx.sprite.name'},{label:'Sprite Source',value:'ctx.sprite.src'}];
@@ -2005,6 +2285,7 @@
   function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0)list.splice(i,1);renderScriptConnections();});svg.append(line);});}
   function enableScriptCanvas(){
     const canvas=$('#scriptCanvas'); let pan=null;const pointers=new Map();let pinch=null;
+    resetScriptCanvasInteraction=()=>{pointers.clear();pan=null;pinch=null;canvas.classList.remove('panning');};
     canvas.addEventListener('pointerdown',e=>{
       if(e.button!==0)return;
       pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -2013,7 +2294,7 @@
         pinch={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:state.script.zoom};
         pan=null;canvas.classList.remove('panning');return;
       }
-      if(e.target.closest('.script-node-card'))return;
+      if(e.target.closest('.script-node-card,.script-input,.script-input-port,.script-output-port'))return;
       pan={x:e.clientX,y:e.clientY,px:state.script.pan.x,py:state.script.pan.y};
       canvas.setPointerCapture?.(e.pointerId);canvas.classList.add('panning');
     });
@@ -2034,6 +2315,8 @@
       if(pointers.size===0){pan=null;canvas.classList.remove('panning');}
     };
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);canvas.addEventListener('pointerleave',()=>{});
+    canvas.addEventListener('lostpointercapture',()=>resetScriptCanvasInteraction?.());
+    canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
     canvas.addEventListener('wheel',e=>{e.preventDefault();state.script.zoom=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
     canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;addScriptNodeAt(def,e.clientX,e.clientY);});
@@ -2059,6 +2342,12 @@
   Math.degToRad ||= deg=>deg*Math.PI/180;
   Math.radToDeg ||= rad=>rad*180/Math.PI;
   Math.distance ||= (a,b)=>Math.hypot((b?.[0]??0)-(a?.[0]??0),(b?.[1]??0)-(a?.[1]??0));
+  Math.randInt ||= (min,max)=>{
+    min=Math.ceil(Number(min));max=Math.floor(Number(max));
+    if(!Number.isFinite(min)||!Number.isFinite(max))return NaN;
+    if(max<min)[min,max]=[max,min];
+    return Math.floor(Math.random()*(max-min+1))+min;
+  };
 
   function keybindOptions(){
     const numbers=Array.from({length:10},(_,i)=>String(i));
@@ -2210,7 +2499,7 @@
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
   function drawRuntimeColliders(ctx){if(!state.runtime.debug)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
     const substeps=4,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
@@ -2218,7 +2507,7 @@
       else updateRuntimeCollisions(subDt);
       Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,targetId])=>{const owner=state.runtime.bodies.find(b=>b.node?.id===ownerId),target=state.runtime.bodies.find(b=>b.node?.id===targetId);if(owner&&target){owner.t.position[0]=target.t.position[0];owner.t.position[1]=target.t.position[1];}});
     }
-    processRuntimeTimers(now);updateRuntimeCamera(dt);}
+    processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
   function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=(state.runtime.bodies||[]).find(b=>b.node?.id===id);return body?body.t:null;}
   function updateRuntimeCamera(dt){
@@ -2352,7 +2641,7 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),allNodes:runtimeAllNodes().map(x=>x.node),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
+      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),allNodes:runtimeAllNodes().map(x=>x.node),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
@@ -2498,6 +2787,26 @@
     Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit)routeRuntimeOutput(hit,'out');st.next+=st.ms;}});
   }
 
+  function createRuntimeKeyEventState(){
+    const key=Object.create(null);
+    keybindOptions().forEach(k=>{key[k]=false;});
+    return key;
+  }
+  function setRuntimeKeyEvent(key){
+    if(!state.runtime.events) state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};
+    if(!state.runtime.events.key) state.runtime.events.key=createRuntimeKeyEventState();
+    const name=String(key||'');
+    if(!name)return;
+    if(!Object.prototype.hasOwnProperty.call(state.runtime.events.key,name)) state.runtime.events.key[name]=false;
+    state.runtime.events.key[name]=true;
+    state.runtime.events.lastKey=name;
+  }
+  function clearRuntimeKeyEvents(){
+    const keys=state.runtime.events?.key;if(!keys)return;
+    Object.keys(keys).forEach(k=>{keys[k]=false;});
+    if(state.runtime.events)state.runtime.events.lastKey='';
+  }
+
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
 
     if(!state.runtime.running)return;
@@ -2605,10 +2914,10 @@
       ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
       const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
       dx/=sx;dy/=sy;
+      const geo=spriteLocalGeometry(node);
+      if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}
       let size={w:90,h:54};
-      const sprite=nodeVisualSource(node);
-      if(sprite?.src){const img=getAssetImage(sprite.src);if(img?.naturalWidth)size=constrainImageSize(img);}
-      else {const text=component(node,'text'); if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}}
+      const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}
       if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;
     }
     return null;
@@ -2720,7 +3029,7 @@
     if(!preferred)return;
     const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
 
     if(window.__UIX_STANDALONE__){
@@ -2843,23 +3152,60 @@
     });
     $('#componentContent')?.addEventListener('pointerdown',e=>{const card=e.target.closest('.component-card[data-component-key]');if(!card||e.target.closest('.comp-actions'))return;state.ui.selectedComponentKey=card.dataset.componentKey;$$('.component-card.component-selected').forEach(el=>el.classList.remove('component-selected'));card.classList.add('component-selected');drawWorkplace();},{capture:true});
     document.addEventListener('keydown',e=>{
-      if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='s'){
-        e.preventDefault();
-        if(!e.repeat) saveProjectToProjectStorage();
-      }
       if(state.runtime?.running){
         const key=normalizeRuntimeKey(e);
-        if(key){
-          dispatchRuntimeEvent('onKeybind','down',{key,code:e.code,repeat:!!e.repeat,shiftKey:!!e.shiftKey,ctrlKey:!!e.ctrlKey,altKey:!!e.altKey,metaKey:!!e.metaKey});
-        }
+        if(key && !e.repeat){setRuntimeKeyEvent(key);dispatchRuntimeEvent('onKeybind','down',{key,code:e.code,repeat:false,shiftKey:!!e.shiftKey,ctrlKey:!!e.ctrlKey,altKey:!!e.altKey,metaKey:!!e.metaKey});}
+        return;
       }
-      if(e.key==='Escape'){
+      // Escape fallback remains here for menus/modals that are not handled by the shared binding layer.
+      if(e.key==='Escape' && !window.UIXKeyBinds?.findMatch?.(e,'editor')){
         if($('.context-menu.open')){closeMenus();return;}
-        const topId=modalStack.at(-1),top=topId?$('#'+topId):null;
-        if(top){closeModal(top);return;}
+        const topId=modalStack.at(-1),top=topId?$('#'+topId):null;if(top){closeModal(top);return;}
       }
-      if((e.ctrlKey||e.metaKey)&&(e.key==='+'||e.key==='-'||e.key==='0'))e.preventDefault();
-    });
+    });  window.UIXKeyBinds?.registerHandler('editor',(command,data)=>{
+    switch(command){
+      case 'save': saveProjectToProjectStorage(); return;
+      case 'new': action('new-project'); return;
+      case 'open': openLoadChoice(); return;
+      case 'copy': copyNode(); return;
+      case 'cut': cutNode(); return;
+      case 'paste': pasteNode(); return;
+      case 'duplicate': pasteNode(); return;
+      case 'export': action('export-project'); return;
+      case 'rename': { const n=selectedNode(); if(n) promptModal('Rename Node','Node name',n.name||'Node',v=>{const next=String(v||'').trim();if(!next)return;pushHistory();n.name=next;renderAll();}); return; }
+      case 'settings': openEditorSettings(); return;
+      case 'contextMenu': { const n=selectedNode(); if(n){ const c=$('#workplaceCanvas')?.getBoundingClientRect(); mainNodeContextMenu(n,c?c.left+c.width/2:20,c?c.top+c.height/2:20); } return; }
+      case 'delete': deleteSelectedNodes(); return;
+      case 'selectAll': { const ids=allNodes().map(x=>x.node.id);state.selectedIds=ids;state.selectedId=ids.at(-1)||'scene-camera';state.selectionAnchorId=state.selectedId;renderAll();return; }
+      case 'deselectAll': clearNodeSelection();renderAll();return;
+      case 'undo': undo(); return;
+      case 'redo': redo(); return;
+      case 'snap': snapSelectedMainNode(); return;
+      case 'frame': snapSelectedMainNode(); return;
+      case 'next': moveMainSelection(1); return;
+      case 'previous': moveMainSelection(-1); return;
+      case 'fullscreen': toggleFullscreen(); return;
+      case 'escape': if($('.context-menu.open'))closeMenus();else{const top=modalStack.at(-1)?$('#'+modalStack.at(-1)):null;if(top)closeModal(top);} return;
+      case 'play': if(state.runtime.running)stopRuntime();else startRuntime(false); return;
+      case 'zoomIn': state.zoom=clamp(state.zoom*1.1,.2,5);drawWorkplace();return;
+      case 'zoomOut': state.zoom=clamp(state.zoom*.9,.2,5);drawWorkplace();return;
+      case 'resetZoom': state.zoom=1;state.pan={x:0,y:0};drawWorkplace();return;
+      case 'centerCamera': state.pan={x:0,y:0};drawWorkplace();return;
+    }
+  });
+  window.UIXKeyBinds?.registerHandler('script',(command,data)=>{
+    switch(command){
+      case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':pasteScriptNodes();break;case 'duplicate':pasteScriptNodes();break;
+      case 'delete':requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id));break;case 'selectAll':state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();break;
+      case 'deselectAll':state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();break;case 'contextMenu':{const sn=selectedScriptNodes().at(-1);if(sn){const el=document.querySelector(`.script-node-card[data-script-id="${sn.id}"]`);const r=el?.getBoundingClientRect();scriptContextMenu(sn,r?r.left+r.width/2:20,r?r.top+r.height/2:20);}break;}case 'undo':undo();break;case 'redo':redo();break;case 'snap':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn) snapScriptToNode(sn);}break;
+      case 'frame':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn)snapScriptToNode(sn);}break;case 'next':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)+1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'previous':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)-1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'escape':closeModal($('#scriptModal'));break;
+      case 'zoomIn':state.script.zoom=clamp(state.script.zoom*1.1,.25,3);applyScriptTransform();break;case 'zoomOut':state.script.zoom=clamp(state.script.zoom*.9,.25,3);applyScriptTransform();break;case 'resetZoom':state.script.zoom=1;applyScriptTransform();break;
+    }
+  });
+  window.UIXKeyBinds?.registerHandler('sprite',(command,data)=>window.UIXSpriteEditor?.handleShortcut?.(command,data));
+  window.UIXKeyBinds?.registerHandler('midi',(command,data)=>window.UIXMIDIEditor?.handleShortcut?.(command,data));
+  renderKeybindHints();
+
     document.addEventListener('contextmenu',e=>{if(e.target.closest('input,textarea,.select-button,.top-button,.mode-button'))return;});
     document.addEventListener('fullscreenchange',updateFullscreenButton);
     $('#modalBackdrop').addEventListener('click',e=>{
@@ -2879,13 +3225,119 @@
     $('#colorWheel').addEventListener('pointermove',e=>{if(e.buttons)pickWheel(e);});
     $('#colorTextInput').addEventListener('change',()=>{try{state.color.rgba=parseColor($('#colorTextInput').value);syncColorUI();}catch{status('Invalid color');}});
     $('#assetFileInput').addEventListener('change',e=>{if(e.target.files.length)importAssets(e.target.files);e.target.value='';});
+    const assetDropZone=$('#assetModal');
+    assetDropZone?.addEventListener('dragover',e=>{if(e.dataTransfer?.files?.length){e.preventDefault();e.stopPropagation();assetDropZone.classList.add('asset-drag-over');}});
+    assetDropZone?.addEventListener('dragleave',e=>{if(!assetDropZone.contains(e.relatedTarget))assetDropZone.classList.remove('asset-drag-over');});
+    assetDropZone?.addEventListener('drop',e=>{
+      const files=e.dataTransfer?.files;
+      if(!files?.length)return;
+      e.preventDefault();e.stopPropagation();assetDropZone.classList.remove('asset-drag-over');
+      const accepted=[],rejected=[];
+      [...files].forEach(file=>{
+        const name=String(file?.name||''),mime=String(file?.type||'').toLowerCase();
+        const isImage=mime.startsWith('image/')||/\.svg$/i.test(name);
+        const isAudio=mime.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name);
+        if(isImage||isAudio)accepted.push(file);else rejected.push(name||'Unnamed file');
+      });
+      if(rejected.length)status(`Rejected: ${rejected.join(', ')}. Drag & Drop accepts only image or audio files.`);
+      if(accepted.length)importAssets(accepted);
+    });
     $('#projectFileInput')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectFile(file);e.target.value='';});
     document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault();},{passive:false});
     document.addEventListener('gesturestart',e=>e.preventDefault());document.addEventListener('gesturechange',e=>e.preventDefault());document.addEventListener('gestureend',e=>e.preventDefault());
   }
 
-  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,startRuntime,stopRuntime,hasLoadedProject};
-  function applyTopbarAnchors(){const bar=$('#topbar');if(!bar)return;const parts=$$('.top-part',bar),left=parts.filter(p=>p.getAttribute('anchor')==='left'),centers=parts.filter(p=>p.getAttribute('anchor')==='center'),right=parts.filter(p=>p.getAttribute('anchor')==='right');const centerCols=centers.map(()=> 'max-content').join(' ');bar.style.width='100%';bar.style.minWidth='0';bar.style.gridTemplateColumns=`minmax(0,1fr) ${centerCols||'max-content'} minmax(0,1fr)`;left.forEach(p=>{p.style.gridColumn='1';p.style.justifySelf='start';});centers.forEach((p,i)=>{p.style.gridColumn=String(i+2);p.style.justifySelf='center';});const rightCol=centers.length+2;right.forEach(p=>{p.style.gridColumn=String(rightCol);p.style.justifySelf='end';});}
+  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode};
+  function ensureViewportNotice(){
+    let notice=$('#uixViewportNarrowNotice');
+    if(!notice){
+      notice=document.createElement('div');
+      notice.id='uixViewportNarrowNotice';
+      notice.className='uix-viewport-narrow-notice';
+      notice.setAttribute('role','alertdialog');
+      notice.setAttribute('aria-modal','true');
+      notice.setAttribute('aria-live','assertive');
+      notice.innerHTML='<div class="uix-viewport-narrow-card"><strong>The width is not ideal for editing.</strong><span>Try expanding the window or rotate your device if you are on mobile.</span></div>';
+      document.body.append(notice);
+    }
+    return notice;
+  }
+  function installViewportLock(){
+    if(window.__UIXViewportLockInstalled)return;
+    window.__UIXViewportLockInstalled=true;
+    const stop=e=>{
+      if(!document.documentElement.classList.contains('uix-narrow-edit-lock'))return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    ['keydown','keyup','keypress','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','touchstart','touchmove','touchend','click','dblclick','contextmenu','wheel','dragstart','drop'].forEach(type=>document.addEventListener(type,stop,true));
+  }
+  function setViewportEditLock(blocked){
+    const root=document.documentElement;
+    root.classList.toggle('uix-narrow-edit-lock',blocked);
+    if(blocked){
+      const active=document.activeElement;
+      if(active&&typeof active.blur==='function')active.blur();
+      try{window.getSelection?.()?.removeAllRanges?.();}catch{}
+    }
+  }
+  function updateViewportNotice(){
+    const app=$('#appShell');if(!app)return;
+    const notice=ensureViewportNotice();
+    const blocked=window.innerWidth<window.innerHeight && !app.classList.contains('exited') && !window.__UIX_STANDALONE__;
+    notice.hidden=!blocked;
+    setViewportEditLock(blocked);
+    installViewportLock();
+  }
+  function updateTopbarModeRailPosition(){
+    const bar=$('#topbar'),modes=$$('.top-part.part-modes',bar)[0];if(!bar||!modes)return;
+    if(!bar.classList.contains('topbar-modes-rail'))return;
+    const dock=$('#inspectorDock');
+    if(dock&&!dock.hidden){
+      const r=dock.getBoundingClientRect();
+      modes.style.right=`${Math.max(8,window.innerWidth-r.left+8)}px`;
+    }else modes.style.right='8px';
+  }
+  function applyTopbarAnchors(){
+    const bar=$('#topbar');if(!bar)return;
+    const parts=$$('.top-part',bar);
+    const scene=parts.find(p=>p.classList.contains('scene-part'));
+    const actions=parts.find(p=>p.classList.contains('part-actions'));
+    const modes=parts.find(p=>p.classList.contains('part-modes'));
+    const left=parts.find(p=>p.classList.contains('part-left'));
+    const right=parts.find(p=>p.classList.contains('part-right'));
+    const w=bar.clientWidth||window.innerWidth;
+    const rail=w<760;
+    const compact=w<1120 || rail;
+    bar.classList.toggle('topbar-modes-rail',rail);
+    bar.dataset.compact=compact?'true':'false';
+    bar.style.width='100%';
+    bar.style.minWidth='0';
+    [left,scene,actions,modes,right].forEach(p=>{if(!p)return;p.style.gridColumn='';p.style.justifySelf='';p.style.position='';p.style.top='';p.style.right='';p.style.zIndex='';p.style.flexDirection='';});
+    if(rail){
+      bar.style.gridTemplateColumns='minmax(0,1fr) max-content max-content minmax(0,1fr)';
+      if(left){left.style.gridColumn='1';left.style.justifySelf='start';}
+      if(scene){scene.style.gridColumn='2';scene.style.justifySelf='center';}
+      if(actions){actions.style.gridColumn='3';actions.style.justifySelf='center';}
+      if(right){right.style.gridColumn='4';right.style.justifySelf='end';}
+      if(modes){
+        modes.style.position='fixed';
+        modes.style.top='calc(var(--topbar-height) + 10px)';
+        modes.style.zIndex='85';
+        modes.style.flexDirection='column';
+      }
+      updateTopbarModeRailPosition();
+    }else{
+      bar.style.gridTemplateColumns='minmax(0,1fr) max-content max-content max-content minmax(0,1fr)';
+      if(left){left.style.gridColumn='1';left.style.justifySelf='start';}
+      if(scene){scene.style.gridColumn='2';scene.style.justifySelf='center';}
+      if(actions){actions.style.gridColumn='3';actions.style.justifySelf='center';}
+      if(modes){modes.style.gridColumn='4';modes.style.justifySelf='center';}
+      if(right){right.style.gridColumn='5';right.style.justifySelf='end';}
+    }
+    updateViewportNotice();
+  }
+  window.addEventListener('resize',()=>{applyTopbarAnchors();updateViewportNotice();});
 
   async function bootstrapURLLoad(){
     if(window.__UIX_STANDALONE__) return;
@@ -2895,10 +3347,11 @@
   }
 
   // Editor initialization and standalone runtime share this source file.
+  installEditorServiceWorker();
   if(window.__UIX_STANDALONE__){
     document.documentElement.classList.add('uix-standalone');
   }else{
-    state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;
+    state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;
     installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();showModal($('#projectModal'));
     bootstrapURLLoad();
   }

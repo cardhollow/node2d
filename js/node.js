@@ -15,7 +15,7 @@
       fontSize: 32, fontFamily: 'sans-serif',
       border: { enabled: false, color: '#FFFFFFFF', width: 1, radius: [0, 0, 0, 0] }
     },
-    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', animation: '' },
+    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', animation: '', position: [0, 0], size: [0, 0] },
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
@@ -80,6 +80,8 @@
         component.sourceType = component.sourceType || 'Sprite';
         component.animation = component.animation || '';
         component.pixelated = component.pixelated !== false;
+        component.position = Array.isArray(component.position) ? component.position : [0, 0];
+        component.size = Array.isArray(component.size) ? component.size : [0, 0];
       }
       if (component.type === 'animationsprite') {
         if (!Array.isArray(component.animations)) component.animations = [];

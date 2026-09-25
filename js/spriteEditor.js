@@ -22,6 +22,7 @@
   const glyph = name => `<span class="ui-glyph" aria-hidden="true">${glyphs[name] || '·'}</span>`;
 
   let modalSeq = 0;
+  let activeEditor = null;
 
   function makeModal(className, html) {
     const modal = document.createElement('section');
@@ -174,8 +175,9 @@
           </section>
           <section class="sprite-tool-section">
             <div class="sprite-section-title">Selection</div>
+            <div class="sprite-action-row"><button class="btn" data-lasso-mode="set" type="button">Set</button><button class="btn" data-lasso-mode="add" type="button">Add</button><button class="btn" data-lasso-mode="subtract" type="button">Subtract</button></div>
             <div class="sprite-action-row"><button class="btn" data-sprite-selection="copy" type="button">${glyph('copy')}Copy</button><button class="btn" data-sprite-selection="cut" type="button">${glyph('cut')}Cut</button></div>
-            <div class="sprite-action-row"><button class="btn" data-sprite-selection="paste" type="button">${glyph('paste')}Paste</button></div>
+            <div class="sprite-action-row"><button class="btn" data-sprite-selection="paste" type="button">${glyph('paste')}Paste</button><button class="btn" data-sprite-selection="cancel" type="button">Cancel</button></div>
           </section>
           <section class="sprite-tool-section sprite-navigation-help">
             <div class="sprite-section-title">View</div>
@@ -214,9 +216,10 @@
       frameIndex:0,fps:config.fps||8,playing:false,playTimer:null,tool:'pencil',brushSize:1,color:[255,255,255,255],showGrid:true,
       zoom:4,pan:{x:0,y:0},mirrorX:false,mirrorY:false,undo:[],redo:[],drawing:false,drawStart:null,lastCell:null,lastPaintCell:null,
       pointers:new Map(),pinch:null,panDrag:null,spacePan:false,ruler:null,pointerDrawingId:null,lastPointerCellKey:'',perfectShape:false,points:[],pointDragIndex:-1,
-      lassoPoints:[],lassoDrawing:false,selection:null,clipboard:null,canvasRenderRaf:0
+      lassoPoints:[],lassoDrawing:false,selection:null,selectionMode:'set',selectionGestureMode:'set',selectionRect:null,clipboard:null,canvasRenderRaf:0,selectionDrag:null
     };
     bindEditor(ed);
+    activeEditor=ed;
     requestAnimationFrame(()=>{modal.focus?.({preventScroll:true});fitEditor(ed);render(ed);});
   }
 
@@ -226,14 +229,14 @@
   function renderTools(ed){
     const basic=ed.modal.querySelector('[data-basic-tools]'), shapes=ed.modal.querySelector('[data-shape-tools]');
     basic.innerHTML='';shapes.innerHTML='';
-    [['pencil','pencil','Pencil'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
+    [['pencil','pencil','Pencil'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso'],['box','rect','Box Select']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
     [['rect','rect','Rect'],['ellipse','circle','Circle'],['triangle','triangle','Triangle']].forEach(([name,g,label])=>shapes.append(toolButton(ed,name,g,label)));
   }
   function toolButton(ed,name,g,label){
     const b=document.createElement('button');b.type='button';b.className='sprite-tool';b.dataset.tool=name;b.innerHTML=`${glyph(g)}<span>${label}</span>`;
     b.addEventListener('click',()=>{
       if(ed.tool==='point' && name!=='point') commitPointPath(ed);
-      if(ed.tool==='lasso' && name!=='lasso') clearSelectionPath(ed);
+      if(ed.tool==='lasso' && name!=='lasso') clearSelectionPath(ed);if(ed.tool==='box' && name!=='box') ed.selectionRect=null;
       ed.tool=name;ed.ruler=null;render(ed);
     });
     return b;
@@ -241,6 +244,17 @@
 
   function bindEditor(ed){
     const q=s=>ed.modal.querySelector(s),canvas=q('[data-sprite-paint]');
+    canvas.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();window.UIXApp?.showContextMenu?.([
+      {label:'Copy Selection',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'copy')},
+      {label:'Cut Selection',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'cut')},
+      {label:'Paste Selection',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','sprite'),disabled:!ed.clipboard,action:()=>selectionAction(ed,'paste')},
+      {label:'Delete Selection',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','sprite'),disabled:!ed.selection,action:()=>requestDeleteSelection(ed)},
+      {label:'Cancel Selection',icon:'×',shortcut:'',disabled:!ed.selection&&!ed.lassoDrawing&&!ed.lassoPoints.length&&!ed.selectionRect,action:()=>selectionAction(ed,'cancel')},
+      {label:'Undo',icon:'↶',shortcut:window.UIXKeyBinds?.shortcutFor('undo','sprite'),disabled:!ed.undo.length,action:()=>spriteAction(ed,'undo')},
+      {label:'Redo',icon:'↷',shortcut:window.UIXKeyBinds?.shortcutFor('redo','sprite'),disabled:!ed.redo.length,action:()=>spriteAction(ed,'redo')},
+      {label:'Save PNG',icon:'▣',action:()=>saveEditor(ed)},
+      {label:'Close',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('escape','sprite'),action:()=>closeEditor(ed)}
+    ],e.clientX,e.clientY);});
     q('[data-sprite-name]').value=ed.name;
     q('[data-sprite-size]').value=ed.brushSize;
     renderTools(ed);
@@ -255,10 +269,11 @@
     q('[data-sprite-width]').addEventListener('change',e=>resizeSprite(ed,Number(e.target.value)||currentFrame(ed).width,currentFrame(ed).height));
     q('[data-sprite-height]').addEventListener('change',e=>resizeSprite(ed,currentFrame(ed).width,Number(e.target.value)||currentFrame(ed).height));
     q('[data-sprite-fps]').addEventListener('input',e=>{ed.fps=clamp(Number(e.target.value)||8,1,120);if(ed.playing){stopPlayback(ed);startPlayback(ed);}});
-    q('[data-mirror="x"]').addEventListener('click',()=>{ed.mirrorX=!ed.mirrorX;render(ed);});
-    q('[data-mirror="y"]').addEventListener('click',()=>{ed.mirrorY=!ed.mirrorY;render(ed);});
+    q('[data-mirror="x"]').addEventListener('click',()=>{if(ed.selection?.mask?.size){flipSelection(ed,'x');render(ed);}else{ed.mirrorX=!ed.mirrorX;render(ed);}});
+    q('[data-mirror="y"]').addEventListener('click',()=>{if(ed.selection?.mask?.size){flipSelection(ed,'y');render(ed);}else{ed.mirrorY=!ed.mirrorY;render(ed);}});
     ed.modal.querySelectorAll('[data-sprite-action]').forEach(b=>b.addEventListener('click',()=>spriteAction(ed,b.dataset.spriteAction)));
     ed.modal.querySelectorAll('[data-sprite-selection]').forEach(b=>b.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();selectionAction(ed,b.dataset.spriteSelection);}));
+    ed.modal.querySelectorAll('[data-lasso-mode]').forEach(b=>b.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();ed.selectionMode=b.dataset.lassoMode;render(ed);}));
     ed.modal.querySelectorAll('[data-frame-action]').forEach(b=>b.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();frameAction(ed,b.dataset.frameAction);}));
     q('[data-sprite-cancel]').addEventListener('click',()=>{ const close=()=>closeEditor(ed); if(window.UIXApp?.askConfirm) window.UIXApp.askConfirm('Discard changes','Discard the current Sprite Editor changes?',close,'Discard'); else if(window.confirm('Discard the current Sprite Editor changes?')) close(); });
     q('[data-sprite-save]').addEventListener('click',()=>saveEditor(ed));
@@ -269,7 +284,6 @@
       if(e.key.toLowerCase()==='e'){ed.tool='eraser';render(ed);}
       if(e.key.toLowerCase()==='l'){ed.tool='line';render(ed);}
       if(e.key.toLowerCase()==='g'){ed.tool='fill';render(ed);}
-      if(e.key==='Escape')closeEditor(ed);
     });
     ed.modal.addEventListener('keyup',e=>{if(e.key===' ')ed.spacePan=false;});
 
@@ -301,7 +315,12 @@
       if(ed.pointers.size>=2){startPinch(ed);return;}
       if(ed.spacePan){ed.panDrag={x:e.clientX,y:e.clientY,px:ed.pan.x,py:ed.pan.y};return;}
       const cell=clientToCell(ed,e.clientX,e.clientY);if(!cell)return;
-      if(ed.tool==='lasso'){pushUndo(ed);ed.lassoDrawing=true;ed.lassoPoints=[{...cell}];ed.lastCell=cell;scheduleCanvasRender(ed);return;}
+      if((ed.tool==='lasso'||ed.tool==='box') && ed.selection && pointInSelection(ed,cell) && e.button===0){
+        pushUndo(ed);ed.selectionDrag={pointerX:e.clientX,pointerY:e.clientY,dx:0,dy:0,basePixels:clonePixels(currentFrame(ed).pixels),baseSelection:JSON.parse(JSON.stringify({x:ed.selection.x,y:ed.selection.y,width:ed.selection.width,height:ed.selection.height,mask:[...ed.selection.mask],pixels:ed.selection.pixels}))};
+        return;
+      }
+      if(ed.tool==='lasso'){ed.selectionGestureMode=e.altKey?'subtract':(e.shiftKey?'add':(ed.selectionMode||'set'));ed.lassoDrawing=true;ed.lassoPoints=[{...cell}];ed.lastCell=cell;scheduleCanvasRender(ed);return;}
+      if(ed.tool==='box'){ed.selectionGestureMode=e.altKey?'subtract':(e.shiftKey?'add':(ed.selectionMode||'set'));ed.selectionRect={a:{...cell},b:{...cell}};scheduleCanvasRender(ed);return;}
       if(ed.tool==='point'){handlePointDown(e,cell);return;}
       if(ed.tool==='fill'){pushUndo(ed);fill(ed,cell);ed.lastCell=cell;renderStatus(ed,cell);render(ed);return;}
       ed.pointerDrawingId=e.pointerId;ed.drawing=true;ed.drawStart=cell;ed.lastCell=cell;ed.lastPaintCell=null;ed.lastPointerCellKey='';
@@ -313,8 +332,19 @@
       if(ed.pointers.has(e.pointerId))ed.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(ed.pointers.size>=2&&ed.pinch){updatePinch(ed);return;}
       if(ed.panDrag){ed.pan.x=ed.panDrag.px+e.clientX-ed.panDrag.x;ed.pan.y=ed.panDrag.py+e.clientY-ed.panDrag.y;scheduleCanvasRender(ed);return;}
+      if(ed.selectionDrag && ed.selectionDrag.baseSelection){
+        const c=clientToCell(ed,e.clientX,e.clientY);if(c){
+          const dx=Math.round((e.clientX-ed.selectionDrag.pointerX)/ed.zoom),dy=Math.round((e.clientY-ed.selectionDrag.pointerY)/ed.zoom);
+          const bs=ed.selectionDrag.baseSelection,sel=ed.selection;
+          const nx=clamp(bs.x+dx,0,Math.max(0,currentFrame(ed).width-bs.width)),ny=clamp(bs.y+dy,0,Math.max(0,currentFrame(ed).height-bs.height));
+          const f=currentFrame(ed);f.pixels=clonePixels(ed.selectionDrag.basePixels);for(const key of bs.mask){const [ox,oy]=key.split(',').map(Number);if(ox>=0&&oy>=0&&ox<f.width&&oy<f.height)f.pixels[oy][ox]=transparent();}const newMask=new Set(),newPix=makePixels(bs.width,bs.height);
+          for(const key of bs.mask){const [x,y]=key.split(',').map(Number),tx=x+(nx-bs.x),ty=y+(ny-bs.y);if(tx<0||ty<0||tx>=f.width||ty>=f.height)continue;newMask.add(`${tx},${ty}`);const p=bs.pixels[y-bs.y][x-bs.x];newPix[ty-ny][tx-nx]=[...p];f.pixels[ty][tx]=[...p];}
+          ed.selection={x:nx,y:ny,width:bs.width,height:bs.height,mask:newMask,pixels:newPix};ed.selectionDrag.dx=nx-bs.x;ed.selectionDrag.dy=ny-bs.y;invalidateCache(f);ensureFrameCache(f);scheduleCanvasRender(ed);
+        }return;
+      }
       if(ed.tool==='point' && ed.pointDragIndex>=0){const c=clientToCell(ed,e.clientX,e.clientY);if(c){ed.points[ed.pointDragIndex]={...c};ed.lastCell=c;renderStatus(ed,c);scheduleCanvasRender(ed);}return;}
       if(ed.tool==='lasso' && ed.lassoDrawing){const c=clientToCell(ed,e.clientX,e.clientY);if(c){const last=ed.lassoPoints.at(-1);if(!last || Math.hypot(c.x-last.x,c.y-last.y)>=1){ed.lassoPoints.push({...c});ed.lastCell=c;scheduleCanvasRender(ed);} }return;}
+      if(ed.tool==='box'&&ed.selectionRect){const c=clientToCell(ed,e.clientX,e.clientY);if(c){ed.selectionRect.b={...c};ed.lastCell=c;scheduleCanvasRender(ed);}return;}
       if(ed.pointerDrawingId!==e.pointerId || !ed.drawing)return;
       const events=e.getCoalescedEvents?.() || [e];
       for(const ev of events){const cell=clientToCell(ed,ev.clientX,ev.clientY);if(!cell)continue;ed.lastCell=cell;if(ed.tool==='pencil')strokeFromCell(cell,false);else if(ed.tool==='eraser')strokeFromCell(cell,true);else if(['line','rect','ellipse','triangle'].includes(ed.tool))scheduleCanvasRender(ed);}
@@ -326,8 +356,10 @@
       const hadTwo=ed.pointers.size>=2;ed.pointers.delete(e.pointerId);
       if(hadTwo){if(ed.pointers.size<2)ed.pinch=null;return;}
       if(ed.panDrag){ed.panDrag=null;return;}
+      if(ed.selectionDrag){commitSelectionDrag(ed,false);return;}
       if(ed.tool==='point' && ed.pointDragIndex>=0){ed.pointDragIndex=-1;return;}
       if(ed.tool==='lasso' && ed.lassoDrawing){ed.lassoDrawing=false;finishLasso(ed);ed.pointerDrawingId=null;ed.drawing=false;return;}
+      if(ed.tool==='box'&&ed.selectionRect){const r=ed.selectionRect;ed.selectionRect=null;finishBoxSelect(ed,r);ed.pointerDrawingId=null;ed.drawing=false;return;}
       if(ed.pointerDrawingId!==e.pointerId)return;
       const cell=clientToCell(ed,e.clientX,e.clientY) || ed.lastCell;
       if(ed.drawing && cell && ed.drawStart && ['line','rect','ellipse','triangle'].includes(ed.tool)){
@@ -341,7 +373,6 @@
       ed.drawing=false;ed.pointerDrawingId=null;ed.drawStart=null;ed.lastCell=cell;ed.lastPaintCell=null;ed.lastPointerCellKey='';render(ed);
     };
 
-    canvas.addEventListener('contextmenu',e=>e.preventDefault());
     canvas.addEventListener('pointerdown',onPointerDown,{passive:false});
     canvas.addEventListener('pointermove',onPointerMove,{passive:false});
     canvas.addEventListener('pointerup',onPointerUp,{passive:false});
@@ -417,15 +448,46 @@
     pushUndo(ed);const pts=ed.points.slice();for(let i=0;i<pts.length;i++){paint(ed,pts[i],false);if(i>0)lineCells(pts[i-1],pts[i],(x,y)=>paint(ed,{x,y},false));}ed.points=[];ed.pointDragIndex=-1;render(ed);
   }
 
+  function moveSelectionPixels(ed,dx,dy){
+    const f=currentFrame(ed),sel=ed.selection;if(!sel||!sel.mask?.size)return;
+    dx=Math.round(dx);dy=Math.round(dy);
+    const maxX=f.width-sel.width,maxY=f.height-sel.height;
+    const nx=clamp(sel.x+dx,0,Math.max(0,maxX)),ny=clamp(sel.y+dy,0,Math.max(0,maxY));
+    ed.selectionDrag={dx:nx-sel.x,dy:ny-sel.y,basePixels:clonePixels(f.pixels),baseX:sel.x,baseY:sel.y};
+    f.pixels=clonePixels(ed.selectionDrag.basePixels);
+    for(const key of sel.mask){const [x,y]=key.split(',').map(Number);if(x>=0&&y>=0&&x<f.width&&y<f.height)f.pixels[y][x]=transparent();}
+    const nextMask=new Set();const nextPix=makePixels(sel.width,sel.height);
+    for(const key of sel.mask){const [x,y]=key.split(',').map(Number),tx=x+(nx-sel.x),ty=y+(ny-sel.y);if(tx<0||ty<0||tx>=f.width||ty>=f.height)continue;nextMask.add(`${tx},${ty}`);nextPix[ty-ny][tx-nx]=[...sel.pixels[y-sel.y][x-sel.x]];f.pixels[ty][tx]=[...sel.pixels[y-sel.y][x-sel.x]];}
+    sel.x=nx;sel.y=ny;sel.mask=nextMask;sel.pixels=nextPix;invalidateCache(f);ensureFrameCache(f);
+  }
+  function flipSelection(ed,axis){
+    const f=currentFrame(ed),sel=ed.selection;if(!sel?.mask?.size)return false;
+    pushUndo(ed);
+    const oldMask=new Set(sel.mask),oldPix=clonePixels(sel.pixels),newMask=new Set(),newPix=makePixels(sel.width,sel.height);
+    for(const key of oldMask){const [x,y]=key.split(',').map(Number),lx=x-sel.x,ly=y-sel.y,nx=axis==='x'?sel.x+sel.width-1-lx:x,ny=axis==='y'?sel.y+sel.height-1-ly:y;newMask.add(`${nx},${ny}`);newPix[ny-sel.y][nx-sel.x]=[...oldPix[ly][lx]];}
+    for(const key of oldMask){const [x,y]=key.split(',').map(Number);f.pixels[y][x]=transparent();}
+    for(const key of newMask){const [x,y]=key.split(',').map(Number);f.pixels[y][x]=[...newPix[y-sel.y][x-sel.x]];}
+    sel.mask=newMask;sel.pixels=newPix;invalidateCache(f);ensureFrameCache(f);return true;
+  }
+  function rotateSelection(ed){
+    const f=currentFrame(ed),sel=ed.selection;if(!sel?.mask?.size)return false;
+    pushUndo(ed);const oldMask=new Set(sel.mask),oldPix=clonePixels(sel.pixels),nw=sel.height,nh=sel.width,newPix=makePixels(nw,nh),newMask=new Set();
+    for(const key of oldMask){const [x,y]=key.split(',').map(Number),lx=x-sel.x,ly=y-sel.y,nx=sel.x+(sel.height-1-ly),ny=sel.y+lx;newMask.add(`${nx},${ny}`);newPix[ny-sel.y][nx-sel.x]=[...oldPix[ly][lx]];}
+    for(const key of oldMask){const [x,y]=key.split(',').map(Number);f.pixels[y][x]=transparent();}
+    const maxX=f.width-nw,maxY=f.height-nh;const ox=clamp(sel.x,0,Math.max(0,maxX)),oy=clamp(sel.y,0,Math.max(0,maxY));
+    const finalMask=new Set(),finalPix=makePixels(nw,nh);
+    for(const key of newMask){const [x,y]=key.split(',').map(Number),tx=x+(ox-sel.x),ty=y+(oy-sel.y);if(tx<0||ty<0||tx>=f.width||ty>=f.height)continue;finalMask.add(`${tx},${ty}`);finalPix[ty-oy][tx-ox]=[...newPix[y-sel.y][x-sel.x]];f.pixels[ty][tx]=[...newPix[y-sel.y][x-sel.x]];}
+    sel.x=ox;sel.y=oy;sel.width=nw;sel.height=nh;sel.mask=finalMask;sel.pixels=finalPix;invalidateCache(f);ensureFrameCache(f);return true;
+  }
   function spriteAction(ed,a){const f=currentFrame(ed);
     if(a==='grid'){ed.showGrid=!ed.showGrid;return render(ed);}
     if(a==='center'){fitEditor(ed);return render(ed);}
     if(a==='clear'){pushUndo(ed);f.pixels=makePixels(f.width,f.height);invalidateCache(f);return render(ed);}
     if(a==='undo'){if(ed.undo.length){ed.redo.push(clonePixels(f.pixels));f.pixels=ed.undo.pop();invalidateCache(f);}return render(ed);}
     if(a==='redo'){if(ed.redo.length){ed.undo.push(clonePixels(f.pixels));f.pixels=ed.redo.pop();invalidateCache(f);}return render(ed);}
-    if(a==='flipx'){pushUndo(ed);f.pixels=f.pixels.map(row=>[...row].reverse());invalidateCache(f);return render(ed);}
-    if(a==='flipy'){pushUndo(ed);f.pixels=[...f.pixels].reverse();invalidateCache(f);return render(ed);}
-    if(a==='rotate'){pushUndo(ed);const next=makePixels(f.height,f.width);for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++)next[x][f.height-1-y]=[...f.pixels[y][x]];f.pixels=next;[f.width,f.height]=[f.height,f.width];invalidateCache(f);syncFrameFields(ed);fitEditor(ed);return render(ed);}
+    if(a==='flipx'){if(ed.selection?.mask?.size?flipSelection(ed,'x'):(pushUndo(ed),f.pixels=f.pixels.map(row=>[...row].reverse()),invalidateCache(f),false))return render(ed);return render(ed);}
+    if(a==='flipy'){if(ed.selection?.mask?.size?flipSelection(ed,'y'):(pushUndo(ed),f.pixels=[...f.pixels].reverse(),invalidateCache(f),false))return render(ed);return render(ed);}
+    if(a==='rotate'){if(ed.selection?.mask?.size)rotateSelection(ed);else{pushUndo(ed);const next=makePixels(f.height,f.width);for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++)next[x][f.height-1-y]=[...f.pixels[y][x]];f.pixels=next;[f.width,f.height]=[f.height,f.width];invalidateCache(f);syncFrameFields(ed);fitEditor(ed);}return render(ed);}
   }
 
   function frameAction(ed,a){
@@ -453,9 +515,20 @@
   }
   function pointInPolygon(x,y,pts){let inside=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const xi=pts[i].x,yi=pts[i].y,xj=pts[j].x,yj=pts[j].y;const intersect=((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi);if(intersect)inside=!inside;}return inside;}
   function selectionPixels(ed,pts){const f=currentFrame(ed);if(!pts||pts.length<3)return null;let minX=f.width-1,minY=f.height-1,maxX=0,maxY=0;pts.forEach(p=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);});minX=clamp(minX,0,f.width-1);minY=clamp(minY,0,f.height-1);maxX=clamp(maxX,0,f.width-1);maxY=clamp(maxY,0,f.height-1);const w=maxX-minX+1,h=maxY-minY+1,pix=makePixels(w,h),mask=new Set();for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){if(pointInPolygon(x+.5,y+.5,pts)){mask.add(`${x},${y}`);pix[y-minY][x-minX]=[...f.pixels[y][x]];}}return {x:minX,y:minY,width:w,height:h,pixels:pix,mask};}
-  function finishLasso(ed){const sel=selectionPixels(ed,ed.lassoPoints);ed.selection=sel;ed.lassoPoints=[];ed.pointDragIndex=-1;render(ed);}
+  function pointInSelection(ed,c){const sel=ed.selection;if(!sel?.mask?.size)return false;const dx=ed.selectionDrag?.dx||0,dy=ed.selectionDrag?.dy||0;return sel.mask.has(`${c.x-dx},${c.y-dy}`);}
+  function commitSelectionDrag(ed,cancel=false){
+    const f=currentFrame(ed),d=ed.selectionDrag;if(!d||!d.baseSelection)return;
+    if(cancel){f.pixels=clonePixels(d.basePixels);const bs=d.baseSelection;ed.selection={x:bs.x,y:bs.y,width:bs.width,height:bs.height,mask:new Set(bs.mask),pixels:bs.pixels};}
+    else {ed.selectionDrag=null;}
+    invalidateCache(f);ensureFrameCache(f);ed.selectionDrag=null;render(ed);
+  }
+  function selectionFromMask(ed,mask){const f=currentFrame(ed);if(!mask?.size)return null;let minX=f.width,maxX=-1,minY=f.height,maxY=-1;for(const key of mask){const [x,y]=key.split(',').map(Number);if(x<0||y<0||x>=f.width||y>=f.height)continue;minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}if(maxX<minX||maxY<minY)return null;const width=maxX-minX+1,height=maxY-minY+1,pixels=makePixels(width,height);for(const key of mask){const [x,y]=key.split(',').map(Number);if(x>=minX&&x<=maxX&&y>=minY&&y<=maxY)pixels[y-minY][x-minX]=[...f.pixels[y][x]];}return{x:minX,y:minY,width,height,pixels,mask:new Set(mask)};}
+  function combineSelection(ed,next){if(!next)return null;const mode=ed.selectionMode||'set';if(mode==='set'||!ed.selection?.mask?.size)return next;const out=new Set(ed.selection.mask);if(mode==='add')for(const k of next.mask)out.add(k);else if(mode==='subtract')for(const k of next.mask)out.delete(k);return selectionFromMask(ed,out);}
+  function finishLasso(ed){const prev=ed.selectionMode,mode=ed.selectionGestureMode||prev;const next=selectionPixels(ed,ed.lassoPoints);ed.selectionMode=mode;ed.selection=combineSelection(ed,next);ed.selectionMode=prev;ed.selectionGestureMode=prev;ed.lassoPoints=[];ed.pointDragIndex=-1;render(ed);}
+  function selectionRectPixels(ed,rect){const f=currentFrame(ed);const minX=clamp(Math.min(rect.a.x,rect.b.x),0,f.width-1),maxX=clamp(Math.max(rect.a.x,rect.b.x),0,f.width-1),minY=clamp(Math.min(rect.a.y,rect.b.y),0,f.height-1),maxY=clamp(Math.max(rect.a.y,rect.b.y),0,f.height-1);const mask=new Set();for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++)mask.add(`${x},${y}`);return selectionFromMask(ed,mask);}
+  function finishBoxSelect(ed,rect){const prev=ed.selectionMode,mode=ed.selectionGestureMode||prev;ed.selectionMode=mode;ed.selection=combineSelection(ed,selectionRectPixels(ed,rect));ed.selectionMode=prev;ed.selectionGestureMode=prev;render(ed);}
   function clearSelectionPath(ed){ed.lassoPoints=[];ed.lassoDrawing=false;}
-  function selectionAction(ed,a){const sel=ed.selection,f=currentFrame(ed);if(a==='copy'){if(!sel)return;ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels)};render(ed);return;}if(a==='cut'){if(!sel)return;pushUndo(ed);for(const key of sel.mask){const [x,y]=key.split(',').map(Number);f.pixels[y][x]=transparent();updateCachePixel(f,x,y,f.pixels[y][x]);}invalidateCache(f);ensureFrameCache(f);ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels)};ed.selection=null;render(ed);return;}if(a==='paste'){if(!ed.clipboard)return;pushUndo(ed);const center=ed.lastCell||{x:Math.floor(f.width/2),y:Math.floor(f.height/2)};const ox=Math.round(center.x-ed.clipboard.width/2),oy=Math.round(center.y-ed.clipboard.height/2);for(let y=0;y<ed.clipboard.height;y++)for(let x=0;x<ed.clipboard.width;x++){const p=ed.clipboard.pixels[y][x],tx=ox+x,ty=oy+y;if(tx>=0&&ty>=0&&tx<f.width&&ty<f.height){f.pixels[ty][tx]=[...p];updateCachePixel(f,tx,ty,p);}}ed.selection=null;render(ed);}}
+  function selectionAction(ed,a){const sel=ed.selection,f=currentFrame(ed);if(a==='cancel'){ed.lassoPoints=[];ed.lassoDrawing=false;ed.selectionRect=null;ed.selection=null;ed.selectionDrag=null;ed.selectionMode='set';ed.selectionGestureMode='set';render(ed);return;}if(a==='copy'){if(!sel)return;ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels)};render(ed);return;}if(a==='cut'){if(!sel)return;pushUndo(ed);for(const key of sel.mask){const [x,y]=key.split(',').map(Number);f.pixels[y][x]=transparent();updateCachePixel(f,x,y,f.pixels[y][x]);}invalidateCache(f);ensureFrameCache(f);ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels)};ed.selection=null;render(ed);return;}if(a==='paste'){if(!ed.clipboard)return;pushUndo(ed);const center=ed.lastCell||{x:Math.floor(f.width/2),y:Math.floor(f.height/2)};const ox=Math.round(center.x-ed.clipboard.width/2),oy=Math.round(center.y-ed.clipboard.height/2);for(let y=0;y<ed.clipboard.height;y++)for(let x=0;x<ed.clipboard.width;x++){const p=ed.clipboard.pixels[y][x],tx=ox+x,ty=oy+y;if(tx>=0&&ty>=0&&tx<f.width&&ty<f.height){f.pixels[ty][tx]=[...p];updateCachePixel(f,tx,ty,p);}}ed.selection=null;render(ed);}}
   function renderCanvasOnly(ed){
     const q=s=>ed.modal.querySelector(s),canvas=q('[data-sprite-paint]'),wrap=q('[data-sprite-canvas-wrap]');if(!canvas||!wrap)return;
     const r=wrap.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,r.width),h=Math.max(1,r.height),pw=Math.max(1,Math.floor(w*dpr)),ph=Math.max(1,Math.floor(h*dpr));
@@ -464,8 +537,30 @@
     const f=currentFrame(ed);ctx.save();ctx.translate(w/2+ed.pan.x,h/2+ed.pan.y);ctx.scale(ed.zoom,ed.zoom);drawFrame(ctx,f,ed);
     if(ed.drawing&&ed.drawStart&&ed.lastCell&&['line','rect','ellipse','triangle'].includes(ed.tool)){const end=constrainShapeEnd(ed,ed.drawStart,ed.lastCell,ed.tool);drawPreviewCells(ctx,f,ed,shapeCells(ed.tool,ed.drawStart,end,ed.perfectShape));}
     if(ed.tool==='point'&&ed.points.length){const pts=ed.points;for(let i=1;i<pts.length;i++)drawPreviewCells(ctx,f,ed,[...shapeCells('line',pts[i-1],pts[i],false)]);drawPreviewCells(ctx,f,ed,pts);}
+    if(ed.tool==='box'&&ed.selectionRect){const a=ed.selectionRect.a,b=ed.selectionRect.b,ox=-f.width/2,oy=-f.height/2;ctx.strokeStyle='rgba(220,210,120,.95)';ctx.lineWidth=1/ed.zoom;ctx.setLineDash([3/ed.zoom,3/ed.zoom]);ctx.strokeRect(Math.min(a.x,b.x)+ox,Math.min(a.y,b.y)+oy,Math.abs(a.x-b.x)+1,Math.abs(a.y-b.y)+1);ctx.setLineDash([]);}
     if(ed.tool==='lasso'&&ed.lassoPoints.length){ctx.strokeStyle='rgba(220,210,120,.95)';ctx.lineWidth=1/ed.zoom;ctx.setLineDash([3/ed.zoom,3/ed.zoom]);ctx.beginPath();ed.lassoPoints.forEach((p,i)=>i?ctx.lineTo(p.x-f.width/2+.5,p.y-f.height/2+.5):ctx.moveTo(p.x-f.width/2+.5,p.y-f.height/2+.5));ctx.stroke();ctx.setLineDash([]);}
-    if(ed.selection?.mask?.size){ctx.strokeStyle='rgba(220,210,120,.9)';ctx.lineWidth=1/ed.zoom;ctx.setLineDash([2/ed.zoom,2/ed.zoom]);const s=ed.selection;ctx.strokeRect(s.x-f.width/2-.5,s.y-f.height/2-.5,s.width,s.height);ctx.setLineDash([]);}
+    if(ed.selection?.mask?.size){
+      const s=ed.selection;
+      const mask=s.mask;
+      ctx.strokeStyle='rgba(230,205,90,.98)';ctx.lineWidth=1/ed.zoom;ctx.setLineDash([]);
+      ctx.beginPath();
+      for(const key of mask){
+        const [mx,my]=key.split(',').map(Number),x=mx-f.width/2,y=my-f.height/2;
+        const inside=(xx,yy)=>mask.has(`${xx},${yy}`);
+        if(!inside(mx+1,my)) {ctx.moveTo(x+1,y);ctx.lineTo(x+1,y+1);}
+        if(!inside(mx-1,my)) {ctx.moveTo(x,y);ctx.lineTo(x,y+1);}
+        if(!inside(mx,my+1)) {ctx.moveTo(x,y+1);ctx.lineTo(x+1,y+1);}
+        if(!inside(mx,my-1)) {ctx.moveTo(x,y);ctx.lineTo(x+1,y);}
+      }
+      ctx.stroke();
+      const dx=ed.selectionDrag?.dx||0,dy=ed.selectionDrag?.dy||0;const bx=s.x+dx-f.width/2,by=s.y+dy-f.height/2;
+      ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1/ed.zoom;ctx.strokeRect(bx-.5,by-.5,s.width,s.height);
+      const hs=Math.max(2.5/ed.zoom,1.5/ed.zoom);ctx.fillStyle='rgba(230,205,90,.98)';
+      [[bx,by],[bx+s.width,by],[bx,by+s.height],[bx+s.width,by+s.height]].forEach(([hx,hy])=>ctx.fillRect(hx-hs/2,hy-hs/2,hs,hs));
+      if(ed.selectionDrag){
+        ctx.strokeStyle='rgba(230,205,90,.7)';ctx.lineWidth=1/ed.zoom;ctx.beginPath();ctx.moveTo(bx+s.width/2,by-6/ed.zoom);ctx.lineTo(bx+s.width/2,by-2/ed.zoom);ctx.moveTo(bx+s.width/2,by+s.height+2/ed.zoom);ctx.lineTo(bx+s.width/2,by+s.height+6/ed.zoom);ctx.moveTo(bx-6/ed.zoom,by+s.height/2);ctx.lineTo(bx-2/ed.zoom,by+s.height/2);ctx.moveTo(bx+s.width+2/ed.zoom,by+s.height/2);ctx.lineTo(bx+s.width+6/ed.zoom,by+s.height/2);ctx.stroke();
+      }
+    }
     ctx.restore();
   }
   function render(ed){
@@ -477,7 +572,7 @@
     const colorLabel=q('[data-sprite-color-label]');if(colorLabel)colorLabel.textContent=rgbaToHex(ed.color);q('[data-sprite-color-swatch]').style.background=cssRgba(ed.color);
     q('[data-mirror="x"]').textContent=`Mirror X: ${ed.mirrorX?'On':'Off'}`;q('[data-mirror="y"]').textContent=`Mirror Y: ${ed.mirrorY?'On':'Off'}`;q('[data-mirror="x"]').classList.toggle('active',ed.mirrorX);q('[data-mirror="y"]').classList.toggle('active',ed.mirrorY);q('[data-perfect-shape]').checked=!!ed.perfectShape;
     q('[data-sprite-name]').value=ed.name;syncFrameFields(ed);ed.modal.querySelectorAll('.sprite-tool').forEach(b=>b.classList.toggle('active',b.dataset.tool===ed.tool));
-    ed.modal.querySelectorAll('[data-sprite-selection]').forEach(b=>{b.disabled=b.dataset.spriteSelection==='paste'?!ed.clipboard:!ed.selection;});
+    ed.modal.querySelectorAll('[data-sprite-selection]').forEach(b=>{if(b.dataset.spriteSelection==='paste')b.disabled=!ed.clipboard;else if(b.dataset.spriteSelection==='cancel')b.disabled=!ed.selection&&!ed.lassoDrawing&&!ed.lassoPoints.length&&!ed.selectionRect;else b.disabled=!ed.selection;});ed.modal.querySelectorAll('[data-lasso-mode]').forEach(b=>b.classList.toggle('active',b.dataset.lassoMode===(ed.selectionMode||'set')));
     const play=q('[data-frame-action="play"]');if(play)play.innerHTML=`${glyph(ed.playing?'pause':'play')}${ed.playing?'Pause':'Play'}`;
     renderPreview(ed);renderFrameList(ed);
   }
@@ -523,7 +618,32 @@
 
   function toPngAsset(ed,f,index){const c=document.createElement('canvas');c.width=f.width;c.height=f.height;const ctx=c.getContext('2d');const data=ctx.createImageData(f.width,f.height);for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){const p=f.pixels[y][x],i=(y*f.width+x)*4;data.data[i]=p[0];data.data[i+1]=p[1];data.data[i+2]=p[2];data.data[i+3]=p[3];}ctx.putImageData(data,0,0);const stem=(ed.name.trim()||'Sprite');const multi=ed.frames.length>1;const suffix=/\d$/.test(stem)?'_':'';const fileBase=multi?`${stem}${suffix}${index+1}`:stem;return{name:`${fileBase}.png`,value:c.toDataURL('image/png'),type:'image/png',kind:'Raster',editable:true,width:f.width,height:f.height,filename:`${fileBase}.png`};}
   function saveEditor(ed){stopPlayback(ed);if(ed.tool==='point')commitPointPath(ed);const frames=ed.frames.map((f,i)=>toPngAsset(ed,f,i));const app=window.UIXApp;if(app?.saveSpriteFrames)app.saveSpriteFrames(ed.sourceAssets,frames);else frames.forEach(f=>app?.addSpriteAsset?.(f));app?.status?.(`${frames.length} frame${frames.length===1?'':'s'} saved as PNG`);closeEditor(ed);}
-  function closeEditor(ed){stopPlayback(ed);ed.modal._resizeObserver?.disconnect();window.UIXApp?.closeModal?.(ed.modal);ed.modal.remove();}
+  function closeEditor(ed){if(activeEditor===ed)activeEditor=null;stopPlayback(ed);ed.modal._resizeObserver?.disconnect();window.UIXApp?.closeModal?.(ed.modal);ed.modal.remove();}
 
-  window.UIXSpriteEditor={openCreate,openEdit};
+  function requestDeleteSelection(ed){
+    if(!ed?.selection?.mask?.size)return;
+    const count=ed.selection.mask.size;
+    const remove=()=>{const f=currentFrame(ed);pushUndo(ed);for(const key of ed.selection.mask){const [x,y]=key.split(',').map(Number);if(x>=0&&y>=0&&x<f.width&&y<f.height){f.pixels[y][x]=transparent();updateCachePixel(f,x,y,f.pixels[y][x]);}}invalidateCache(f);ensureFrameCache(f);ed.selection=null;render(ed);};
+    const ask=window.UIXApp?.askConfirm;if(ask)ask('Delete Pixel Selection',`Delete ${count} selected pixel${count===1?'':'s'}?`,remove,'Delete');else if(confirm(`Delete ${count} selected pixel${count===1?'':'s'}?`))remove();
+  }
+
+  function handleShortcut(command){
+    const ed=activeEditor;if(!ed)return;
+    const f=currentFrame(ed);
+    switch(command){
+      case'copy':selectionAction(ed,'copy');break;
+      case'cut':selectionAction(ed,'cut');break;
+      case'paste':selectionAction(ed,'paste');break;
+      case'duplicate':selectionAction(ed,'copy');selectionAction(ed,'paste');break;
+      case'undo':spriteAction(ed,'undo');break;
+      case'redo':spriteAction(ed,'redo');break;
+      case'saveSprite':saveEditor(ed);break;
+      case'selectAll':{const mask=new Set();for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++)mask.add(`${x},${y}`);ed.selection={x:0,y:0,width:f.width,height:f.height,pixels:clonePixels(f.pixels),mask};render(ed);break;}
+      case'deselectAll':ed.selection=null;clearSelectionPath(ed);ed.selectionRect=null;ed.selectionMode='set';ed.selectionGestureMode='set';render(ed);break;
+      case'escape':selectionAction(ed,'cancel');break;
+      case'delete':requestDeleteSelection(ed);break;
+      case'escape':closeEditor(ed);break;
+    }
+  }
+  window.UIXSpriteEditor={openCreate,openEdit,handleShortcut};
 })();
