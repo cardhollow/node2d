@@ -899,7 +899,7 @@
   function customSelect(value,options,onChange){
     const wrap=document.createElement('div');wrap.className='select-wrap';
     const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(value)}</span><span>⌄</span>`;
-    const menu=document.createElement('div');menu.className='select-menu floating-select-menu';menu.hidden=true;
+    const menu=document.createElement('div');menu.className='select-menu floating-select-menu';menu.hidden=true;menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';
     options.forEach(option=>{const item=document.createElement('button');item.type='button';item.textContent=option;item.className=String(option)===String(value)?'active':'';item.addEventListener('pointerdown',e=>e.stopPropagation());item.addEventListener('click',e=>{e.stopPropagation();onChange(option);b.firstElementChild.textContent=option;closeMenus();});menu.append(item);});
     b.addEventListener('click',e=>{e.stopPropagation();if(activeSelectMenu===menu){closeMenus();return;}closeMenus();document.body.append(menu);activeSelectMenu=menu;positionFloatingElement(menu,b);});
     wrap.append(b);return wrap;
@@ -908,7 +908,7 @@
     if(!select||select.disabled)return;
     if(activeNativeSelect?.select===select){closeMenus();return;}
     closeMenus();
-    const menu=document.createElement('div');menu.className='select-menu floating-select-menu native-select-menu';menu.hidden=true;
+    const menu=document.createElement('div');menu.className='select-menu floating-select-menu native-select-menu';menu.hidden=true;menu.style.zIndex='2147483647';menu.style.pointerEvents='auto';
     menu.style.zIndex='2147483647';
     menu.style.pointerEvents='auto';
     [...select.options].forEach(option=>{
@@ -1457,7 +1457,7 @@
   function toggleSubMenu(id,anchor){const m=$('#'+id);if(!m)return;const open=!m.classList.contains('open');$$('.context-menu.nested-menu').forEach(x=>{if(x!==m)hideMenuElement(x);});if(!open){hideMenuElement(m);return;}m.classList.add('open');positionSubMenu(m,anchor);}
   function positionMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor?.getBoundingClientRect?.()||{left:0,right:0,top:0,bottom:0},mr=menu.getBoundingClientRect(),pad=6;let left=ar.left,top=ar.bottom+2;if(top+mr.height>innerHeight-pad)top=ar.top-mr.height-2;if(left+mr.width>innerWidth-pad)left=innerWidth-mr.width-pad;if(left<pad)left=pad;if(top<pad)top=pad;menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function positionSubMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor.getBoundingClientRect(),mr=menu.getBoundingClientRect(),pad=6;let left=ar.right+2,top=ar.top;if(left+mr.width>innerWidth-pad)left=ar.left-mr.width-2;if(top+mr.height>innerHeight-pad)top=innerHeight-mr.height-pad;if(top<pad)top=pad;menu.style.left=`${Math.max(pad,left)}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
-  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
+  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function closeContextMenu(){const m=$('#floatingContextMenu');m.hidden=true;m.classList.remove('open');m.innerHTML='';}
   function askConfirm(title,text,onConfirm,okText='Delete'){ $('#confirmModalTitle').textContent=title;$('#confirmModalText').textContent=text;$('#confirmModalOk').textContent=okText;confirmAction=onConfirm;showModal($('#confirmModal')); }
   function doConfirm(){const fn=confirmAction;confirmAction=null;closeModal($('#confirmModal'));fn?.();}
@@ -2049,7 +2049,7 @@
   function renderColorSliders(){const host=$('#colorSliders');host.innerHTML='';[['R',0],['G',1],['B',2],['A',3]].forEach(([name,i])=>{const row=document.createElement('div');row.className='color-slider-row';const lab=document.createElement('label');lab.textContent=name;const input=document.createElement('input');input.type='range';input.min=0;input.max=255;input.value=Math.round(state.color.rgba[i]*255);const out=document.createElement('output');out.textContent=input.value;input.oninput=()=>{state.color.rgba[i]=Number(input.value)/255;out.textContent=input.value;syncColorUI();};row.append(lab,input,out);host.append(row);});}
   function syncColorUI(){const hex=rgbaToHex(state.color.rgba);$('#colorTextInput').value=hex;$('#colorHexPreview').textContent=hex;$('#colorPreview').style.background=rgbaCss(state.color.rgba);}
   function drawColorWheel(){const c=$('#colorWheel'),ctx=c.getContext('2d'),cx=130,cy=130,r=112;ctx.clearRect(0,0,c.width,c.height);for(let i=0;i<360;i++){const a=(i-90)*Math.PI/180;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+Math.PI/180);ctx.closePath();ctx.fillStyle=`hsl(${i},100%,50%)`;ctx.fill();}ctx.globalCompositeOperation='destination-in';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.strokeStyle='#707070';ctx.strokeRect(18,18,224,224);}
-  function pickWheel(e){const rect=$('#colorWheel').getBoundingClientRect(),x=e.clientX-rect.left-130,y=e.clientY-rect.top-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),rgb=hsvToRgb(h,s,.9);state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
+  function pickWheel(e){const wheel=$('#colorWheel');if(!wheel)return;const rect=wheel.getBoundingClientRect(),sx=260/Math.max(1,rect.width),sy=260/Math.max(1,rect.height),x=(e.clientX-rect.left)*sx-130,y=(e.clientY-rect.top)*sy-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),rgb=hsvToRgb(h,s,.9);state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
   function hsvToRgb(h,s,v){const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let r=0,g=0,b=0;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];return[r+m,g+m,b+m];}
   function applyColor(){try{const rgba=parseColor($('#colorTextInput').value);state.color.onChange(rgbaToHex(rgba));closeModal($('#colorModal'));renderComponentPanel();drawWorkplace();}catch{status('Invalid color value');}}
   function parseColor(v){let s=String(v||'').trim();if(/^#/.test(s)){let h=s.slice(1);if(h.length===3)h=h.split('').map(c=>c+c).join('');if(h.length===6)h+='ff';if(h.length!==8)throw Error();const n=parseInt(h,16);return[((n>>>24)&255)/255,((n>>>16)&255)/255,((n>>>8)&255)/255,(n&255)/255];}const m=s.match(/^rgba?\(([^)]+)\)$/i);if(m){const p=m[1].split(',').map(Number);return[(p[0]||0)/255,(p[1]||0)/255,(p[2]||0)/255,p[3]===undefined?1:(p[3]>1?p[3]/255:p[3])];}throw Error();}
@@ -2144,11 +2144,22 @@
     const out={};Object.keys(entries).forEach(k=>{out[k]=typeof entries[k]==='function'?entries[k]:clone(entries[k]);});return out;
   }
   function scriptClientToWorld(clientX,clientY){
-    const canvas=$('#scriptCanvas'),world=$('#scriptCanvasWorld');
-    if(!canvas||!world)return{x:0,y:0};
-    const wr=world.getBoundingClientRect(),zoom=Math.max(.000001,state.script.zoom||1);
-    return {x:(clientX-wr.left)/zoom,y:(clientY-wr.top)/zoom};
+    const canvas=$('#scriptCanvas');
+    if(!canvas)return{x:0,y:0};
+    if(!Number.isFinite(state.script.pan.x))state.script.pan.x=0;
+    if(!Number.isFinite(state.script.pan.y))state.script.pan.y=0;
+    if(!Number.isFinite(state.script.zoom))state.script.zoom=1;
+    const rect=canvas.getBoundingClientRect(),zoom=Math.max(.000001,state.script.zoom||1);
+    return {x:((clientX-rect.left)-rect.width/2-state.script.pan.x)/zoom,y:((clientY-rect.top)-rect.height/2-state.script.pan.y)/zoom};
   }
+  function updateScriptGrid(){
+    const canvas=$('#scriptCanvas');if(!canvas)return;
+    const zoom=Math.max(.25,Number(state.script.zoom)||1),size=32*zoom;
+    canvas.style.setProperty('--script-grid-size',`${size}px`);
+    canvas.style.setProperty('--script-grid-x',`${rectMod(state.script.pan.x,size)}px`);
+    canvas.style.setProperty('--script-grid-y',`${rectMod(state.script.pan.y,size)}px`);
+  }
+  function rectMod(value,size){if(!size)return 0;const r=value%size;return r<0?r+size:r;}
   function addScriptNode(def){
     if(!def||!state.script.nodeId)return;
     if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return null;}
@@ -2423,6 +2434,7 @@
   function applyScriptTransform(){
     const world=$('#scriptCanvasWorld');if(!world)return;
     world.style.transform=`translate(${state.script.pan.x}px,${state.script.pan.y}px) scale(${state.script.zoom})`;
+    updateScriptGrid();
     const label=$('#scriptZoomLabel');if(label)label.textContent=`${Math.round(state.script.zoom*100)}%`;
     requestAnimationFrame(renderScriptConnections);
   }
@@ -2614,8 +2626,11 @@
       if(e.button!==0)return;
       pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pointers.size===2){
-        const [a,b]=[...pointers.values()];
-        pinch={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:state.script.zoom};
+        const [a,b]=[...pointers.values()],midX=(a.x+b.x)/2,midY=(a.y+b.y)/2;
+        if(!Number.isFinite(state.script.pan.x))state.script.pan.x=0;
+        if(!Number.isFinite(state.script.pan.y))state.script.pan.y=0;
+        if(!Number.isFinite(state.script.zoom))state.script.zoom=1;
+        pinch={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:state.script.zoom,lastMidX:midX,lastMidY:midY};
         pan=null;canvas.classList.remove('panning');return;
       }
       if(e.target.closest('.script-node-card,.script-input,.script-input-port,.script-output-port'))return;
@@ -2625,13 +2640,20 @@
     canvas.addEventListener('pointermove',e=>{
       if(pointers.has(e.pointerId))pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pointers.size>=2&&pinch){
-        const [a,b]=[...pointers.values()];
-        const dist=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
+        const [a,b]=[...pointers.values()],midX=(a.x+b.x)/2,midY=(a.y+b.y)/2,dist=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
+        const before=scriptClientToWorld(pinch.lastMidX,pinch.lastMidY),rect=canvas.getBoundingClientRect();
         state.script.zoom=clamp(pinch.zoom*(dist/pinch.distance),.25,4);
-        applyScriptTransform();return;
+        state.script.pan.x=(midX-rect.left-rect.width/2)-before.x*state.script.zoom;
+        state.script.pan.y=(midY-rect.top-rect.height/2)-before.y*state.script.zoom;
+        if(!Number.isFinite(state.script.pan.x))state.script.pan.x=0;
+        if(!Number.isFinite(state.script.pan.y))state.script.pan.y=0;
+        pinch.lastMidX=midX;pinch.lastMidY=midY;applyScriptTransform();return;
       }
       if(!pan)return;
-      state.script.pan.x=pan.px+e.clientX-pan.x;state.script.pan.y=pan.py+e.clientY-pan.y;applyScriptTransform();
+      state.script.pan.x=pan.px+e.clientX-pan.x;state.script.pan.y=pan.py+e.clientY-pan.y;
+      if(!Number.isFinite(state.script.pan.x))state.script.pan.x=0;
+      if(!Number.isFinite(state.script.pan.y))state.script.pan.y=0;
+      applyScriptTransform();
     });
     const end=e=>{
       if(e?.pointerId!==undefined)pointers.delete(e.pointerId);
@@ -2641,7 +2663,7 @@
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);canvas.addEventListener('pointerleave',()=>{});
     canvas.addEventListener('lostpointercapture',()=>resetScriptCanvasInteraction?.());
     canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
-    canvas.addEventListener('wheel',e=>{e.preventDefault();state.script.zoom=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);applyScriptTransform();},{passive:false});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();const rect=canvas.getBoundingClientRect(),before=scriptClientToWorld(e.clientX,e.clientY),next=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);state.script.zoom=next;state.script.pan.x=e.clientX-rect.left-rect.width/2-before.x*next;state.script.pan.y=e.clientY-rect.top-rect.height/2-before.y*next;applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
     canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return;}addScriptNodeAt(def,e.clientX,e.clientY);});
     new ResizeObserver(renderScriptConnections).observe(canvas);
