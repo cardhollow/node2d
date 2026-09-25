@@ -1,468 +1,441 @@
 [
   {
-    "title": "Node2D Overview",
+    "title": "Node2D Basics",
     "items": [
       {
         "subtitle": "What is Node2D?",
-        "contents": "<h2>What is Node2D?</h2><p>Node2D is a 2D game engine and editor for creating games for the web. A project is built from Scenes, Nodes, Components, ScriptNodes, assets, input, physics, and runtime systems. A finished project can also be exported as a standalone web package and can optionally be configured as a Progressive Web App (PWA) for installable and offline-capable web use.</p><p>The editor is designed around a Node-based 2D world. You build the game visually, attach Components to Nodes, and use ScriptNodes to control behavior without writing the whole game as one large script.</p><ul><li>Scenes hold the objects and camera used for a particular game screen or level.</li><li>Nodes are the objects in a Scene. Components give a Node its transform, visuals, physics, text, collisions, progress bars, and behavior.</li><li>ScriptNodes form the visual scripting graph owned by a Node's Script component.</li><li>Assets provide sprites, audio, and MIDI data used by Components and ScriptNodes.</li><li>The runtime executes the project during Play or Debug and maintains runtime copies of variables and object state.</li><li>The exporter can package the project as a web application and can generate a PWA manifest and service worker.</li></ul>"
+        "contents": "<h2>What is Node2D?</h2><p>Node2D is a 2D game engine and visual editor for making games for the web. You build a game by creating Scenes, placing Nodes, adding Components, creating visual scripts with ScriptNodes, importing assets, and testing with Play or Debug.</p><p>You can save projects, export them as a project file, and export a playable web package. The editor can also work as an installable/offline-capable web app.</p>"
       },
       {
-        "subtitle": "How UIX fits together",
-        "contents": "<h2>How UIX fits together</h2><p>A simple mental model is: <strong>Project → Scenes → Nodes → Components + ScriptNode graph → Runtime</strong>. Assets are project resources referenced by the Nodes and scripts. Input, camera, physics, audio, and UI systems operate around the Scene while the runtime is playing.</p><table><thead><tr><th>Part</th><th>Purpose</th></tr></thead><tbody><tr><td>Project</td><td>Contains Scenes, global variables, assets, game settings, and editor data.</td></tr><tr><td>Scene</td><td>A collection of Nodes and folders plus a Scene Camera.</td></tr><tr><td>Node</td><td>An individual game object or object container in a Scene.</td></tr><tr><td>Component</td><td>A specific capability attached to a Node.</td></tr><tr><td>ScriptNode</td><td>A visual-logic block inside the Script graph owned by a Node.</td></tr><tr><td>Asset</td><td>A reusable sprite, audio file, or MIDI resource.</td></tr><tr><td>Runtime</td><td>The executing version of the project used by Play and Debug.</td></tr></tbody></table>"
+        "subtitle": "How the editor works",
+        "contents": "<h2>How the editor works</h2><p>The main parts you work with are the Scene tree, viewport, Node Components, ScriptNode editor, Asset Manager, Camera, Game Settings, and project controls.</p><ol><li>Create or load a project.</li><li>Create a Scene.</li><li>Add Nodes.</li><li>Add Components to make Nodes visible, physical, or interactive.</li><li>Build ScriptNode logic.</li><li>Add assets such as images and audio.</li><li>Test with Play or Debug.</li><li>Save or export the project.</li></ol>"
       },
       {
-        "subtitle": "Editor workflow",
-        "contents": "<h2>Editor workflow</h2><ol><li>Create or load a project.</li><li>Create Scenes and choose a Preferred Scene for Play/Debug.</li><li>Create Nodes and arrange them in the Scene tree.</li><li>Add or edit Components on Nodes.</li><li>Open the Node's Script editor and build a ScriptNode graph.</li><li>Create or import assets and select them from Sprite, Animation, and audio controls.</li><li>Use the Scene Camera and Game Settings to define how the world is viewed.</li><li>Play or Debug to test runtime behavior.</li><li>Save the project locally or export an NDC/project package.</li></ol>"
+        "subtitle": "Important editor idea",
+        "contents": "<h2>Project → Scene → Node</h2><p>A <strong>Project</strong> contains your game. A <strong>Scene</strong> is one game screen, level, menu, or area. A <strong>Node</strong> is an object inside a Scene. <strong>Components</strong> give a Node features, and <strong>ScriptNodes</strong> give it visual logic.</p>"
+      },
+      {
+        "subtitle": "Viewport navigation",
+        "contents": "<h2>Viewport navigation</h2><p>Use the viewport to look around your Scene. You can pan, zoom, center the view, and use Select, Move, Rotate, Scale, or All tools to edit Nodes.</p><p>When a new ScriptNode is placed, it is placed around the part of the ScriptNode workspace you are currently looking at, so you do not have to search for it elsewhere.</p>"
+      },
+      {
+        "subtitle": "Small screen warning",
+        "contents": "<h2>Small screen warning</h2><p>When the editor is too narrow for comfortable editing, it shows a full-screen warning and temporarily blocks editing. Widen the window or rotate your device to continue.</p>"
       }
     ]
   },
   {
-    "title": "UIX Basics",
+    "title": "Editor Layout and Controls",
     "items": [
       {
-        "subtitle": "Nodes",
-        "contents": "<h2>Nodes</h2><p>A Node is the main object in a Scene. It has a name and numeric ID and owns Components such as Transform, Text, Sprite, Physics, Collider, Progress Bar, and Script.</p><p>The Node itself is not the same thing as a Component. The Node is the object; Components describe what the object looks like, how it moves, what it collides with, or what logic it executes.</p><p>Every Node has its own Script component and Transform component. The Node, Script, and Transform components are required by the editor and are not removable.</p>"
+        "subtitle": "Top bar",
+        "contents": "<h2>Top bar</h2><p>The top bar contains the main project, editing, view, help, and runtime controls. As the window becomes narrower, labels can hide so the controls remain usable.</p><p>At very small widths, the editing mode controls move into a vertical group on the right side instead of overlapping other controls.</p>"
       },
       {
-        "subtitle": "Node IDs and names",
-        "contents": "<h2>Node IDs and names</h2><p>A Node has a user-visible name and a positive whole-number numeric ID. Script selectors and object selectors can show nodes using a combined label such as <code>Player [1]</code>. Numeric IDs are used to identify runtime objects and to resolve object references.</p><p>Node names are not globally required to be unique in the same way numeric IDs are. Numeric IDs are normalized when Nodes are copied or imported so object references remain usable.</p>"
+        "subtitle": "Select, Move, Rotate, Scale, All",
+        "contents": "<h2>Editing tools</h2><table><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody><tr><td>Select</td><td>Select Nodes or objects.</td></tr><tr><td>Move</td><td>Move selected objects.</td></tr><tr><td>Rotate</td><td>Rotate selected objects.</td></tr><tr><td>Scale</td><td>Resize selected objects.</td></tr><tr><td>All</td><td>Use the combined editing mode.</td></tr></tbody></table>"
       },
       {
-        "subtitle": "Scene tree and folders",
-        "contents": "<h2>Scene tree and folders</h2><p>The Scene tree can contain Nodes and folders. Folders are organization containers and can contain child Nodes or other folders.</p><ul><li>Nodes can be moved into a folder or back to the Scene root.</li><li>Folders can be collapsed to reduce visual clutter.</li><li>Copy, paste, duplicate, delete, rename, and selection operations work from the tree and editor controls.</li><li>Deleting a folder deletes its contents after confirmation.</li></ul>"
+        "subtitle": "Multi-selection",
+        "contents": "<h2>Multi-selection</h2><p>Selection behaves like common desktop file selection.</p><ul><li>Click an item to select it.</li><li>Ctrl-click (or Cmd-click on supported systems) adds or removes one item from the selection.</li><li>Shift-click selects a range from the current selection anchor.</li><li>Operations such as copy, cut, duplicate, move, and delete can apply to the selected group when supported.</li></ul><p>This works for supported editor lists and object selections instead of requiring a special selection system for every item.</p>"
       },
       {
-        "subtitle": "ScriptNodes",
-        "contents": "<h2>ScriptNodes</h2><p>Each Node has its own ScriptNode graph. The Script component opens the Script editor for that Node. ScriptNode positions, connections, and expressions are stored with that Node's graph.</p><p>Local variables belong to the same Node scope as its graph. A local variable named <code>speed</code> on one Node does not conflict with a local variable named <code>speed</code> on another Node.</p>"
+        "subtitle": "Context menus",
+        "contents": "<h2>Context menus</h2><p>Right-click or use the available context-menu shortcut to open actions for the selected item. Context menus are limited to the available screen area so their list can scroll instead of extending beyond the screen.</p>"
       },
       {
-        "subtitle": "Script editor",
-        "contents": "<h2>Script editor</h2><p>The Script editor is organized around three areas: the Local Variables panel, the ScriptNode Library, and the graph/inspector area. ScriptNodes are grouped into <strong>Events</strong>, <strong>Actions</strong>, and <strong>Controls</strong>.</p><ul><li>Add a ScriptNode by clicking it in the library or by dragging it into the graph.</li><li>Select nodes to inspect and edit their input values.</li><li>Connect an output port to another ScriptNode input to route execution or data through the graph.</li><li>Use pan and zoom to navigate larger graphs.</li><li>Shift/Ctrl selection can be used for multiple ScriptNodes; copy, cut, paste, duplicate, delete, disconnect, and alignment/snap operations are available in the editor.</li></ul>"
+        "subtitle": "Help",
+        "contents": "<h2>Help</h2><p>The <strong>?</strong> Help button opens the help page inside the editor in a modal window. Close the modal when you are finished.</p>"
       },
       {
-        "subtitle": "Expressions",
-        "contents": "<h2>Expressions</h2><p>A ScriptNode input can contain a normal value or an expression. Open the expression editor from an input to type or choose an expression.</p><p>String inputs are handled specially: when the expression editor is opened, a string that is not already a valid expression can be represented as a backtick literal so the literal text is preserved.</p><p>Expressions are evaluated with the current runtime context, so values such as <code>ctx.global.score</code>, <code>ctx.local.speed</code>, <code>ctx.events.key.A</code>, or <code>Math.randInt(1,10)</code> can be used where an input accepts an expression.</p>"
+        "subtitle": "Fullscreen",
+        "contents": "<h2>Fullscreen</h2><p>The Fullscreen button expands the editor to fullscreen. The icon and its button area are one clickable control, so clicking the icon or the surrounding button activates fullscreen.</p>"
       },
       {
-        "subtitle": "Selection, view, and editing",
-        "contents": "<h2>Selection, view, and editing</h2><p>The editor provides selection, move, rotate, scale, pan, zoom, centering, snapping, and context-menu operations. The workspace uses a Node-based scene view while separate panels handle components, scripts, assets, camera, game settings, and help.</p><p>Undo/redo uses editor snapshots. The current build keeps a finite history rather than an unlimited one.</p>"
+        "subtitle": "Keyboard shortcut editing",
+        "contents": "<h2>Keyboard shortcut editing</h2><p>Editor shortcuts can be changed in Editor Settings. Your chosen shortcuts are saved locally on your device and are used again when you reopen the editor.</p>"
       },
       {
-        "subtitle": "Copy and paste",
-        "contents": "<h2>Copy and paste</h2><p>Node copy/paste duplicates a Node together with its Components and ScriptNode graph. ScriptNode IDs are remapped during duplication so pasted graphs do not accidentally reuse the source graph's internal identifiers.</p><p>Component copy/paste works from component context menus and replaces a same-type component when the destination already has one, where the component system allows replacement.</p>"
+        "subtitle": "Snapping",
+        "contents": "<h2>Snapping</h2><p>Snapping means the editor changes an object by fixed intervals while you drag it instead of allowing unlimited tiny values.</p><p>Move and Scale use the Move / Scale Snap setting. Rotate uses Rotate Snap. These settings affect editing with the corresponding viewport tools.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Scenes",
+    "items": [
+      {
+        "subtitle": "What is a Scene?",
+        "contents": "<h2>What is a Scene?</h2><p>A Scene is a collection of Nodes and folders. Use different Scenes for levels, menus, rooms, screens, or other parts of a game.</p>"
+      },
+      {
+        "subtitle": "Create and rename Scenes",
+        "contents": "<h2>Create and rename Scenes</h2><p>Use <strong>+ Add Scene</strong> to create another Scene. Select a Scene to work on it, and use the available rename action to change its name.</p>"
+      },
+      {
+        "subtitle": "Preferred Scene",
+        "contents": "<h2>Preferred Scene</h2><p>The Preferred Scene in Game Settings is the Scene that starts when you press Play or Debug.</p>"
+      },
+      {
+        "subtitle": "Scene list and menu size",
+        "contents": "<h2>Scene list</h2><p>The Scene list and Scene drop-down/context menu stay within the available screen height. When there are many Scenes, the list becomes scrollable. The <strong>+ Add Scene</strong> control stays outside the scrollable part so it remains easy to reach.</p>"
+      },
+      {
+        "subtitle": "Folders",
+        "contents": "<h2>Folders</h2><p>Folders help organize Nodes inside a Scene. They do not act as game objects themselves. You can expand and collapse them to keep the Scene tree manageable.</p>"
+      },
+      {
+        "subtitle": "Moving Nodes",
+        "contents": "<h2>Moving Nodes</h2><p>Nodes can be moved between folders or back to the Scene root using the available tree controls or drag-and-drop where supported.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Nodes",
+    "items": [
+      {
+        "subtitle": "What is a Node?",
+        "contents": "<h2>What is a Node?</h2><p>A Node is an object placed in a Scene. A Node can represent a player, enemy, item, button, decoration, platform, effect, or another game object.</p><p>Nodes have a name and ID and can contain Components and a visual ScriptNode graph.</p>"
+      },
+      {
+        "subtitle": "Node name and ID",
+        "contents": "<h2>Node name and ID</h2><p>The name is the label you see in the Scene tree and selectors. The numeric ID helps identify the Node when it is referenced by editor and game systems.</p>"
+      },
+      {
+        "subtitle": "Node selection",
+        "contents": "<h2>Node selection</h2><p>Select Nodes from the Scene tree or viewport. A selected Node shows its available Components and can be edited with the viewport tools.</p>"
+      },
+      {
+        "subtitle": "Node copy, paste, and duplicate",
+        "contents": "<h2>Copy, paste, and duplicate</h2><p>Copy and paste or Duplicate can create another Node with its Components and ScriptNode setup. Multiple selected Nodes can be handled together where the editor supports the operation.</p>"
+      },
+      {
+        "subtitle": "Deleting Nodes",
+        "contents": "<h2>Deleting Nodes</h2><p>Delete or Backspace removes selected editor objects after the editor's confirmation rules are applied.</p>"
       }
     ]
   },
   {
     "title": "Components",
     "items": [
-      [
-        "Node",
-        "<p>The Node component represents the object identity. It provides the Node name and numeric ID used by the editor and runtime.</p><ul><li>Name: the object name shown in the Scene tree and selectors.</li><li>ID: a positive whole-number identifier used to reference the object.</li><li>Non-removable: every Node keeps this component.</li></ul>"
-      ],
-      [
-        "Script",
-        "<p>The Script component owns the Node's visual ScriptNode graph. It is required on every Node and opens the Script editor.</p><ul><li>Script name: the label shown for the component.</li><li>Graph: ScriptNodes and their connections are stored per Node.</li><li>Non-removable: every Node keeps its Script component.</li></ul>"
-      ],
-      [
-        "Transform",
-        "<p>Transform controls the Node's world position, scale, and angle.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Position X/Y</td><td>World position of the Node.</td></tr><tr><td>Scale X/Y</td><td>Horizontal and vertical scale.</td></tr><tr><td>Angle</td><td>Node rotation angle.</td></tr><tr><td>Defaults</td><td>Position [0,0], Scale [1,1], Angle [0].</td></tr></tbody></table><p>Transform is required and is used by drawing, physics, collisions, camera following, and runtime object movement.</p>"
-      ],
-      [
-        "Text",
-        "<p>The Text component draws text for the Node.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Text</td><td>String displayed by the Node.</td></tr><tr><td>Font Size</td><td>Font size in pixels; the editor enforces a positive minimum.</td></tr><tr><td>Font Family</td><td>CSS font-family string such as sans-serif.</td></tr><tr><td>FG Color</td><td>Text color.</td></tr><tr><td>BG Color</td><td>Background/fill color behind the text.</td></tr><tr><td>Border</td><td>Whether text border rendering is enabled.</td></tr><tr><td>Border Color / Width</td><td>Border appearance.</td></tr><tr><td>Corner Radii</td><td>Top-left, top-right, bottom-right, bottom-left radius values.</td></tr><tr><td>Position</td><td>Text offset/position values used by the component.</td></tr></tbody></table><p>Text is optional and can be added or removed from a Node.</p>"
-      ],
-      [
-        "Sprite",
-        "<p>The Sprite component displays a Sprite asset or can reference an Animation from an Animation Sprite component.</p><ul><li>Type: <code>Sprite</code> or <code>Animation</code>.</li><li>Sprite: selects a sprite asset when Type is Sprite.</li><li>Animation: selects an animation when Type is Animation.</li><li>Pixelated: controls pixel-art style sampling/rendering.</li></ul>"
-      ],
-      [
-        "Animation Sprite",
-        "<p>Animation Sprite stores one or more named animations. Each animation contains a sequence of sprite frames and an FPS value.</p><ul><li>Animation name: identifier shown in the animation list.</li><li>FPS: playback frames per second, with a minimum of 1 in the editor.</li><li>Frames: sprite assets used by the animation.</li><li>Active Animation: the animation selected for playback/use.</li><li>The editor keeps at least one animation entry.</li></ul>"
-      ],
-      [
-        "Physics",
-        "<p>Physics makes a Node participate in the runtime physics system.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Body</td><td>Static, Kinematic, or Dynamic.</td></tr><tr><td>Gravity</td><td>Gravity acceleration applied to Dynamic bodies.</td></tr><tr><td>Friction</td><td>Surface friction coefficient.</td></tr><tr><td>Bounciness</td><td>Restitution value, constrained to the supported 0–1 range.</td></tr><tr><td>Fixed Rotation</td><td>Prevents rotational integration when enabled.</td></tr><tr><td>isCollider</td><td>Marks the physics shape as a physical collision body.</td></tr></tbody></table><p>The current runtime integrates Dynamic and Kinematic bodies. Dynamic bodies receive gravity. Collision solving can apply normal impulses, friction, restitution, and positional penetration correction.</p>"
-      ],
-      [
-        "Collider",
-        "<p>Collider defines an explicit collision/detection shape and its local transform.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Collider</td><td>Enable/disable the component for collision detection.</td></tr><tr><td>Type</td><td>Rect, Circle, or Triangle.</td></tr><tr><td>Position X/Y</td><td>Collider local offset.</td></tr><tr><td>Scale X/Y</td><td>Collider local scale.</td></tr><tr><td>Angle</td><td>Collider local rotation.</td></tr><tr><td>Collidable</td><td>The collider participates in collision detection when enabled.</td></tr></tbody></table><p>The runtime supports rectangle/polygon, circle, and triangle collision shapes. A Physics component can also mark a physical body through its <code>isCollider</code> setting.</p>"
-      ],
-      [
-        "Progress Bar",
-        "<p>Progress Bar draws a value between a minimum and maximum using a background and fill region.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Width / Height</td><td>Visual size.</td></tr><tr><td>Value</td><td>Current value.</td></tr><tr><td>Min / Max</td><td>Value range.</td></tr><tr><td>Position X/Y</td><td>Local/world placement values used by the component.</td></tr><tr><td>BG Color</td><td>Background color.</td></tr><tr><td>Fill Color</td><td>Filled portion color.</td></tr><tr><td>TL/TR/BR/BL</td><td>Corner radius values.</td></tr><tr><td>Outline Color / Size</td><td>Outline appearance.</td></tr><tr><td>Direction</td><td>Fill direction: <code>left</code> or <code>right</code>.</td></tr><tr><td>Defaults</td><td>200×24, value 50, min 0, max 100.</td></tr></tbody></table><p>Progress Bars are optional and can be added or removed like other visual Components.</p>"
-      ]
+      {
+        "subtitle": "Node",
+        "contents": "<h2>Node Component</h2><p>The Node component represents the Node itself.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Name</td><td>Name shown in the Scene tree and selectors.</td></tr><tr><td>ID</td><td>Numeric identifier for the Node.</td></tr></tbody></table><p>This component is built into every Node.</p>"
+      },
+      {
+        "subtitle": "Script",
+        "contents": "<h2>Script Component</h2><p>The Script component contains the Node's visual ScriptNode graph. Open it to build the Node's behavior.</p><p>The graph belongs to that Node, so each Node has its own ScriptNode workspace.</p>"
+      },
+      {
+        "subtitle": "Transform",
+        "contents": "<h2>Transform Component</h2><p>Transform controls the Node's position, scale, and rotation.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Position X/Y</td><td>Where the Node is placed.</td></tr><tr><td>Scale X/Y</td><td>How large the Node is horizontally and vertically.</td></tr><tr><td>Angle</td><td>Node rotation.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Text",
+        "contents": "<h2>Text Component</h2><p>Text displays text in the game.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Text</td><td>The text that is displayed.</td></tr><tr><td>Position X/Y</td><td>Text position relative to the Node.</td></tr><tr><td>Font Size</td><td>Text size.</td></tr><tr><td>Font Family</td><td>Font used for the text.</td></tr><tr><td>FG Color</td><td>Text color.</td></tr><tr><td>BG Color</td><td>Background color.</td></tr><tr><td>Border</td><td>Turns the text border on or off.</td></tr><tr><td>Border Color</td><td>Border color.</td></tr><tr><td>Border Width</td><td>Border thickness.</td></tr><tr><td>Corner Radius</td><td>Rounds the border/background corners.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Sprite",
+        "contents": "<h2>Sprite Component</h2><p>Sprite displays an image asset.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Type</td><td>Sprite or Animation.</td></tr><tr><td>Sprite</td><td>Image asset used when Type is Sprite.</td></tr><tr><td>Animation</td><td>Animation used when Type is Animation.</td></tr><tr><td>Pixelated</td><td>Controls pixel-art style rendering.</td></tr><tr><td>Position X/Y</td><td>Sprite offset relative to the Node transform.</td></tr><tr><td>Size X/Y</td><td>Sprite size relative to the Node transform.</td></tr></tbody></table><p>Sprite position and size are local to the Node, so changing the Node transform also affects the sprite.</p>"
+      },
+      {
+        "subtitle": "Animation Sprite",
+        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite stores animations made from Sprite frames.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>Name of an animation.</td></tr><tr><td>FPS</td><td>How many frames play each second.</td></tr><tr><td>Frames</td><td>Sprite images used by the animation.</td></tr><tr><td>Active Animation</td><td>The animation currently selected for use.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Physics",
+        "contents": "<h2>Physics Component</h2><p>Physics gives a Node physical movement and collision behavior.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Body</td><td>Static, Kinematic, or Dynamic.</td></tr><tr><td>Gravity</td><td>Gravity applied to Dynamic bodies.</td></tr><tr><td>Friction</td><td>Resistance during contact.</td></tr><tr><td>Bounciness</td><td>How much an object rebounds.</td></tr><tr><td>Fixed Rotation</td><td>Prevents physics from rotating the body.</td></tr><tr><td>isCollider</td><td>Allows the physics body to participate as a physical collider.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Collider",
+        "contents": "<h2>Collider Component</h2><p>Collider defines a collision shape independently from the Node's main Transform.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Collider</td><td>Turns the collider on or off.</td></tr><tr><td>Type</td><td>Rect, Circle, or Triangle.</td></tr><tr><td>Position X/Y</td><td>Local collider offset relative to the Node.</td></tr><tr><td>Scale X/Y</td><td>Local collider size/scale.</td></tr><tr><td>Angle</td><td>Local collider rotation.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Progress Bar",
+        "contents": "<h2>Progress Bar Component</h2><p>Progress Bar displays a value using a background and a filled area.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Width / Height</td><td>Bar size.</td></tr><tr><td>Value</td><td>Current value.</td></tr><tr><td>Min / Max</td><td>Value range.</td></tr><tr><td>Position X/Y</td><td>Local position.</td></tr><tr><td>BG Color</td><td>Background color.</td></tr><tr><td>Fill Color</td><td>Filled area color.</td></tr><tr><td>TL/TR/BR/BL</td><td>Corner radii.</td></tr><tr><td>Outline Color / Size</td><td>Outline appearance.</td></tr><tr><td>Direction</td><td>Fill direction.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Joystick",
+        "contents": "<h2>Joystick Component</h2><p>Joystick is a screen control for touch input.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Variable</td><td>Name used to identify the joystick.</td></tr><tr><td>BG Color</td><td>Joystick base color.</td></tr><tr><td>Knob Color</td><td>Joystick knob color.</td></tr><tr><td>Size</td><td>Joystick width and height.</td></tr><tr><td>Left / Top / Right / Bottom</td><td>Positioning offsets from the screen edges.</td></tr></tbody></table><p>Joystick input can be used by the <code>onJoystick</code> event and the Expression Library.</p>"
+      },
+      {
+        "subtitle": "Required Components",
+        "contents": "<h2>Required Components</h2><p>Every Node includes <strong>Node</strong>, <strong>Script</strong>, and <strong>Transform</strong>. These stay available on the Node and are not removed like optional visual or gameplay Components.</p>"
+      }
     ]
   },
   {
     "title": "Variables",
     "items": [
       {
-        "subtitle": "Variables",
-        "contents": "<h2>Variables</h2><p>A variable stores a value that a script can read or change. UIX supports three main scopes: <strong>Global</strong>, <strong>Scene</strong>, and <strong>Local</strong>.</p><p>Variables are useful for scores, health, counters, state flags, names, settings, switches, timers, and other values that need to be shared or retained during runtime.</p><table><thead><tr><th>Scope</th><th>Belongs to</th><th>Expression</th></tr></thead><tbody><tr><td>Global</td><td>Whole project</td><td><code>ctx.global.variableName</code></td></tr><tr><td>Scene</td><td>Current Scene</td><td><code>ctx.sceneVariables.variableName</code></td></tr><tr><td>Local</td><td>One Node</td><td><code>ctx.local.variableName</code></td></tr></tbody></table>"
+        "subtitle": "What is a variable?",
+        "contents": "<h2>Variables</h2><p>A variable stores a value that your game can read or change. Variables are useful for scores, health, names, counters, states, settings, and switches.</p>"
       },
       {
         "subtitle": "Global Variables",
-        "contents": "<h2>Global Variables</h2><p>Global variables belong to the whole project and can be accessed from different Scenes during runtime.</p><p>The expression form is <code>ctx.global.variableName</code>. Global names must be unique among the global variables.</p><p>Example: a global variable named <code>score</code> can be read with <code>ctx.global.score</code>.</p>"
+        "contents": "<h2>Global Variables</h2><p>Global variables belong to the whole project. They can be used across Scenes.</p><p>Example expression: <code>ctx.global.score</code>.</p>"
       },
       {
         "subtitle": "Scene Variables",
-        "contents": "<h2>Scene Variables</h2><p>Scene variables belong to the current Scene. Every Scene has its own Scene-variable collection.</p><p>The expression form is <code>ctx.sceneVariables.variableName</code>. Runtime contexts can also expose scene-related values through the scene context.</p><p>A variable named <code>score</code> can exist separately in different Scenes because the collections are scene-scoped.</p>"
+        "contents": "<h2>Scene Variables</h2><p>Scene variables belong to one Scene. Each Scene can have its own values.</p><p>Example expression: <code>ctx.sceneVariables.level</code>.</p>"
       },
       {
         "subtitle": "Local Variables",
-        "contents": "<h2>Local Variables</h2><p>Local variables belong to one specific Node and are visible to that Node's ScriptNode graph.</p><p>The expression form is <code>ctx.local.variableName</code>. Two different Nodes may each have a local variable with the same name because their local scopes are separate.</p><p>The Script editor shows the Local Variables section for the Node whose Script graph is open.</p>"
+        "contents": "<h2>Local Variables</h2><p>Local variables belong to one Node and its Script. Two different Nodes can have Local variables with the same name because they have separate local scopes.</p><p>Example expression: <code>ctx.local.speed</code>.</p>"
       },
       {
         "subtitle": "Variable types",
-        "contents": "<h2>Variable types</h2><p>The variable manager supports String, Bool, and Int variable types. ScriptNode inputs and expression fields additionally use representations for strings, integers, booleans, colors, selectors, and empty/null values where needed.</p><table><thead><tr><th>Type</th><th>Typical value</th><th>Example</th></tr></thead><tbody><tr><td>String</td><td>Text</td><td><code>\"Player\"</code></td></tr><tr><td>Bool</td><td>True/false</td><td><code>true</code></td></tr><tr><td>Int</td><td>Whole number</td><td><code>100</code></td></tr><tr><td>Color</td><td>Color string in expression-capable fields</td><td><code>\"#FFFFFFFF\"</code></td></tr><tr><td>Selector</td><td>One option from a generated list</td><td><code>\"Dynamic\"</code></td></tr></tbody></table>"
+        "contents": "<h2>Variable types</h2><p>Depending on where a value is used, you can work with text, numbers, true/false values, colors, selectors, or empty values.</p>"
       },
       {
         "subtitle": "Variable name errors",
-        "contents": "<h2>Variable name errors</h2><p>The editor validates variable names. An empty or conflicting name is rejected. When a disallowed conflict is detected, the name field flashes with a red outline and returns to the previous valid value so the project is not left with an invalid variable collection.</p>"
-      },
-      {
-        "subtitle": "setVariable",
-        "contents": "<h2>setVariable</h2><p><code>setVariable</code> is an Action ScriptNode that changes a Global, Local, or Scene variable at runtime.</p><p>Inputs are <code>Type</code>, <code>Name</code>, and <code>Value</code>. The Name selector is populated from the variables available for the chosen scope.</p><pre><code>Type = Global | Local | Scene\nName = variable name\nValue = new value</code></pre>"
-      },
-      {
-        "subtitle": "Runtime variable context",
-        "contents": "<h2>Runtime variable context</h2><p>When a project starts, the runtime builds its execution context from the project variables and the current Scene/Node state. ScriptNodes read and modify the runtime values through their contexts.</p><p>This separates live play state from editor data while a game is running. The exact persistence of a runtime change depends on how the project is saved; playing a game is not the same as editing the source project value.</p>"
+        "contents": "<h2>Variable name errors</h2><p>When a variable name is not allowed because it conflicts with another name, the editor rejects the change and shows a red error outline. The previous valid name is kept.</p>"
       }
     ]
   },
   {
-    "title": "Scenes and Camera",
+    "title": "ScriptNodes — Events",
     "items": [
-      {
-        "subtitle": "What is a Scene?",
-        "contents": "<h2>What is a Scene?</h2><p>A Scene is a collection of Nodes and folders that represents a level, screen, menu, room, or other game state.</p><p>A project can contain multiple Scenes. Each Scene also has its own Scene Camera and Scene-variable collection.</p>"
-      },
-      {
-        "subtitle": "Creating and managing Scenes",
-        "contents": "<h2>Creating and managing Scenes</h2><ul><li>Create a Scene to make another level or screen.</li><li>Rename a Scene to keep the project organized.</li><li>Delete a Scene when it is no longer needed; the project keeps at least one usable Scene.</li><li>Switching Scenes changes the Scene tree and the Scene-specific variables/camera data being edited.</li><li>A Preferred Scene is selected for starting Play and Debug.</li></ul>"
-      },
-      {
-        "subtitle": "Preferred Scene",
-        "contents": "<h2>Preferred Scene</h2><p>Game Settings → Preferred Scene chooses the Scene loaded first when Play or Debug starts. The selector is populated from the current project's Scenes.</p><p>If a saved Preferred Scene is no longer valid, UIX falls back to the first available Scene.</p>"
-      },
-      {
-        "subtitle": "Scene Camera",
-        "contents": "<h2>Scene Camera</h2><p>The Scene Camera controls what part of the world is visible during runtime. The current camera model includes Enabled, Follow, Horizontal and Vertical movement, Animation mode, Speed, Scale, Position, Angle, and Background Color.</p><p>The default camera is enabled, follows <code>this</code>, uses Smooth animation at speed 300, scale 1, horizontal/vertical offsets 0, position [0,0], angle 0, and background color <code>#202020</code>.</p>"
-      },
-      {
-        "subtitle": "Camera Follow",
-        "contents": "<h2>Camera Follow</h2><p>Camera Follow selects which Node the camera tracks. <code>This</code> means the current Node context; a specific Node can also be selected.</p><p>Follow is useful for player cameras where the camera should track a moving object during runtime.</p>"
-      },
-      {
-        "subtitle": "Camera movement and animation",
-        "contents": "<h2>Camera movement and animation</h2><p>Quick camera movement applies the target directly. Smooth movement interpolates toward the target using the configured speed. Position, angle, scale, and offsets affect the final world projection.</p>"
-      },
-      {
-        "subtitle": "Camera Scale",
-        "contents": "<h2>Camera Scale</h2><p>Camera scale changes how much world space is visible relative to the logical camera. A larger scale behaves like a wider view; a smaller scale behaves like a closer view, subject to the renderer's projection rules.</p>"
-      },
-      {
-        "subtitle": "Screen input and camera",
-        "contents": "<h2>Screen input and camera</h2><p>Screen-space input and UI are interpreted through the logical screen projection used by the active screen type. World-space camera movement changes what world content is visible, while screen-space controls such as a Joystick stay anchored to the screen UI layer.</p>"
-      }
-    ]
-  },
-  {
-    "title": "Screen Types",
-    "items": [
-      {
-        "subtitle": "Windowboxing",
-        "contents": "<h2>Windowboxing</h2><p>Windowboxing is the default screen mode. The logical camera view is 1280×720 and is fitted inside the physical screen while preserving the 16:9 camera shape. Extra space becomes black bars.</p>"
-      },
-      {
-        "subtitle": "Stretch",
-        "contents": "<h2>Stretch</h2><p>Stretch displays the 1280×720 logical canvas across the entire physical screen. When the physical aspect ratio differs from 16:9, the world can appear visually stretched.</p>"
-      },
-      {
-        "subtitle": "Crop",
-        "contents": "<h2>Crop</h2><p>Crop scales the 1280×720 logical canvas until the physical screen is fully covered. This avoids black bars but crops world content outside the resulting camera frame.</p>"
-      },
-      {
-        "subtitle": "Smart Camera",
-        "contents": "<h2>Smart Camera</h2><p>Smart Camera adapts the camera to the physical screen aspect ratio. The world is not stretched; instead the logical camera view becomes wider or narrower so the visible area matches the screen shape.</p>"
-      },
-      {
-        "subtitle": "Screen projection and input",
-        "contents": "<h2>Screen projection and input</h2><p>All screen modes still use the camera transform for world rendering. UI and screen-space input use the same logical screen projection so controls remain associated with the screen instead of drifting with world camera movement.</p>"
-      }
-    ]
-  },
-  {
-    "title": "Events and Input",
-    "items": [
-      {
-        "subtitle": "What is an Event?",
-        "contents": "<h2>What is an Event?</h2><p>An event is a runtime signal that something happened, such as the game loading, a tick occurring, a key being pressed, a pointer action occurring, or a joystick changing.</p><p>Event ScriptNodes are placed at the beginning of a visual logic flow. Their output can connect to Actions and Controls.</p>"
-      },
       {
         "subtitle": "onLoad",
-        "contents": "<h2>onLoad</h2><p><code>onLoad</code> emits once when the runtime Scene loads. Use it for startup initialization such as setting starting values, choosing a sprite, or starting an audio effect.</p>"
+        "contents": "<h2>onLoad</h2><p>Starts when the Node enters the active game Scene.</p><p>Inputs: none. Output: <code>out</code>.</p><p>Use it for setup that should happen when a Node starts.</p>"
       },
       {
         "subtitle": "onTick",
-        "contents": "<h2>onTick</h2><p><code>onTick</code> emits on each runtime tick. Use it for repeated logic that must run continuously, such as movement or checking a game state.</p>"
-      },
-      {
-        "subtitle": "Keyboard Events",
-        "contents": "<h2>Keyboard Events</h2><p>Keyboard event values are boolean one-shot pulses. For example, <code>ctx.events.key.A</code> becomes <code>true</code> for the runtime frame in which A is pressed.</p><p>The event system also supports identifier-safe modifier combinations such as <code>ctx.events.key.CtrlS</code>.</p>"
+        "contents": "<h2>onTick</h2><p>Runs repeatedly while the game is running.</p><p>Inputs: none. Output: <code>out</code>.</p><p>Useful for repeated checks and continuous behavior.</p>"
       },
       {
         "subtitle": "onKeybind",
-        "contents": "<h2>onKeybind</h2><p><code>onKeybind</code> listens for the configured keybind selected in its Keybind input. Keybind choices include common letters, numbers, Enter, Space, Escape, modifiers, navigation keys, and other editor-supported keyboard identifiers.</p><p>Because editor keybinds are configurable, a project can use the same event concept for custom shortcuts instead of hard-coding a keyboard event everywhere.</p>"
+        "contents": "<h2>onKeybind</h2><p>Starts when a selected keyboard key or keybind is pressed.</p><p>Input: <code>Keybind</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "Touch and Mouse",
-        "contents": "<h2>Touch and Mouse</h2><p><code>onTouch</code> and <code>onMouse</code> respond to pointer events using an Event selector with <code>up</code>, <code>down</code>, or <code>move</code>.</p><p>The expression library exposes coordinate values such as <code>ctx.TouchUpX</code>, <code>ctx.TouchUpY</code>, <code>ctx.MouseMoveX</code>, and corresponding Down/Move values.</p>"
+        "subtitle": "onTouch",
+        "contents": "<h2>onTouch</h2><p>Responds to touch input.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "Screen Input",
-        "contents": "<h2>Screen Input</h2><p><code>onScreenInput</code> is an event source for screen-space pointer input. It uses the same <code>up</code>, <code>down</code>, and <code>move</code> event selection and is useful for controls positioned in the logical screen UI layer.</p>"
+        "subtitle": "onMouse",
+        "contents": "<h2>onMouse</h2><p>Responds to mouse or pointer input.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "Joystick Events",
-        "contents": "<h2>Joystick Events</h2><p><code>onJoystick</code> fires for the selected joystick variable. A Scene can contain multiple Joysticks, each identified by its Variable name.</p><p>Joystick values are exposed through the expression library as distance, angle, and X/Y normalized values.</p>"
+        "subtitle": "onScreenInput",
+        "contents": "<h2>onScreenInput</h2><p>Responds to pointer input using screen-space coordinates.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>"
+      },
+      {
+        "subtitle": "onJoystick",
+        "contents": "<h2>onJoystick</h2><p>Responds to a selected Joystick control.</p><p>Input: <code>Variable</code> = the joystick name. Output: <code>out</code>.</p>"
       },
       {
         "subtitle": "onUnload",
-        "contents": "<h2>onUnload</h2><p><code>onUnload</code> runs before leaving the current runtime Scene. It can be used to perform exit/cleanup actions.</p>"
+        "contents": "<h2>onUnload</h2><p>Starts when a Node leaves the active runtime Scene.</p><p>Inputs: none. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "Event delivery",
-        "contents": "<h2>Event delivery</h2><p>During runtime, pointer events can be associated with a Node under the pointer, while keyboard, screen, and joystick events are broadcast when there is no specific target. The runtime clears one-shot keyboard event pulses after the runtime step so a press is not treated as held forever.</p>"
+        "subtitle": "onConnectionChange",
+        "contents": "<h2>onConnectionChange</h2><p>Starts when the browser connection state changes between Online and Offline while the game is running.</p><p>Input: <code>Connection</code> selector with <code>Online</code> or <code>Offline</code>. Output: <code>out</code>.</p><p>Use it when your game needs to react to losing or regaining a network connection.</p>"
+      },
+      {
+        "subtitle": "onAudioPickup",
+        "contents": "<h2>onAudioPickup</h2><p>Starts when the microphone detects a new audible pickup above the runtime microphone threshold.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p><p>The current microphone level is available through <code>ctx.mic.decibel</code>.</p>"
       }
     ]
   },
   {
-    "title": "ScriptNode Reference",
+    "title": "ScriptNodes — Actions",
     "items": [
       {
-        "subtitle": "ScriptNode groups",
-        "contents": "<h2>ScriptNode groups</h2><p>The ScriptNode Library has three groups: <strong>Events</strong> start logic from runtime signals, <strong>Actions</strong> change game state, and <strong>Controls</strong> route or schedule logic.</p><table><thead><tr><th>Group</th><th>Purpose</th></tr></thead><tbody><tr><td>Events</td><td>Start a flow when runtime events occur.</td></tr><tr><td>Actions</td><td>Perform a change or side effect.</td></tr><tr><td>Controls</td><td>Branch, schedule, or inspect conditions.</td></tr></tbody></table>"
+        "subtitle": "loadScene",
+        "contents": "<h2>loadScene</h2><p>Changes to another Scene.</p><p>Input: <code>Scene</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onLoad (Events)",
-        "contents": "<h2>onLoad (Events)</h2><p>No inputs. Emits <code>out</code> once when the runtime Scene loads.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setVariable",
+        "contents": "<h2>setVariable</h2><p>Changes a variable.</p><p>Inputs: <code>Type</code> (Global, Local, or Scene), <code>Name</code>, <code>Value</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onTick (Events)",
-        "contents": "<h2>onTick (Events)</h2><p>No inputs. Emits <code>out</code> on each runtime tick.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setTransform",
+        "contents": "<h2>setTransform</h2><p>Changes the current Node's Transform.</p><p>Inputs: <code>PosX</code>, <code>PosY</code>, <code>ScaleX</code>, <code>ScaleY</code>, <code>Angle</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onKeybind (Events)",
-        "contents": "<h2>onKeybind (Events)</h2><p>Input: <code>Keybind</code>. Selects a keyboard key/keybind. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setNode",
+        "contents": "<h2>setNode</h2><p>Changes supported Node identity values during runtime.</p><p>Inputs: <code>Name</code>, <code>Id</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onTouch (Events)",
-        "contents": "<h2>onTouch (Events)</h2><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setText",
+        "contents": "<h2>setText</h2><p>Changes a Text component during runtime.</p><p>Inputs include Text, Position X/Y, Font Size, Font Family, foreground/background colors, and border settings. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onMouse (Events)",
-        "contents": "<h2>onMouse (Events)</h2><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setSprite",
+        "contents": "<h2>setSprite</h2><p>Changes the visible Sprite or Animation selection.</p><p>Inputs: <code>Type</code> (Sprite or Animation), <code>Sprite</code>, <code>Animation</code>, <code>Pixelated</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onScreenInput (Events)",
-        "contents": "<h2>onScreenInput (Events)</h2><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setPhysics",
+        "contents": "<h2>setPhysics</h2><p>Changes the runtime Physics settings.</p><p>Inputs: Body, Gravity, Friction, Bounciness, Fixed Rotation, and collider participation. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onJoystick (Events)",
-        "contents": "<h2>onJoystick (Events)</h2><p>Input: <code>Variable</code> chooses a Scene joystick variable. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setCollider",
+        "contents": "<h2>setCollider</h2><p>Changes the runtime Collider.</p><p>Inputs: Collider enabled, Type (Rect/Circle/Triangle), Position X/Y, Scale X/Y, and Angle. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "onUnload (Events)",
-        "contents": "<h2>onUnload (Events)</h2><p>No inputs. Emits <code>out</code> before leaving the runtime/current Scene.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setProgressBar",
+        "contents": "<h2>setProgressBar</h2><p>Changes a Progress Bar during runtime.</p><p>Inputs include Width, Height, Value, Min, Max, Position, colors, corner radii, outline, and direction. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "loadScene (Actions)",
-        "contents": "<h2>loadScene (Actions)</h2><p>Input: <code>Scene</code>. Requests a runtime Scene change. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "Follow Object",
+        "contents": "<h2>Follow Object</h2><p>Makes the current runtime object follow a selected target according to the supported follow behavior.</p><p>Input: <code>Target</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setVariable (Actions)",
-        "contents": "<h2>setVariable (Actions)</h2><p>Inputs: <code>Type</code> (Global/Local/Scene), <code>Name</code>, <code>Value</code>. Changes a runtime variable. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "Destroy Object",
+        "contents": "<h2>Destroy Object</h2><p>Removes the current runtime object from the game.</p><p>Inputs: none. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setTransform (Actions)",
-        "contents": "<h2>setTransform (Actions)</h2><p>Inputs: <code>PosX</code>, <code>PosY</code>, <code>ScaleX</code>, <code>ScaleY</code>, <code>Angle</code>. Changes the current Node transform. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "Create Object",
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setNode (Actions)",
-        "contents": "<h2>setNode (Actions)</h2><p>Inputs: <code>Name</code>, <code>Id</code>. Changes the current runtime Node identity values. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setVelocity",
+        "contents": "<h2>setVelocity</h2><p>Changes movement speed during runtime.</p><p>Inputs: <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setText (Actions)",
-        "contents": "<h2>setText (Actions)</h2><p>Inputs: <code>Text</code>, <code>PosX</code>, <code>PosY</code>, <code>FontSize</code>, <code>FontFamily</code>, <code>FG Color</code>, <code>BG Color</code>, <code>Border</code>, <code>Border Color</code>, <code>Border Width</code>. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "setCamera",
+        "contents": "<h2>setCamera</h2><p>Changes the Scene Camera during runtime.</p><p>Inputs include Enabled, Follow, Position X/Y, Angle, Horizontal/Vertical movement, Animation, Speed, Scale, and Background Color. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setSprite (Actions)",
-        "contents": "<h2>setSprite (Actions)</h2><p>Inputs: <code>Type</code> (Sprite/Animation), <code>Sprite</code>, <code>Animation</code>, <code>Pixelated</code>. Changes the current Node's visual source. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "playAudio",
+        "contents": "<h2>playAudio</h2><p>Plays a selected Audio or MIDI asset.</p><p>Inputs: <code>src</code>, <code>duration</code>, <code>loop</code>, <code>fadein</code>, <code>fadeout</code>. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setPhysics (Actions)",
-        "contents": "<h2>setPhysics (Actions)</h2><p>Inputs: <code>Body</code>, <code>Gravity</code>, <code>Friction</code>, <code>Bounciness</code>, <code>Fixed Rotation</code>, <code>isCollider</code>. Changes runtime physics settings. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "stopAudio",
+        "contents": "<h2>stopAudio</h2><p>Stops active runtime audio.</p><p>Inputs: none. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setCollider (Actions)",
-        "contents": "<h2>setCollider (Actions)</h2><p>Inputs: <code>Collider</code>, <code>Type</code> (Rect/Circle/Triangle), <code>PosX</code>, <code>PosY</code>, <code>ScaleX</code>, <code>ScaleY</code>, <code>Angle</code>. Changes runtime collision shape/settings. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "clearAudio",
+        "contents": "<h2>clearAudio</h2><p>Stops active runtime audio and clears the current runtime audio playback list.</p><p>Inputs: none. Output: <code>out</code>.</p>"
       },
       {
-        "subtitle": "setProgressBar (Actions)",
-        "contents": "<h2>setProgressBar (Actions)</h2><p>Inputs: Width, Height, Value, Min, Max, PosX, PosY, BG Color, Fill Color, TL, TR, BR, BL, Outline Color, Outline Size, Direction. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "startSpeechRecognition",
+        "contents": "<h2>startSpeechRecognition</h2><p>Starts browser speech recognition when Use Mic is enabled.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p><p>While recognition is active, the recognized text is available live through <code>ctx.mic.speech</code>.</p>"
       },
       {
-        "subtitle": "Follow Object (Actions)",
-        "contents": "<h2>Follow Object (Actions)</h2><p>Input: <code>Target</code> node selector. Makes the current runtime object follow the chosen object according to the runtime follow behavior. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "Destroy Object (Actions)",
-        "contents": "<h2>Destroy Object (Actions)</h2><p>No inputs. Destroys the current runtime Node/object. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "Create Object (Actions)",
-        "contents": "<h2>Create Object (Actions)</h2><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Creates a runtime copy/object based on a selected Node. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "setVelocity (Actions)",
-        "contents": "<h2>setVelocity (Actions)</h2><p>Inputs: <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Sets runtime velocity. Angular velocity is entered in degrees/second by the editor and converted by the runtime where required. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "setCamera (Actions)",
-        "contents": "<h2>setCamera (Actions)</h2><p>Inputs: Enabled, Follow, PosX, PosY, Angle, Horizontal, Vertical, Animation (Quick/Smooth), Speed, Scale, BG Color. Changes the runtime Scene Camera. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "playAudio (Actions)",
-        "contents": "<h2>playAudio (Actions)</h2><p>Inputs: <code>src</code>, <code>duration</code>, <code>loop</code>, <code>fadein</code>, <code>fadeout</code>. Plays an Audio or MIDI asset. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "stopAudio (Actions)",
-        "contents": "<h2>stopAudio (Actions)</h2><p>No inputs. Stops runtime audio. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "clearAudio (Actions)",
-        "contents": "<h2>clearAudio (Actions)</h2><p>No inputs. Stops runtime audio and clears the active runtime audio list. Output: <code>out</code>.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "Boolean (Controls)",
-        "contents": "<h2>Boolean (Controls)</h2><p>Input: <code>Value</code> (boolean). Outputs <code>next</code> (always true to continue), <code>truth</code> (Value is true), and <code>falsy</code> (inverse).</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "Interval (Controls)",
-        "contents": "<h2>Interval (Controls)</h2><p>Input: <code>Milliseconds</code>. When triggered, schedules repeated output at the configured interval. Output: <code>out</code>. Default: 1000 ms.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "Timeout (Controls)",
-        "contents": "<h2>Timeout (Controls)</h2><p>Input: <code>Milliseconds</code>. When triggered, schedules a one-shot delayed output. Output: <code>out</code>. Default: 1000 ms.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
-      },
-      {
-        "subtitle": "isCollidedWith (Controls)",
-        "contents": "<h2>isCollidedWith (Controls)</h2><p>Input: <code>Target</code>. Outputs <code>truth</code> when the current Node is colliding with the selected target and <code>falsy</code> otherwise.</p><p>ScriptNode connections are local to the Node's Script graph. Use the output ports to connect this node to another ScriptNode input.</p>"
+        "subtitle": "stopSpeechRecognition",
+        "contents": "<h2>stopSpeechRecognition</h2><p>Stops active browser speech recognition.</p><p>Inputs: none. Output: <code>out</code>. Requires: <strong>Use Mic</strong>.</p>"
       }
     ]
   },
   {
-    "title": "Expressions and Expression Library",
+    "title": "ScriptNodes — Controls",
     "items": [
       {
-        "subtitle": "Expression context",
-        "contents": "<h2>Expression context</h2><p>Expressions run against a context object named <code>ctx</code>. The context exposes variables, event state, transforms, velocity, input values, assets, Nodes, Scenes, joystick values, and runtime helpers.</p>"
+        "subtitle": "Boolean",
+        "contents": "<h2>Boolean</h2><p>Checks a true/false value and gives separate outputs for the true and false paths.</p><p>Input: <code>Value</code>. Outputs: <code>next</code>, <code>truth</code>, <code>falsy</code>.</p>"
+      },
+      {
+        "subtitle": "Interval",
+        "contents": "<h2>Interval</h2><p>Repeats a flow after the selected time interval.</p><p>Input: <code>Milliseconds</code>. Output: <code>out</code>. Default: 1000 ms.</p>"
+      },
+      {
+        "subtitle": "Timeout",
+        "contents": "<h2>Timeout</h2><p>Delays a flow once before continuing.</p><p>Input: <code>Milliseconds</code>. Output: <code>out</code>. Default: 1000 ms.</p>"
+      },
+      {
+        "subtitle": "isCollidedWith",
+        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with a selected target.</p><p>Input: <code>Target</code>. Outputs: <code>truth</code> and <code>falsy</code>.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Expressions",
+    "items": [
+      {
+        "subtitle": "What is an expression?",
+        "contents": "<h2>Expressions</h2><p>An expression lets an input use a calculated value instead of a fixed value. You can type expressions or choose helpers from the Expression Library.</p>"
       },
       {
         "subtitle": "Variables in expressions",
-        "contents": "<h2>Variables in expressions</h2><p>Use <code>ctx.local.NAME</code>, <code>ctx.sceneVariables.NAME</code>, and <code>ctx.global.NAME</code> for Local, Scene, and Global variables respectively.</p><pre><code>ctx.local.speed\nctx.sceneVariables.level\nctx.global.score</code></pre>"
+        "contents": "<h2>Variables in expressions</h2><p>Use the matching variable scope when reading a variable.</p><pre><code>ctx.global.score\nctx.sceneVariables.level\nctx.local.speed</code></pre>"
       },
       {
-        "subtitle": "Keyboard expressions",
-        "contents": "<h2>Keyboard expressions</h2><p>Keyboard event pulses are exposed as booleans. Letters can be accessed as identifiers, while keys that are not valid JavaScript identifiers can use bracket notation.</p><pre><code>ctx.events.key.A\nctx.events.key.CtrlS\nctx.events.key[\"1\"]</code></pre>"
+        "subtitle": "Input and event values",
+        "contents": "<h2>Input and event values</h2><p>Expressions can use keyboard, touch, mouse, screen-input, and joystick values provided by the current game state.</p>"
       },
       {
-        "subtitle": "Touch, Mouse, and Screen Input expressions",
-        "contents": "<h2>Touch, Mouse, and Screen Input expressions</h2><p>The expression library exposes Up, Down, and Move coordinates for Touch, Mouse, and Screen Input.</p><ul><li>Touch: <code>ctx.TouchUpX</code>, <code>ctx.TouchUpY</code>, <code>ctx.TouchDownX</code>, <code>ctx.TouchDownY</code>, <code>ctx.TouchMoveX</code>, <code>ctx.TouchMoveY</code>.</li><li>Mouse: corresponding <code>ctx.Mouse...</code> values.</li><li>Screen Input: corresponding <code>ctx.Screen...</code> values.</li></ul>"
+        "subtitle": "Transform and velocity values",
+        "contents": "<h2>Transform and velocity values</h2><p>Expressions can read position, scale, angle, and velocity values for the current Node.</p><pre><code>ctx.position.x\nctx.position.y\nctx.scale.x\nctx.scale.y\nctx.angle\nctx.velocity.velocityX\nctx.velocity.velocityY\nctx.velocity.angularVelocity</code></pre>"
       },
       {
-        "subtitle": "Joystick expressions",
-        "contents": "<h2>Joystick expressions</h2><p>For a joystick variable base name such as <code>joystick</code>, the expression library provides <code>ctx.joystick_distance</code>, <code>ctx.joystick_angle</code>, <code>ctx.joystick_value_x</code>, and <code>ctx.joystick_value_y</code>. Additional joysticks use their own variable names.</p>"
+        "subtitle": "Math functions",
+        "contents": "<h2>Math functions</h2><table><thead><tr><th>Function</th><th>Arguments</th><th>Use</th></tr></thead><tbody><tr><td>Math.lerp</td><td>(a, b, t)</td><td>Interpolate between two values.</td></tr><tr><td>Math.clamp</td><td>(value, min, max)</td><td>Keep a value inside a range.</td></tr><tr><td>Math.map</td><td>(value, inMin, inMax, outMin, outMax)</td><td>Convert one range to another.</td></tr><tr><td>Math.moveTowards</td><td>(current, target, maxDelta)</td><td>Move toward a target.</td></tr><tr><td>Math.smoothstep</td><td>(a, b, t)</td><td>Smoothly interpolate.</td></tr><tr><td>Math.wrap</td><td>(value, min, max)</td><td>Wrap a value into a range.</td></tr><tr><td>Math.degToRad</td><td>(degrees)</td><td>Convert degrees to radians.</td></tr><tr><td>Math.radToDeg</td><td>(radians)</td><td>Convert radians to degrees.</td></tr><tr><td>Math.distance</td><td>(a, b)</td><td>Distance between two 2D vectors.</td></tr><tr><td>Math.randInt</td><td>(min, max)</td><td>Random whole number from min through max.</td></tr></tbody></table>"
       },
       {
-        "subtitle": "Transform and velocity expressions",
-        "contents": "<h2>Transform and velocity expressions</h2><p>The expression library exposes the current Node transform and velocity, including Position X/Y, Scale X/Y, Angle, Velocity X/Y, and Angular Velocity.</p><pre><code>ctx.position.x\nctx.position.y\nctx.scale.x\nctx.scale.y\nctx.angle\nctx.velocity.velocityX\nctx.velocity.velocityY\nctx.velocity.angularVelocity</code></pre>"
-      },
-      {
-        "subtitle": "Text, sprite, animation, and progress expressions",
-        "contents": "<h2>Text, sprite, animation, and progress expressions</h2><p>When the Node has the relevant Component, expression groups can expose component data such as text, font size, font family, sprite name/source, animations, and progress-bar values.</p>"
-      },
-      {
-        "subtitle": "Math helpers",
-        "contents": "<h2>Math helpers</h2><p>UIX adds helpers to the JavaScript <code>Math</code> object for expressions.</p><table><thead><tr><th>Helper</th><th>Purpose</th></tr></thead><tbody><tr><td>Math.lerp(a,b,t)</td><td>Linear interpolation.</td></tr><tr><td>Math.clamp(v,min,max)</td><td>Restrict a value to a range.</td></tr><tr><td>Math.map(v,inMin,inMax,outMin,outMax)</td><td>Map one numeric range to another.</td></tr><tr><td>Math.moveTowards(current,target,maxDelta)</td><td>Move toward a target by at most maxDelta.</td></tr><tr><td>Math.smoothstep(a,b,t)</td><td>Smooth interpolation curve with clamped t.</td></tr><tr><td>Math.wrap(v,min,max)</td><td>Wrap a number into a range.</td></tr><tr><td>Math.degToRad(degrees)</td><td>Degrees to radians.</td></tr><tr><td>Math.radToDeg(radians)</td><td>Radians to degrees.</td></tr><tr><td>Math.distance(a,b)</td><td>2D distance between array-like [x,y] values.</td></tr><tr><td>Math.randInt(min,max)</td><td>Returns a random integer using inclusive min and max bounds after numeric normalization.</td></tr><tr><td>Math.random()</td><td>JavaScript random number helper.</td></tr><tr><td>Math.PI / Math.E</td><td>Common mathematical constants.</td></tr><tr><td>Math.pow, min, max, abs, sign, floor, ceil, round, trunc, sqrt, cbrt, exp, log, log10</td><td>Standard numeric helpers.</td></tr><tr><td>Math.sin, cos, tan, asin, acos, atan, atan2, hypot</td><td>Trigonometry and distance helpers.</td></tr></tbody></table>"
+        "subtitle": "Common JavaScript math",
+        "contents": "<h2>Common Math functions</h2><p>You can also use standard JavaScript Math functions supported by the expression field, such as <code>Math.abs</code>, <code>Math.floor</code>, <code>Math.ceil</code>, <code>Math.round</code>, <code>Math.sqrt</code>, <code>Math.pow</code>, <code>Math.sin</code>, <code>Math.cos</code>, <code>Math.tan</code>, <code>Math.atan2</code>, <code>Math.min</code>, and <code>Math.max</code>.</p>"
       },
       {
         "subtitle": "Vectors",
-        "contents": "<h2>Vectors</h2><p>Vector helpers support common 2D operations using array-like vector values.</p><table><thead><tr><th>Helper</th><th>Purpose</th></tr></thead><tbody><tr><td>vec2(x,y)</td><td>Create a 2D vector value.</td></tr><tr><td>length(v)</td><td>Vector magnitude.</td></tr><tr><td>dot(a,b)</td><td>Dot product.</td></tr><tr><td>normalize(v)</td><td>Normalized vector.</td></tr></tbody></table>"
+        "contents": "<h2>Vectors</h2><table><thead><tr><th>Function</th><th>Arguments</th><th>Use</th></tr></thead><tbody><tr><td>vec2</td><td>(x, y)</td><td>Create a 2D vector.</td></tr><tr><td>length</td><td>(v)</td><td>Get vector length.</td></tr><tr><td>dot</td><td>(a, b)</td><td>Get the dot product.</td></tr><tr><td>normalize</td><td>(v)</td><td>Turn a vector into a unit direction.</td></tr></tbody></table>"
+      },
+      {
+        "subtitle": "Function argument hints",
+        "contents": "<h2>Function argument hints</h2><p>The Expression Library shows function names together with their argument names, such as <code>Math.randInt(min, max)</code>, so you can see what values the function expects before using it.</p>"
+      },
+      {
+        "subtitle": "Microphone expressions",
+        "contents": "<h2>Microphone expressions</h2><p>When Use Mic is enabled, the Expression Library provides microphone values.</p><table><thead><tr><th>Expression</th><th>Meaning</th></tr></thead><tbody><tr><td><code>ctx.mic.decibel</code></td><td>Current microphone level in decibels.</td></tr><tr><td><code>ctx.mic.speech</code></td><td>Current speech-recognition text while recognition is active.</td></tr><tr><td><code>ctx.mic.active</code></td><td>Whether the microphone is active.</td></tr><tr><td><code>ctx.mic.speechActive</code></td><td>Whether speech recognition is currently running.</td></tr></tbody></table>"
       }
     ]
   },
   {
-    "title": "Physics and Collisions",
+    "title": "Camera",
     "items": [
       {
-        "subtitle": "Physics overview",
-        "contents": "<h2>Physics overview</h2><p>The runtime includes a 2D physics step used for Dynamic and Kinematic bodies. It handles gravity/integration, collision detection, contact response, friction, restitution, rotation, and penetration correction.</p>"
+        "subtitle": "Scene Camera",
+        "contents": "<h2>Scene Camera</h2><p>The Scene Camera controls what part of the game world the player sees.</p><p>Common settings include Enabled, Follow, Position, Horizontal and Vertical movement, Animation, Speed, Scale, Angle, and Background Color.</p>"
       },
       {
-        "subtitle": "Body types",
-        "contents": "<h2>Body types</h2><table><thead><tr><th>Body</th><th>Runtime behavior</th></tr></thead><tbody><tr><td>Static</td><td>Does not integrate as a moving dynamic body; used as a stationary object.</td></tr><tr><td>Kinematic</td><td>Integrates movement from its velocity without Dynamic gravity behavior.</td></tr><tr><td>Dynamic</td><td>Integrates velocity and receives gravity; participates in physical collision response.</td></tr></tbody></table>"
+        "subtitle": "Camera Follow",
+        "contents": "<h2>Camera Follow</h2><p>The camera can follow <strong>This</strong> or another Node selected from the Scene.</p>"
       },
       {
-        "subtitle": "Collision shapes",
-        "contents": "<h2>Collision shapes</h2><p>The runtime currently supports Rect, Circle, and Triangle shapes. Rectangle and triangle geometry are treated as polygons; circles use circle-specific distance/projection checks.</p>"
+        "subtitle": "Camera Animation",
+        "contents": "<h2>Camera Animation</h2><p>Quick changes the camera immediately. Smooth moves toward the target over time using the camera speed.</p>"
       },
       {
-        "subtitle": "isCollider vs Collider",
-        "contents": "<h2>isCollider vs Collider</h2><p>The Physics component's <code>isCollider</code> flag marks the physics body as a physical collision body. The Collider component separately defines an explicit collision/detection shape and local transform.</p><p>This lets a project use physics-body collision behavior and explicit Collider settings as separate concepts.</p>"
-      },
-      {
-        "subtitle": "Friction and bounciness",
-        "contents": "<h2>Friction and bounciness</h2><p>Friction controls tangential resistance in contacts. Bounciness controls restitution, or how much separating velocity is restored after impact. The editor constrains bounciness to the supported 0–1 range.</p>"
-      },
-      {
-        "subtitle": "Fixed rotation",
-        "contents": "<h2>Fixed rotation</h2><p>Fixed Rotation prevents angular motion integration for that body. This is useful for platformer characters, boxes that should never tip, or objects where rotation is controlled manually.</p>"
-      },
-      {
-        "subtitle": "Collision detection flags",
-        "contents": "<h2>Collision detection flags</h2><p>The runtime tracks collision information so logic such as <code>isCollidedWith</code> can query whether objects are colliding. Debug rendering can also visualize collider shapes in the runtime preview.</p>"
-      },
-      {
-        "subtitle": "Physics limitations to remember",
-        "contents": "<h2>Physics limitations to remember</h2><p>The current engine is a compact built-in 2D system rather than a full rigid-body physics framework. Game behavior should be designed around the supported body types and shapes, and values should be tested with the project's actual scale and camera settings.</p>"
+        "subtitle": "Camera Scale",
+        "contents": "<h2>Camera Scale</h2><p>Camera scale changes how close or wide the world appears through the camera.</p>"
       }
     ]
   },
   {
-    "title": "UI Joystick",
+    "title": "Game Settings and Screen",
     "items": [
       {
-        "subtitle": "What is a UI Joystick?",
-        "contents": "<h2>What is a UI Joystick?</h2><p>A UI Joystick is a screen-space input component for touch controls. It draws a circular base and knob and exposes a named variable that the runtime updates from the user's pointer movement.</p>"
+        "subtitle": "Screen Type",
+        "contents": "<h2>Screen Type</h2><p>Game Settings controls how the game's logical view fits the physical screen.</p><p>The available modes are <strong>Windowboxing</strong>, <strong>Stretch</strong>, <strong>Crop</strong>, and <strong>Smart Camera</strong>.</p>"
       },
       {
-        "subtitle": "Joystick properties",
-        "contents": "<h2>Joystick properties</h2><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Variable</td><td>Name used by expressions and onJoystick.</td></tr><tr><td>BG Color</td><td>Joystick base color.</td></tr><tr><td>Knob Color</td><td>Joystick knob color.</td></tr><tr><td>Size</td><td>Width and height; default 110×110.</td></tr><tr><td>Left / Top / Right / Bottom</td><td>Screen anchor offsets. Unused anchors can be null.</td></tr></tbody></table><p>The default joystick uses variable <code>joystick</code>, background <code>#333333CC</code>, knob <code>#FFFFFFFF</code>, size 110×110, left 10, bottom 10.</p>"
+        "subtitle": "Windowboxing",
+        "contents": "<h2>Windowboxing</h2><p>Windowboxing is the default screen type. The 16:9 game view keeps its shape and unused space appears as black bars.</p>"
       },
       {
-        "subtitle": "Multiple Joysticks",
-        "contents": "<h2>Multiple Joysticks</h2><p>The editor can create more than one joystick. The first default variable is <code>joystick</code>; additional joysticks use names such as <code>joystick2</code>, <code>joystick3</code>, and so on unless changed.</p><p>Joystick variables should remain uniquely named within the Scene so the input context can identify the intended control.</p>"
+        "subtitle": "Stretch",
+        "contents": "<h2>Stretch</h2><p>Stretch fills the physical screen. The game view can look wider or taller when the screen is not the same shape as the game view.</p>"
       },
       {
-        "subtitle": "Joystick expressions",
-        "contents": "<h2>Joystick expressions</h2><p>Each joystick exposes a normalized X/Y value, distance, and angle through expression names based on its variable.</p><pre><code>ctx.joystick_distance\nctx.joystick_angle\nctx.joystick_value_x\nctx.joystick_value_y</code></pre>"
+        "subtitle": "Crop",
+        "contents": "<h2>Crop</h2><p>Crop fills the screen while keeping the game view shape, but parts of the world may be cut off at the edges.</p>"
       },
       {
-        "subtitle": "Using onJoystick",
-        "contents": "<h2>Using onJoystick</h2><p>Add an <code>onJoystick</code> Event ScriptNode and select the joystick Variable. Connect it to the Action or Control logic that should run when joystick input changes.</p>"
+        "subtitle": "Smart Camera",
+        "contents": "<h2>Smart Camera</h2><p>Smart Camera changes the visible camera area to match the physical screen shape instead of stretching the image.</p>"
+      },
+      {
+        "subtitle": "Required Features",
+        "contents": "<h2>Required Features</h2><p>Some ScriptNodes need optional browser features. Their requirement appears in Game Settings. A required ScriptNode stays visible in the ScriptNode Library, but it is disabled until its feature is enabled.</p><p>Clicking a disabled ScriptNode asks you to open Game Settings and enable the required feature.</p>"
+      },
+      {
+        "subtitle": "Use Mic",
+        "contents": "<h2>Use Mic</h2><p><strong>Use Mic</strong> enables microphone features. When the game starts, the browser asks for microphone permission if needed. If permission was already granted, the game can continue using the microphone.</p><p>Microphone access is required for microphone-dependent ScriptNodes and the <code>ctx.mic</code> values.</p>"
+      },
+      {
+        "subtitle": "Speech recognition settings",
+        "contents": "<h2>Speech recognition settings</h2><p>When Use Mic is enabled, you can choose the Speech Language and whether speech recognition is Continuous and uses Live Interim Results.</p>"
       }
     ]
   },
@@ -471,35 +444,43 @@
     "items": [
       {
         "subtitle": "What is the Asset Manager?",
-        "contents": "<h2>What is the Asset Manager?</h2><p>The Asset Manager is the project resource area for Sprite, Audio, and MIDI assets. It lets you import files, create editable resources where supported, select assets from ScriptNodes/Components, and open the matching editor.</p>"
+        "contents": "<h2>Asset Manager</h2><p>The Asset Manager is where you keep the image, audio, and MIDI files used by your project.</p>"
       },
       {
-        "subtitle": "Asset categories",
-        "contents": "<h2>Asset categories</h2><table><thead><tr><th>Category</th><th>Examples</th><th>Used by</th></tr></thead><tbody><tr><td>Sprites</td><td>PNG, JPEG, SVG and project sprite frames</td><td>Sprite and Animation Sprite Components, setSprite</td></tr><tr><td>Audio</td><td>MP3, WAV, OGG, M4A and supported audio resources</td><td>playAudio</td></tr><tr><td>MIDI</td><td>MID/MIDI</td><td>MIDI Editor, playAudio</td></tr></tbody></table>"
+        "subtitle": "Supported asset types",
+        "contents": "<h2>Asset types</h2><table><thead><tr><th>Type</th><th>Examples</th></tr></thead><tbody><tr><td>Image/Sprite</td><td>PNG, JPEG, SVG and supported image files.</td></tr><tr><td>Audio</td><td>MP3, WAV, OGG, M4A and other supported audio files.</td></tr><tr><td>MIDI</td><td>MID and MIDI files.</td></tr></tbody></table>"
       },
       {
         "subtitle": "Importing assets",
-        "contents": "<h2>Importing assets</h2><p>The importer classifies files using their extension/MIME type. MIDI files are recognized as MIDI, audio MIME types and common audio extensions become Audio, and image/SVG input becomes Sprite.</p><p>Asset names are derived from filenames and are deduplicated when necessary, using suffixes such as <code>2</code> or <code>3</code>.</p>"
+        "contents": "<h2>Importing assets</h2><p>You can use the <strong>Import</strong> button or drag and drop a file into the asset area.</p><p>Only supported image and audio files are accepted by the drag-and-drop area. Unsupported file types are rejected instead of being added as assets.</p>"
       },
       {
-        "subtitle": "Sprite assets",
-        "contents": "<h2>Sprite assets</h2><p>Sprite assets can be opened in the Sprite Editor for pixel editing. Imported raster or SVG images become usable sprite image data in the project.</p>"
+        "subtitle": "Drag and Drop",
+        "contents": "<h2>Drag and Drop</h2><p>The asset area shows a drop target next to the Import control. Drag a supported image or audio file onto it to import the file.</p>"
       },
       {
-        "subtitle": "Audio assets",
-        "contents": "<h2>Audio assets</h2><p>Audio assets are selectable by name in the <code>playAudio</code> ScriptNode. Runtime audio can support duration, looping, fade-in, and fade-out settings where the playback path supports them.</p>"
+        "subtitle": "Asset names",
+        "contents": "<h2>Asset names</h2><p>Imported files receive project asset names. When a name is already in use, the editor chooses another available name instead of silently replacing the existing asset.</p>"
       },
       {
-        "subtitle": "MIDI assets",
-        "contents": "<h2>MIDI assets</h2><p>MIDI assets use the bundled offline MIDI parser/encoder. They can be opened in the MIDI Editor, exported back to .mid, and played at runtime through the built-in Web Audio based MIDI playback path.</p>"
+        "subtitle": "Rename Audio",
+        "contents": "<h2>Rename Audio</h2><p>In the Audio section, press the <strong>✎ Edit</strong> button for an audio asset. The editor asks for a new name. Enter the name you want to use and confirm it to rename the asset.</p>"
       },
       {
-        "subtitle": "Asset persistence",
-        "contents": "<h2>Asset persistence</h2><p>The Asset Manager does not maintain a separate cloud asset library. Assets belong to the current project state and are included in project data so NDC import/export can restore them with the project.</p>"
+        "subtitle": "Using assets",
+        "contents": "<h2>Using assets</h2><p>Sprite assets are used by Sprite and Animation Sprite Components. Audio and MIDI assets are used by audio playback and related ScriptNodes.</p>"
       },
       {
-        "subtitle": "Deleting and editing",
-        "contents": "<h2>Deleting and editing</h2><p>Assets can be selected, removed, or opened in the appropriate editor. Sprite and MIDI resources expose editing paths; ordinary audio is used as imported source data.</p>"
+        "subtitle": "Clicking a Sprite",
+        "contents": "<h2>Clicking a Sprite</h2><p>Clicking a Sprite in the Asset Manager creates a new Node using the same Node-creation path as <strong>+ Add Node</strong>.</p><p>The new Node includes a Sprite Component and its Sprite source is already set to the clicked Sprite asset. You can then edit the Node normally.</p>"
+      },
+      {
+        "subtitle": "Sprite selection",
+        "contents": "<h2>Sprite selection</h2><p>Sprite selection uses the same card-style image layout as the Asset Manager, keeping each image inside its own preview area without overlapping other images.</p>"
+      },
+      {
+        "subtitle": "Click a Sprite to create a Node",
+        "contents": "<h2>Click a Sprite to create a Node</h2><p>Clicking a Sprite in the Asset Manager creates a new Node using the same normal Node creation path as <strong>+ Add Node</strong>. The new Node receives a Sprite Component whose source points to the selected Sprite asset.</p><p>The Asset Manager closes automatically after the Node is created.</p>"
       }
     ]
   },
@@ -508,39 +489,23 @@
     "items": [
       {
         "subtitle": "Sprite Editor overview",
-        "contents": "<h2>Sprite Editor overview</h2><p>The Sprite Editor is a pixel-oriented editor for creating and editing sprite assets and sprite animation frames. It works with rasterized image content and can manage multiple frames.</p>"
-      },
-      {
-        "subtitle": "Create a Sprite",
-        "contents": "<h2>Create a Sprite</h2><p>New Sprite asks for a name and dimensions. Width and height are constrained to a practical 1–512 pixel range, and a new sprite starts with at least one frame.</p>"
+        "contents": "<h2>Sprite Editor</h2><p>The Sprite Editor is used for pixel-based image editing and Sprite frames.</p>"
       },
       {
         "subtitle": "Drawing tools",
-        "contents": "<h2>Drawing tools</h2><p>The editor provides tools for common pixel-art operations.</p><ul><li>Pencil for freehand pixels.</li><li>Eraser for removing pixels.</li><li>Line for straight segments.</li><li>Point for single points.</li><li>Rectangle for rectangular shapes.</li><li>Circle/Ellipse for rounded shapes.</li><li>Triangle for triangular shapes.</li><li>Fill/bucket for connected-region fills.</li><li>Perfect Shape for geometry-constrained drawing where supported.</li></ul>"
+        "contents": "<h2>Drawing tools</h2><p>Common tools include Pencil, Eraser, Line, Rectangle, Ellipse, Triangle, Fill, and color picking.</p>"
       },
       {
-        "subtitle": "Brush and color",
-        "contents": "<h2>Brush and color</h2><p>Brush size can be adjusted, and a color picker controls the drawing color. The editor supports common pixel-editing operations without requiring an external graphics program.</p>"
+        "subtitle": "Selections",
+        "contents": "<h2>Selections</h2><p>Box and lasso selections let you isolate part of a Sprite. You can move, copy, cut, delete, flip, mirror, rotate, and transform the selected pixels where supported.</p>"
       },
       {
-        "subtitle": "Mirror, flip, and rotate",
-        "contents": "<h2>Mirror, flip, and rotate</h2><p>The editor provides Mirror X/Y for drawing symmetry and Flip X, Flip Y, and Rotate operations for transforming the image/selection.</p>"
+        "subtitle": "Multiple frames",
+        "contents": "<h2>Frames</h2><p>Sprites can have multiple frames. Frames can be added, copied, reordered, removed, and previewed as an animation.</p>"
       },
       {
-        "subtitle": "Selection tools",
-        "contents": "<h2>Selection tools</h2><p>Box and lasso selection can isolate pixels for cut, copy, paste, and transformation. Modifier keys can add or subtract from a selection. Selected pixels can be moved using the selection gizmo.</p>"
-      },
-      {
-        "subtitle": "Frames and animation",
-        "contents": "<h2>Frames and animation</h2><p>A sprite resource can contain multiple frames. The editor provides previous/play/next controls, frame ordering, frame deletion, and FPS control. Frames can be reordered in the animation editor.</p>"
-      },
-      {
-        "subtitle": "Sprite saving",
-        "contents": "<h2>Sprite saving</h2><p>Saving a sprite writes its frames back into the project as image assets. Each animation frame can be represented as a separate PNG resource used by Animation Sprite.</p>"
-      },
-      {
-        "subtitle": "Grid and zoom",
-        "contents": "<h2>Grid and zoom</h2><p>The editor supports grid display, centering, and large zoom ranges for pixel-level work. Pinch/zoom support is available in the mobile-oriented editing path.</p>"
+        "subtitle": "Zoom and grid",
+        "contents": "<h2>Zoom and grid</h2><p>Use zoom and grid controls for pixel-level work. The editing view can be enlarged for precise drawing.</p>"
       }
     ]
   },
@@ -549,134 +514,101 @@
     "items": [
       {
         "subtitle": "MIDI Editor overview",
-        "contents": "<h2>MIDI Editor overview</h2><p>The MIDI Editor is an offline piano-roll style editor for composing and editing note sequences. It includes note drawing, erasing, moving, resizing, track management, BPM, snap/length controls, waveform preview, looping, MIDI import, and MIDI export.</p>"
+        "contents": "<h2>MIDI Editor</h2><p>The MIDI Editor is a piano-roll editor for creating and editing MIDI music. You can draw, erase, move, resize, select, copy, paste, duplicate, and delete notes.</p>"
+      },
+      {
+        "subtitle": "MIDI name",
+        "contents": "<h2>Changing the MIDI name</h2><p>The MIDI name is shown beside <strong>MIDI Editor</strong>. Double-click the name to edit it directly. Press <strong>Enter</strong> or click elsewhere to save the new name.</p>"
+      },
+      {
+        "subtitle": "Cancel",
+        "contents": "<h2>Cancel</h2><p>Canceling the MIDI Editor asks for confirmation before leaving, so you have a chance to avoid losing the current editing session.</p>"
       },
       {
         "subtitle": "Tracks",
-        "contents": "<h2>Tracks</h2><p>A MIDI file can contain multiple tracks. The editor provides a track panel with track names and colors and lets you add or delete tracks while keeping at least one track.</p>"
+        "contents": "<h2>Tracks</h2><p>A MIDI file can contain multiple tracks. Select a track to edit its notes and use the track controls to add or remove tracks where available.</p>"
       },
       {
         "subtitle": "Notes",
-        "contents": "<h2>Notes</h2><p>A note has a time position, duration, pitch, and velocity. Pitch follows standard MIDI note numbering from 0–127. Notes can be created, moved, resized, copied, pasted, duplicated, or erased.</p>"
+        "contents": "<h2>Notes</h2><p>A note has a pitch, time position, duration, and velocity. Notes can be drawn, moved, resized, copied, duplicated, and deleted.</p>"
       },
       {
-        "subtitle": "Drawing and erasing",
-        "contents": "<h2>Drawing and erasing</h2><p>Use Draw to place notes and Erase to remove notes. Snap settings determine the timing grid used for editing and new note positions.</p>"
+        "subtitle": "Note selection",
+        "contents": "<h2>Note selection</h2><p>Use click selection and marquee selection to select multiple notes. Ctrl/Cmd-click can add or remove individual notes, and Shift can select ranges where supported.</p>"
       },
       {
         "subtitle": "Snap and length",
-        "contents": "<h2>Snap and length</h2><p>Snap options include values such as 1/16, 1/8, 1/4, 1/2, and Bar. Length controls provide matching rhythmic note lengths for fast entry.</p>"
+        "contents": "<h2>Snap and length</h2><p>Snap sets the timing grid used for note placement and movement. Length controls the note timing length used by the editor.</p>"
       },
       {
-        "subtitle": "BPM and playback",
-        "contents": "<h2>BPM and playback</h2><p>BPM is editable in the supported range and controls musical playback timing. Play, Stop, Rewind, and Loop controls are available for preview.</p>"
+        "subtitle": "BPM",
+        "contents": "<h2>BPM</h2><p>BPM controls playback tempo.</p>"
       },
       {
-        "subtitle": "Waveform preview",
-        "contents": "<h2>Waveform preview</h2><p>The preview synthesizer uses basic oscillator waveforms such as sine, triangle, square, and sawtooth. The waveform is a preview/playback characteristic, not MIDI file data itself.</p>"
+        "subtitle": "Playback and loop",
+        "contents": "<h2>Playback and loop</h2><p>Use Play, Stop, Rewind, and Loop to preview the MIDI while editing.</p>"
       },
       {
-        "subtitle": "Multi-selection and clipboard",
-        "contents": "<h2>Multi-selection and clipboard</h2><p>Shift/Ctrl selection, marquee selection, duplicate, copy, paste, and paste-at-cursor are supported. The selection is highlighted so groups of notes can be edited together.</p>"
+        "subtitle": "MIDI loading progress",
+        "contents": "<h2>MIDI loading progress</h2><p>When a MIDI file is being edited or loaded, the editor shows a loading progress bar with a percentage. This makes it clear that a large MIDI file is still being processed.</p>"
       },
       {
-        "subtitle": "MIDI import",
-        "contents": "<h2>MIDI import</h2><p>The bundled parser reads MIDI files without an external MIDI library. Imported note data preserves track names/channels and note pitch/duration/velocity information supported by the editor.</p>"
-      },
-      {
-        "subtitle": "MIDI export",
-        "contents": "<h2>MIDI export</h2><p>Export writes the project MIDI data back to a standard .mid file using the bundled encoder.</p>"
-      },
-      {
-        "subtitle": "Runtime MIDI playback",
-        "contents": "<h2>Runtime MIDI playback</h2><p>The runtime can play MIDI assets through <code>playAudio</code>. The bundled runtime playback path parses MIDI and uses Web Audio oscillator tones for audible preview/playback.</p>"
-      },
-      {
-        "subtitle": "Undo and editing",
-        "contents": "<h2>Undo and editing</h2><p>The MIDI editor keeps an undo/redo history for note and track edits so composition changes can be reverted without rebuilding the file.</p>"
+        "subtitle": "Import and Export",
+        "contents": "<h2>Import and Export</h2><p>Import loads a MIDI file into the editor. Export writes the edited MIDI sequence back to a MIDI file.</p>"
       }
     ]
   },
   {
-    "title": "Audio and Runtime Playback",
+    "title": "Audio and Playback",
     "items": [
       {
-        "subtitle": "Audio playback",
-        "contents": "<h2>Audio playback</h2><p>The <code>playAudio</code> ScriptNode plays a selected Audio or MIDI asset. Inputs include duration, loop, fade-in, and fade-out.</p>"
+        "subtitle": "Playing audio",
+        "contents": "<h2>Playing audio</h2><p>Use the audio controls or the <code>playAudio</code> ScriptNode to play an Audio or MIDI asset during runtime.</p>"
       },
       {
-        "subtitle": "stopAudio",
-        "contents": "<h2>stopAudio</h2><p><code>stopAudio</code> stops active runtime audio playback.</p>"
+        "subtitle": "Audio options",
+        "contents": "<h2>Audio options</h2><p>Playback can use duration, looping, fade-in, and fade-out settings where supported by the selected playback control.</p>"
       },
       {
-        "subtitle": "clearAudio",
-        "contents": "<h2>clearAudio</h2><p><code>clearAudio</code> stops runtime audio and clears the runtime audio list.</p>"
+        "subtitle": "Stopping audio",
+        "contents": "<h2>Stopping audio</h2><p>Use the available stop control or the <code>stopAudio</code> ScriptNode to stop active playback.</p>"
       },
       {
-        "subtitle": "Audio selectors",
-        "contents": "<h2>Audio selectors</h2><p>Audio selectors are populated from project Audio and MIDI assets. The selected asset is referenced by name in the ScriptNode.</p>"
+        "subtitle": "Audio preview",
+        "contents": "<h2>Audio preview</h2><p>Click an Audio asset in the Audio section to open an Audio Preview modal. Use the audio controls there to play and test the sound before using it with <code>playAudio</code>.</p><p>The preview does not change the asset or create a game object.</p>"
       }
     ]
   },
   {
-    "title": "Project Management and NDC",
+    "title": "Project Management",
     "items": [
       {
         "subtitle": "New Project",
-        "contents": "<h2>New Project</h2><p>A new project starts with a default project name, a Main Scene, standard game settings, and the required project structures. The initial screen type is Windowboxing.</p>"
+        "contents": "<h2>New Project</h2><p>Creates a fresh project with the normal starting project settings and a starting Scene.</p>"
       },
       {
-        "subtitle": "Local projects",
-        "contents": "<h2>Local projects</h2><p>UIX can save project data into local browser storage/IndexedDB. The local project list supports loading and managing saved project records.</p>"
+        "subtitle": "Save Project",
+        "contents": "<h2>Save Project</h2><p>Save stores your current project so it can be reopened later.</p>"
       },
       {
-        "subtitle": "Save in Project",
-        "contents": "<h2>Save in Project</h2><p>File → Project → Save in Project stores the current project data as an NDC project record. Ctrl+S uses the same save concept.</p>"
+        "subtitle": "Load Project",
+        "contents": "<h2>Load Project</h2><p>Load opens a previously saved local project.</p>"
       },
       {
-        "subtitle": "Export .ndc",
-        "contents": "<h2>Export .ndc</h2><p>Exporting the project creates a Node Compressed Data (NDC) file containing project information and binary assets. It is intended as the portable project format for UIX.</p>"
+        "subtitle": "Import NDC",
+        "contents": "<h2>Import NDC</h2><p>Import NDC loads a complete project file containing your Scenes, Nodes, Components, Scripts, settings, and project assets.</p>"
       },
       {
-        "subtitle": "Import .ndc",
-        "contents": "<h2>Import .ndc</h2><p>Import restores Scenes, ScriptNode graphs, variables, UI data, and binary assets from the project NDC data.</p>"
+        "subtitle": "Export NDC",
+        "contents": "<h2>Export NDC</h2><p>Export NDC saves the complete project as one portable project file.</p>"
       },
-      {
-        "subtitle": "NDC compression",
-        "contents": "<h2>NDC compression</h2><p>The bundled <code>ndcCodec.js</code> contains the offline NDC codec. The project text is compressed using a compact dictionary/pair approach and additional passes stop when the next pass would not make the result smaller. The current NDC4 path stores binary assets without requiring Base64 in the NDC container and remains compatible with earlier NDC generations supported by the codec.</p>"
-      },
-      {
-        "subtitle": "Project safety",
-        "contents": "<h2>Project safety</h2><p>Saving a project is different from Play/Debug. Play creates runtime state for execution; Save/Export writes the editor project state so it can be reopened later.</p>"
-      }
-    ]
-  },
-  {
-    "title": "Standalone Export and PWA",
-    "items": [
       {
         "subtitle": "Export Project",
-        "contents": "<h2>Export Project</h2><p>The Project Exporter builds a standalone web package containing an <code>index.html</code>, the current <code>project.ndc</code>, and the runtime/editor engine files required for playback.</p>"
+        "contents": "<h2>Export Project</h2><p>Export Project creates a playable web package containing the project and the runtime files needed to run it.</p>"
       },
       {
-        "subtitle": "Exported runtime files",
-        "contents": "<h2>Exported runtime files</h2><p>The exporter packages the core runtime modules including <code>node.js</code>, <code>assets.js</code>, <code>scriptNodes.js</code>, <code>uiComponents.js</code>, <code>ndcCodec.js</code>, <code>runtimeEngine.js</code>, and <code>app.js</code>. The bundled <code>midiParser.js</code> is included when MIDI support is needed.</p>"
-      },
-      {
-        "subtitle": "PWA mode",
-        "contents": "<h2>PWA mode</h2><p>The exporter can optionally generate a PWA configuration. When enabled, it writes a <code>manifest.json</code> and a service worker that caches the exported application files so the web app can be installed and used with offline caching behavior.</p>"
-      },
-      {
-        "subtitle": "PWA manifest",
-        "contents": "<h2>PWA manifest</h2><p>The PWA editor supports App Name, Short Name, Start URL, Display mode, Orientation, Theme Color, Background Color, Description, and raw manifest JSON editing. The exporter fills standard values from the project when fields are not overridden.</p>"
-      },
-      {
-        "subtitle": "PWA icon",
-        "contents": "<h2>PWA icon</h2><p>An optional icon asset can be selected for the exported manifest. Supported icon source handling includes SVG/PNG conversion paths used by the exporter.</p>"
-      },
-      {
-        "subtitle": "Screen type in export",
-        "contents": "<h2>Screen type in export</h2><p>Standalone exports carry the chosen screen type so runtime playback uses the intended Windowboxing, Stretch, or other supported screen behavior.</p>"
+        "subtitle": "Current project on reload",
+        "contents": "<h2>Current project on reload</h2><p>When you load a project in the editor, its name and local project ID are remembered for the current browser session. After you reload the editor, it automatically tries to load that same saved project.</p><p>This uses the projects saved on the device. A project that has not been saved locally may not be available for automatic restore.</p>"
       }
     ]
   },
@@ -685,106 +617,119 @@
     "items": [
       {
         "subtitle": "Play",
-        "contents": "<h2>Play</h2><p>Play starts the project using the Preferred Scene and the configured game settings. Runtime input, scripts, camera, physics, audio, variables, and object changes are active during execution.</p>"
+        "contents": "<h2>Play</h2><p>Play starts the Preferred Scene using the project settings, scripts, input, camera, physics, audio, and variables.</p>"
       },
       {
         "subtitle": "Debug",
-        "contents": "<h2>Debug</h2><p>Debug runs the same runtime systems while exposing development information such as debug variables and runtime state where enabled.</p>"
+        "contents": "<h2>Debug</h2><p>Debug runs the game while exposing additional information intended to help you inspect what is happening during runtime.</p>"
       },
       {
-        "subtitle": "Runtime Script execution",
-        "contents": "<h2>Runtime Script execution</h2><p>Event nodes produce signals. Receiver/action nodes run when their input execution signal reaches them. Controls such as Boolean branch outputs, Interval, and Timeout can route or schedule further execution.</p>"
+        "subtitle": "Runtime changes",
+        "contents": "<h2>Runtime changes</h2><p>Changes made while the game is running affect the running game state. They are separate from changing the saved project in the editor.</p>"
       },
       {
-        "subtitle": "Runtime object changes",
-        "contents": "<h2>Runtime object changes</h2><p>Actions such as Create Object, Destroy Object, setTransform, setVelocity, setPhysics, setCollider, setText, setSprite, and setProgressBar operate on runtime object state. These changes are part of the running game state until execution ends or a new Scene is loaded.</p>"
-      },
-      {
-        "subtitle": "Scene changes at runtime",
-        "contents": "<h2>Scene changes at runtime</h2><p><code>loadScene</code> sets a pending Scene change. The runtime then switches to the selected Scene and reinitializes its runtime context for that Scene.</p>"
-      },
-      {
-        "subtitle": "Debug variables",
-        "contents": "<h2>Debug variables</h2><p>Variables can be marked for debugging in the editor. Debug-enabled variable information can be surfaced by the runtime Debug UI to make game-state inspection easier.</p>"
+        "subtitle": "Scene changes during runtime",
+        "contents": "<h2>Scene changes</h2><p>A ScriptNode can change the current runtime Scene using <code>loadScene</code>.</p>"
       }
     ]
   },
   {
-    "title": "Editor Settings and Shortcuts",
+    "title": "Editor Settings",
     "items": [
       {
-        "subtitle": "Keyboard shortcuts",
-        "contents": "<h2>Keyboard shortcuts</h2><p>The Help page also loads the live keybind definitions from <code>js/keyBinds.js</code>. The main commands in this build include:</p><table><thead><tr><th>Command</th><th>Default shortcut</th></tr></thead><tbody><tr><td>Save Project</td><td>Ctrl+S</td></tr><tr><td>New Project</td><td>Ctrl+N</td></tr><tr><td>Open / Load</td><td>Ctrl+O</td></tr><tr><td>Export</td><td>Ctrl+E</td></tr><tr><td>Copy</td><td>Ctrl+C</td></tr><tr><td>Cut</td><td>Ctrl+X</td></tr><tr><td>Paste</td><td>Ctrl+V</td></tr><tr><td>Duplicate</td><td>Ctrl+D</td></tr><tr><td>Delete</td><td>Delete / Backspace</td></tr><tr><td>Rename</td><td>F2</td></tr><tr><td>Select All</td><td>Ctrl+A</td></tr><tr><td>Deselect All</td><td>Ctrl+Shift+A</td></tr><tr><td>Undo</td><td>Ctrl+Z</td></tr><tr><td>Redo</td><td>Ctrl+Y or Ctrl+Shift+Z</td></tr><tr><td>Snap to Target</td><td>Ctrl+Q</td></tr><tr><td>Escape / Close</td><td>Escape</td></tr><tr><td>Context Menu</td><td>Shift+F10</td></tr><tr><td>Play / Stop</td><td>Space</td></tr><tr><td>Fullscreen</td><td>F11</td></tr><tr><td>Zoom In</td><td>Ctrl+= or platform equivalent</td></tr><tr><td>Zoom Out</td><td>Ctrl+-</td></tr><tr><td>Reset Zoom</td><td>Ctrl+0</td></tr><tr><td>Center Camera</td><td>F</td></tr><tr><td>Next / Previous Selection</td><td>ArrowDown / ArrowUp</td></tr><tr><td>Editor Settings</td><td>Ctrl+.</td></tr></tbody></table>"
+        "subtitle": "Editor Settings",
+        "contents": "<h2>Editor Settings</h2><p>Editor Settings contains preferences for the editor, including editable keyboard shortcuts.</p>"
       },
       {
-        "subtitle": "MIDI shortcuts",
-        "contents": "<h2>MIDI shortcuts</h2><p>MIDI editing uses the shared command system plus MIDI-specific commands such as Save MIDI, Export MIDI, Import MIDI, and Duplicate Selection.</p>"
+        "subtitle": "Shortcut preference storage",
+        "contents": "<h2>Shortcut preferences</h2><p>Your chosen editor shortcuts are saved locally on your device, so the editor can reuse them after you close and reopen it.</p>"
       },
       {
-        "subtitle": "Sprite shortcuts",
-        "contents": "<h2>Sprite shortcuts</h2><p>Sprite editing includes the shared command handling and a Save Sprite shortcut through the sprite editor.</p>"
+        "subtitle": "Download Preferences",
+        "contents": "<h2>Download Preferences</h2><p><strong>Download Pref...</strong> downloads your editor preference data as JSON.</p><p>The export includes all stored editor preference values, including settings added by newer versions later, instead of being limited to a fixed list of known settings.</p>"
       },
       {
-        "subtitle": "Custom keybinds",
-        "contents": "<h2>Custom keybinds</h2><p>Editor keybinds are configurable in Editor Settings. Changes are stored locally and can be reset to defaults.</p>"
+        "subtitle": "Move / Scale Snap",
+        "contents": "<h2>Move / Scale Snap</h2><p>Move / Scale Snap sets the fixed editing interval used while moving or scaling a Node with the viewport tools.</p><p>With the default <code>0.1</code>, movement and scale changes snap to 0.1 intervals instead of changing by arbitrary tiny amounts.</p><p>Set it to <code>0</code> to turn the snap interval off.</p>"
+      },
+      {
+        "subtitle": "Rotate Snap",
+        "contents": "<h2>Rotate Snap</h2><p>Rotate Snap sets the angle interval used by the Rotate tool.</p><p><code>0°</code> turns rotation snapping off. Other choices such as <code>15°</code>, <code>30°</code>, <code>45°</code>, <code>90°</code>, and <code>180°</code> make rotation lock to fixed angle steps.</p>"
+      },
+      {
+        "subtitle": "Auto Save",
+        "contents": "<h2>Auto Save</h2><p>Turn <strong>Auto Save</strong> on to save the current project automatically at a fixed interval.</p><p>The Auto Save preference is an editor preference and is included when you use <strong>Download Pref...</strong>.</p>"
+      },
+      {
+        "subtitle": "Auto Save Interval",
+        "contents": "<h2>Auto Save Interval</h2><p><strong>Auto Save Interval</strong> is the number of seconds between automatic project saves. The field appears when Auto Save is checked.</p>"
+      },
+      {
+        "subtitle": "Prevent accidental reload or close",
+        "contents": "<h2>Prevent accidental reload or close</h2><p>When a project is loaded, the editor prevents common accidental reload shortcuts such as F5 and Ctrl/Cmd+R and asks the browser for confirmation when the page is being reloaded or closed.</p>"
       }
     ]
   },
   {
-    "title": "Colors, Values, and Input Controls",
+    "title": "Keyboard Shortcuts",
     "items": [
       {
-        "subtitle": "Color values",
-        "contents": "<h2>Color values</h2><p>Color editors support RGBA-style values and text forms including <code>#RGB</code>, <code>#RRGGBB</code>, <code>#RRGGBBAA</code>, and <code>rgb()</code>/<code>rgba()</code> input paths supported by the editor.</p>"
+        "subtitle": "Project shortcuts",
+        "contents": "<h2>Project shortcuts</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Ctrl+S</td><td>Save</td></tr><tr><td>Ctrl+N</td><td>New Project</td></tr><tr><td>Ctrl+O</td><td>Open / Load</td></tr><tr><td>Ctrl+E</td><td>Export</td></tr></tbody></table>"
       },
       {
-        "subtitle": "Boolean inputs",
-        "contents": "<h2>Boolean inputs</h2><p>Boolean ScriptNode inputs use true/false controls. The Boolean Control node exposes three outputs so one condition can explicitly route to truth, falsy, or a next/continue path.</p>"
+        "subtitle": "Editing shortcuts",
+        "contents": "<h2>Editing shortcuts</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Ctrl+C</td><td>Copy</td></tr><tr><td>Ctrl+X</td><td>Cut</td></tr><tr><td>Ctrl+V</td><td>Paste</td></tr><tr><td>Ctrl+D</td><td>Duplicate</td></tr><tr><td>Delete / Backspace</td><td>Delete</td></tr><tr><td>F2</td><td>Rename</td></tr><tr><td>Ctrl+A</td><td>Select All</td></tr><tr><td>Ctrl+Shift+A</td><td>Deselect All</td></tr><tr><td>Ctrl+Z</td><td>Undo</td></tr><tr><td>Ctrl+Y or Ctrl+Shift+Z</td><td>Redo</td></tr></tbody></table>"
       },
       {
-        "subtitle": "Integer inputs",
-        "contents": "<h2>Integer inputs</h2><p>Integer inputs are used for whole-number values such as positions, sizes, milliseconds, BPM-related settings, and other fields where the editor defines integer input behavior.</p>"
+        "subtitle": "View and runtime shortcuts",
+        "contents": "<h2>View and runtime</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Space</td><td>Play / Stop</td></tr><tr><td>F11</td><td>Fullscreen</td></tr><tr><td>Ctrl+=</td><td>Zoom In</td></tr><tr><td>Ctrl+-</td><td>Zoom Out</td></tr><tr><td>Ctrl+0</td><td>Reset Zoom</td></tr><tr><td>F</td><td>Center Camera</td></tr><tr><td>Escape</td><td>Close / Cancel</td></tr><tr><td>Shift+F10</td><td>Context Menu</td></tr><tr><td>Ctrl+Q</td><td>Snap to Target</td></tr></tbody></table>"
       },
       {
-        "subtitle": "Selector inputs",
-        "contents": "<h2>Selector inputs</h2><p>Selector inputs generate their choices from the current Scene, Nodes, variables, assets, animations, joystick list, or other available project data. This means the selector can change when the underlying project changes.</p>"
-      },
-      {
-        "subtitle": "Null and automatic values",
-        "contents": "<h2>Null and automatic values</h2><p>Some ScriptNode inputs use null to mean that no override was entered. At runtime, the action can then preserve the existing value or use its component default/normalization path.</p>"
+        "subtitle": "Node tool shortcuts",
+        "contents": "<h2>Node tool shortcuts</h2><table><thead><tr><th>Key</th><th>Tool</th></tr></thead><tbody><tr><td>1</td><td>Select</td></tr><tr><td>2</td><td>Move</td></tr><tr><td>3</td><td>Rotate</td></tr><tr><td>4</td><td>Scale</td></tr><tr><td>5</td><td>All</td></tr></tbody></table><p>These shortcuts can be changed in Editor Settings.</p>"
       }
     ]
   },
   {
-    "title": "Help, Data, and Troubleshooting",
+    "title": "Offline Mode and PWA",
     "items": [
       {
-        "subtitle": "Help system",
-        "contents": "<h2>Help system</h2><p>The Help page loads <code>help/help.json</code> and builds a searchable navigation tree from its <code>title</code>, <code>subtitle</code>, and <code>contents</code> fields. Contents are rendered as HTML.</p>"
+        "subtitle": "Automatic offline mode",
+        "contents": "<h2>Automatic offline mode</h2><p>The editor can automatically cache the web app for offline use. When the editor has a network connection, it can load the newest version and update its saved offline copy.</p><p>When there is no network connection, the saved offline copy can be loaded instead.</p>"
       },
       {
-        "subtitle": "Help JSON format",
-        "contents": "<h2>Help JSON format</h2><pre><code>[\n  {\n    \"title\": \"Section Name\",\n    \"items\": [\n      {\n        \"subtitle\": \"Topic\",\n        \"contents\": \"<h2>Topic</h2><p>Explanation...</p>\"\n      }\n    ]\n  }\n]</code></pre><p>Use a JSON array at the root. Each section has <code>title</code> and <code>items</code>; each item has <code>subtitle</code> and <code>contents</code>. Since the current Help renderer uses <code>innerHTML</code>, write headings, paragraphs, lists, tables, and code blocks as HTML.</p>"
+        "subtitle": "Offline toast",
+        "contents": "<h2>Offline message</h2><p>When the editor starts using its saved offline copy, it shows a notification so you know that Offline Mode is active.</p>"
       },
       {
-        "subtitle": "Common variable error",
-        "contents": "<h2>Common variable error</h2><p>A variable name conflict usually means the new name already exists in a scope where duplicate names are not allowed. The editor intentionally restores the previous valid name instead of leaving the invalid one in project state.</p>"
+        "subtitle": "PWA installation",
+        "contents": "<h2>PWA</h2><p>The editor itself can be used as a Progressive Web App when the browser supports installation. This is separate from exporting a game as a PWA: the editor can also have its own installable/offline behavior.</p>"
+      }
+    ]
+  },
+  {
+    "title": "Troubleshooting",
+    "items": [
+      {
+        "subtitle": "A variable name was rejected",
+        "contents": "<h2>Variable name rejected</h2><p>Choose a name that is not already used in a conflicting scope. The editor keeps the last valid name and shows the field with red error styling when a conflict is detected.</p>"
       },
       {
-        "subtitle": "Common ScriptNode issue",
-        "contents": "<h2>Common ScriptNode issue</h2><p>When a ScriptNode does not appear to run, check that an Event node actually emits, that its output is connected to the intended receiver input, and that the current Node/Scene is active at runtime.</p>"
+        "subtitle": "An asset was rejected",
+        "contents": "<h2>Asset rejected</h2><p>Check that the file is a supported image or audio type for the drop/import area you are using. Unsupported file types are intentionally rejected.</p>"
       },
       {
-        "subtitle": "Common asset issue",
-        "contents": "<h2>Common asset issue</h2><p>When an asset cannot be selected, verify that it was imported into the current project and that the ScriptNode/Component selector is using the matching asset category.</p>"
+        "subtitle": "The game view does not fit the screen",
+        "contents": "<h2>Game view fitting</h2><p>Check Game Settings → Screen Type. Windowboxing keeps the 16:9 shape, Stretch fills the screen, Crop fills the screen while cutting edges, and Smart Camera changes the visible camera area.</p>"
       },
       {
-        "subtitle": "Common camera issue",
-        "contents": "<h2>Common camera issue</h2><p>If the world appears stretched, cropped, or boxed unexpectedly, check Game Settings → Screen Type and then check the Scene Camera scale, position, follow, and offsets.</p>"
+        "subtitle": "A MIDI file is still loading",
+        "contents": "<h2>MIDI loading</h2><p>Large MIDI files can take time to process. Watch the loading percentage shown by the MIDI Editor instead of assuming the editor is frozen.</p>"
       },
       {
-        "subtitle": "Common MIDI issue",
-        "contents": "<h2>Common MIDI issue</h2><p>If MIDI preview differs from a hardware/software synthesizer, remember that UIX runtime preview uses the bundled Web Audio oscillator path rather than reproducing an external instrument's exact sound bank.</p>"
+        "subtitle": "The editor is too narrow",
+        "contents": "<h2>Editor too narrow</h2><p>Rotate the device or expand the window when the editor displays the small-screen warning. Editing is intentionally blocked while the screen is too narrow.</p>"
       }
     ]
   },
@@ -792,16 +737,40 @@
     "title": "Quick Reference",
     "items": [
       {
-        "subtitle": "All Components",
-        "contents": "<h2>All Components</h2><p><code>Node</code>, <code>Script</code>, <code>Transform</code>, <code>Text</code>, <code>Sprite</code>, <code>Animation Sprite</code>, <code>Physics</code>, <code>Collider</code>, <code>Progress Bar</code>.</p>"
+        "subtitle": "Components",
+        "contents": "<h2>Components</h2><p><code>Node</code>, <code>Script</code>, <code>Transform</code>, <code>Text</code>, <code>Sprite</code>, <code>Animation Sprite</code>, <code>Physics</code>, <code>Collider</code>, <code>Progress Bar</code>, and <code>Joystick</code>.</p>"
       },
       {
-        "subtitle": "All ScriptNodes",
-        "contents": "<h2>All ScriptNodes</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onUnload</code>, <code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>stopAudio</code>, <code>clearAudio</code>, <code>Boolean</code>, <code>Interval</code>, <code>Timeout</code>, <code>isCollidedWith</code>.</p>"
+        "subtitle": "Events",
+        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onConnectionChange</code>, <code>onUnload</code>.</p>"
       },
       {
-        "subtitle": "ScriptNode order",
-        "contents": "<h2>ScriptNode order</h2><p>The library/runtime order is Events first, then Actions and Controls, with the current build ordering the definitions as follows:</p><ol><li>onLoad</li><li>onTick</li><li>onKeybind</li><li>onTouch</li><li>onMouse</li><li>onScreenInput</li><li>onJoystick</li><li>onUnload</li><li>loadScene</li><li>setVariable</li><li>setTransform</li><li>setNode</li><li>setText</li><li>setSprite</li><li>setPhysics</li><li>setCollider</li><li>setProgressBar</li><li>Follow Object</li><li>Destroy Object</li><li>Create Object</li><li>setVelocity</li><li>setCamera</li><li>playAudio</li><li>stopAudio</li><li>clearAudio</li><li>Boolean</li><li>Interval</li><li>Timeout</li><li>isCollidedWith</li></ol>"
+        "subtitle": "Actions",
+        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>"
+      },
+      {
+        "subtitle": "Controls",
+        "contents": "<h2>Controls</h2><p><code>Boolean</code>, <code>Interval</code>, <code>Timeout</code>, <code>isCollidedWith</code>.</p>"
+      },
+      {
+        "subtitle": "New Event: onConnectionChange",
+        "contents": "<h2>onConnectionChange</h2><p><code>onConnectionChange</code> is an Event ScriptNode with a <code>Connection</code> selector containing <code>Online</code> and <code>Offline</code>. It sends <code>out</code> when the browser changes network connection state while the game is running.</p>"
+      },
+      {
+        "subtitle": "Editor Snap",
+        "contents": "<h2>Editor Snap</h2><p>Default Move / Scale Snap: <code>0.1</code>. Default Rotate Snap: <code>0° (Off)</code>. Both settings can be changed in Editor Settings and are saved on your device.</p>"
+      },
+      {
+        "subtitle": "Audio playback inputs",
+        "contents": "<h2>Audio playback inputs</h2><p><code>playAudio</code> uses <code>src</code>, <code>start</code>, <code>duration</code>, <code>loop</code>, <code>fadein</code>, and <code>fadeout</code>. A duration of <code>0</code> means play until the asset finishes.</p>"
+      },
+      {
+        "subtitle": "New microphone ScriptNodes",
+        "contents": "<h2>Microphone ScriptNodes</h2><p>Events: <code>onAudioPickup</code>. Actions: <code>startSpeechRecognition</code> and <code>stopSpeechRecognition</code>. These require <strong>Use Mic</strong> to be enabled in Game Settings.</p>"
+      },
+      {
+        "subtitle": "Requirements",
+        "contents": "<h2>ScriptNode requirements</h2><p>A ScriptNode can require a Game Settings feature. Required ScriptNodes remain visible but are disabled until the required feature is enabled.</p>"
       }
     ]
   }
