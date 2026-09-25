@@ -774,3 +774,5 @@ html.uix-narrow-edit-lock .uix-viewport-narrow-notice{pointer-events:auto!import
 .editor-settings-body{overflow-y:auto!important;overflow-x:hidden!important;min-height:0!important;}
 .editor-keybind-list{flex:0 0 auto!important;min-height:0!important;overflow:visible!important;max-height:none!important;}
 .floating-select-menu{z-index:2147483646!important;position:fixed!important;pointer-events:auto!important;}
+
+.script-input.sliding{cursor:ew-resize;border-color:#777}.script-input.sliding .script-input-value{user-select:none}
