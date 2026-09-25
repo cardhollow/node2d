@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>UIX Editor</title>
+  <title>Node2D</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23111'/%3E%3Cg stroke='%23555' stroke-width='16' fill='none' stroke-linecap='round'%3E%3Cpath d='M256 100V180'/%3E%3Cpath d='M256 180H140V270'/%3E%3Cpath d='M256 180H372V270'/%3E%3Cpath d='M140 270V350'/%3E%3Cpath d='M372 270V350'/%3E%3C/g%3E%3Crect x='196' y='70' width='120' height='90' rx='22' fill='white'/%3E%3Crect x='90' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Crect x='302' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Ccircle cx='140' cy='390' r='28' fill='white'/%3E%3Ccircle cx='372' cy='390' r='28' fill='white'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111111">
@@ -238,8 +238,8 @@
   </section>
 
   <section id="helpModal" class="modal help-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Help</h3><p>UIX Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
-    <div class="help-frame-wrap"><iframe id="helpFrame" title="UIX Node2D Help"></iframe></div>
+    <div class="modal-header"><div><h3>Help</h3><p>Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="help-frame-wrap"><iframe id="helpFrame" title="Node2D Help"></iframe></div>
   </section>
 
   <section id="expressionModal" class="modal expression-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
@@ -255,9 +255,9 @@
   </section>
 
   <section id="editorSettingsModal" class="modal editor-settings-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Editor Settings</h3><p>Change shortcuts used throughout UIX.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Editor Settings</h3><p>Change shortcuts used throughout Node2D.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
     <div class="editor-settings-body">
-      <div class="editor-settings-toolbar"><span>Shortcut</span><div class="editor-settings-toolbar-actions"><button class="btn" data-action="download-preferences">Download Pref...</button><button class="btn" data-action="reset-keybinds">Reset Defaults</button></div></div>
+      <div class="editor-settings-toolbar"><span>Shortcut</span><div class="editor-settings-toolbar-actions"><button class="btn" data-action="download-preferences">Download Pref...</button><button class="btn" data-action="import-preferences">Import Pref...</button><button class="btn" data-action="reset-keybinds">Reset Defaults</button></div></div>
       <div id="editorKeybindList" class="editor-keybind-list"></div>
     </div>
     <div class="modal-actions"><button class="btn primary" data-action="close-modal">Done</button></div>

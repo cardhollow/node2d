@@ -1,6 +1,6 @@
 {
-  "name": "UIX Node2D Editor",
-  "short_name": "UIX Node2D",
+  "name": "Node2D",
+  "short_name": "Node2D",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -14,5 +14,6 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "description": "2D game engine and visual editor"
 }
