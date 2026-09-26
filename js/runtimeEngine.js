@@ -23,6 +23,8 @@
     const detectable=!!c && c.collidable !== false;
     const physical=physics?.isCollider===true;
     if(!detectable && !physical) return null;
+    const isStatic=!['Dynamic','Kinematic'].includes(physics?.body);
+    if(isStatic&&!body._shapeDirty&&body._shapeCache)return body._shapeCache;
 
     const nt=body.t||{position:[0,0],scale:[1,1],angle:[0]};
     const nx=Number(nt.position?.[0])||0, ny=Number(nt.position?.[1])||0;
@@ -49,6 +51,7 @@
       const local=type==='Triangle' ? [{x:0,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}] : [{x:-hw,y:-hh},{x:hw,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}];
       shape.vertices=local.map(v=>{const q=rot(v.x,v.y,angle);return{x:x+q.x,y:y+q.y};});
     }
+    if(isStatic){body._shapeCache=shape;body._shapeDirty=false;}
     return shape;
   }
 
@@ -149,11 +152,13 @@
 
   function massProps(body,shape){
     if(body.physics?.body!=='Dynamic')return{invMass:0,invInertia:0};
+    const key=`${shape.type}|${shape.w}|${shape.h}|${shape.radius||0}|${body.physics.fixedRotation?'1':'0'}`;
+    if(body._massKey===key&&body._massCache)return body._massCache;
     let mass, inertia;
     if(shape.type==='Circle'){mass=Math.PI*shape.radius*shape.radius*.001;inertia=.5*mass*shape.radius*shape.radius;}
     else if(shape.type==='Triangle'){mass=Math.max(.001,.5*shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/24;}
     else{mass=Math.max(.001,shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/12;}
-    return{invMass:1/mass,invInertia:body.physics?.fixedRotation?0:1/Math.max(inertia,.0001)};
+    const out={invMass:1/mass,invInertia:body.physics?.fixedRotation?0:1/Math.max(inertia,.0001)};body._massKey=key;body._massCache=out;return out;
   }
   function pointVelocity(body,r){return add({x:Number(body.vx)||0,y:Number(body.vy)||0},crossSV(Number(body.omega)||0,r));}
   function applyImpulse(body,imp,r,sign,props){if(props.invMass===0)return;body.vx=(Number(body.vx)||0)+imp.x*props.invMass*sign;body.vy=(Number(body.vy)||0)+imp.y*props.invMass*sign;body.omega=(Number(body.omega)||0)+cross(r,imp)*props.invInertia*sign;}
@@ -245,7 +250,7 @@
       const b=bodies[i];b.colliding=false;const type=b.physics?.body;
       if(type==='Dynamic')b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
       if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;}
-      const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const box=aabb(shape);aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
+      const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const isStatic=!['Dynamic','Kinematic'].includes(type);const box=isStatic&&b._aabbCache&&!b._shapeDirty?b._aabbCache:aabb(shape);if(isStatic)b._aabbCache=box;aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
     }
 
     // Sweep-and-prune broadphase: only pairs whose AABBs overlap on X are tested further.
@@ -267,8 +272,8 @@
 
     // Fewer solver passes are enough with the cached broadphase/manifold data and avoid
     // multiplying collision work unnecessarily when several objects touch at once.
-    for(let iter=0;iter<6;iter++)for(const c of contacts)solveContact(c);
-    for(let iter=0;iter<2;iter++)for(const c of contacts)positionalCorrection(c);
+    for(let iter=0;iter<4;iter++)for(const c of contacts)solveContact(c);
+    for(let iter=0;iter<1;iter++)for(const c of contacts)positionalCorrection(c);
 
     for(const b of bodies){
       if(!Number.isFinite(b.vx))b.vx=0;if(!Number.isFinite(b.vy))b.vy=0;if(!Number.isFinite(b.omega))b.omega=0;

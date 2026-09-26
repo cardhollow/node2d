@@ -49,7 +49,7 @@
       editingInput: null, clipboard: null, panelWidths:{left:260,right:250}, leftCollapsed:false, rightCollapsed:false
     },
     dragTree: null,
-    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
+    runtime: { running: false, debug: false, bodies: [], physicsBodies: [], renderBodies: [], renderOrderDirty: false, nodeEntries: [], nodeList: [], nodeById: new Map(), bodyById: new Map(), parentById: new Map(), numericIds: new Set(), nextNumericId: 1, scriptById: new Map(), scriptOwnerById: new Map(), eventScriptsByName: new Map(), eventScriptsByNode: new Map(), routesByScriptOutput: new Map(), defByName: new Map(), shared: null, pendingOnLoad: [], renderCtx: null, renderCanvas: null, camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
     game: { preferredSceneId: '', screenType: 'Windowboxing', requirements: { 'Use Mic': false }, mic: { speechLanguage: 'en-US', continuous: true, interimResults: true } },
     ui: {
       componentCollapsed: Object.create(null),
@@ -107,6 +107,10 @@
     const out = {};
     Object.keys(v).forEach(k => { out[k] = clone(v[k]); });
     return out;
+  };
+  const runtimeClone = v => {
+    try { return typeof structuredClone === 'function' ? structuredClone(v) : clone(v); }
+    catch { return clone(v); }
   };
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
@@ -2768,9 +2772,37 @@
   // ---------------- Runtime preview ----------------
   function runtimeScene(){ return state.runtime.scene || null; }
   function runtimeAllNodes(scene=runtimeScene()){
-    const out=[]; const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{out.push({node,parent});if(node.type==='folder')walk(node.children,node);}); walk(scene?.nodes); return out;
+    const rt=state.runtime;
+    if(scene===rt.scene && Array.isArray(rt.nodeEntries))return rt.nodeEntries;
+    const out=[];const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{out.push({node,parent});if(node.type==='folder')walk(node.children,node);});walk(scene?.nodes);return out;
   }
-  function runtimeFindNode(id){ return runtimeAllNodes().find(x=>x.node.id===id)?.node || null; }
+  function runtimeFindNode(id){
+    const rt=state.runtime;if(rt?.nodeById?.has(id))return rt.nodeById.get(id)||null;
+    return runtimeAllNodes().find(x=>x.node.id===id)?.node||null;
+  }
+  function runtimeRebuildCaches(){
+    const rt=state.runtime;if(!rt)return;
+    const entries=[],nodes=[],nodeById=new Map(),parentById=new Map(),folderByLabel=new Map();
+    const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){entries.push({node,parent});parentById.set(node.id,parent||null);if(node.type==='node'){nodes.push(node);nodeById.set(node.id,node);}else if(node.type==='folder'){folderByLabel.set(`${node.name} [${node.numericId}]`,node);walk(node.children,node);}}};
+    walk(rt.scene?.nodes);
+    const bodyById=new Map(),physicsBodies=[];for(const body of (rt.bodies||[])){if(!body?.node?.id)continue;bodyById.set(body.node.id,body);if(body.physics||body.collider)physicsBodies.push(body);}
+    const renderBodies=(rt.bodies||[]).filter(Boolean).slice().sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));
+    const scriptById=new Map(),scriptOwnerById=new Map(),eventScriptsByName=new Map(),eventScriptsByNode=new Map(),routesByScriptOutput=new Map();
+    const defByName=new Map(scriptNodes.filter(Boolean).map(def=>[def.name,def]));
+    for(const node of nodes){
+      const scripts=Array.isArray(rt.dynamicScriptsByNode?.[node.id])?rt.dynamicScriptsByNode[node.id]:[];const byDef=Object.create(null);
+      for(const sn of scripts){if(!sn?.id)continue;scriptById.set(sn.id,sn);scriptOwnerById.set(sn.id,node.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=eventScriptsByName.get(name)||[];list.push({node,sn});eventScriptsByName.set(name,list);}}
+      eventScriptsByNode.set(node.id,byDef);
+      const connections=Array.isArray(rt.dynamicConnectionsByNode?.[node.id])?rt.dynamicConnectionsByNode[node.id]:[];
+      for(const c of connections){if(!c?.from||!c?.to||!c?.output)continue;const byOut=routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);routesByScriptOutput.set(c.from,byOut);}
+    }
+    const joyList=sceneJoysticks(rt.scene).map(j=>({variable:j.variable}));const joystickObject=Object.create(null);for(const j of joyList)joystickObject[j.variable]={distance:0,angle:0,value_x:0,value_y:0};
+    rt.nodeEntries=entries;rt.nodeList=nodes;rt.nodeById=nodeById;rt.bodyById=bodyById;rt.parentById=parentById;rt.physicsBodies=physicsBodies;rt.renderBodies=renderBodies;rt.renderOrderDirty=false;rt.numericIds=new Set(nodes.map(n=>Number(n.numericId)).filter(Number.isFinite));
+    let next=1;while(rt.numericIds.has(next))next++;rt.nextNumericId=Math.max(next,...nodes.map(n=>Number(n.numericId)+1).filter(Number.isFinite),1);
+    rt.scriptById=scriptById;rt.scriptOwnerById=scriptOwnerById;rt.eventScriptsByName=eventScriptsByName;rt.eventScriptsByNode=eventScriptsByNode;rt.routesByScriptOutput=routesByScriptOutput;rt.defByName=defByName;
+    rt.shared={allNodes:nodes,folderOptions:[...folderByLabel.keys()],folderByLabel,spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]),...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],joysticksList:joyList,joystickObject};
+  }
+  function runtimeSortRenderBodies(){const rt=state.runtime;if(!rt?.renderOrderDirty)return;rt.renderBodies.sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));rt.renderOrderDirty=false;}
   function runScriptGraphForNode(node){
     if(!node)return;
     runtimeScriptList(node.id).filter(sn=>sn.defName==='onLoad').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true));
@@ -2778,24 +2810,44 @@
   function runtimeSceneVariables(sceneId=state.runtime.sceneId){ return state.runtime.sceneVariablesByScene?.[sceneId] || []; }
   function buildRuntimeBody(node){
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
-    return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,vx:0,vy:0,omega:0,colliding:false};
+    return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
-  function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
-    const source=runtimeFindNode(sourceId);if(!source)return null;const copy=clone(source);const oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;
-    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
-    const sourceScripts=clone(state.runtime.dynamicScriptsByNode[oldId]||[]),sourceConnections=clone(state.runtime.dynamicConnectionsByNode[oldId]||[]),scriptMap=new Map();
-    sourceScripts.forEach(sn=>{const old=sn.id;sn.id=`snode-runtime-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;scriptMap.set(old,sn.id);});
-    const sourceContainer=runtimeContainerForNode(oldId);if(sourceContainer)sourceContainer.push(copy);else state.runtime.scene.nodes.push(copy);
-    state.runtime.dynamicScriptsByNode[copy.id]=sourceScripts;
-    state.runtime.dynamicConnectionsByNode[copy.id]=sourceConnections.map(c=>({...c,from:scriptMap.get(c.from)||c.from,to:scriptMap.get(c.to)||c.to}));
-    state.runtime.localVarsByNode[copy.id]=clone(state.runtime.localVarsByNode[oldId]||[]);
-    const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;state.runtime.bodies.push(body);runScriptGraphForNode(copy);return copy;
+  function cloneRuntimeScripts(sourceScripts){
+    const used=new Set();return (Array.isArray(sourceScripts)?sourceScripts:[]).map(sn=>{const copy=runtimeClone(sn);let id;do{id=`snode-runtime-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;}while(used.has(id));used.add(id);copy.id=id;return copy;});
   }
-  function runtimeDestroyNode(node){const container=runtimeContainerForNode(node.id);if(container){const i=container.findIndex(x=>x.id===node.id);if(i>=0)container.splice(i,1);}state.runtime.bodies=state.runtime.bodies.filter(b=>b.node?.id!==node.id);delete state.runtime.dynamicScriptsByNode[node.id];delete state.runtime.dynamicConnectionsByNode[node.id];delete state.runtime.localVarsByNode[node.id];delete state.runtime.followTargets[node.id];delete state.runtime.aiTargets[node.id];}
-
+  function runtimeRegisterScripts(ownerNode,scripts,connections){
+    const rt=state.runtime,byDef=rt.eventScriptsByNode.get(ownerNode.id)||Object.create(null);
+    for(const sn of scripts||[]){rt.scriptById.set(sn.id,sn);rt.scriptOwnerById.set(sn.id,ownerNode.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=rt.eventScriptsByName.get(name)||[];list.push({node:ownerNode,sn});rt.eventScriptsByName.set(name,list);}}rt.eventScriptsByNode.set(ownerNode.id,byDef);
+    for(const c of connections||[]){const byOut=rt.routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);rt.routesByScriptOutput.set(c.from,byOut);}
+  }
+  function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
+    const rt=state.runtime,source=runtimeFindNode(sourceId);if(!source)return null;const copy=runtimeClone(source),oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+    let n=Math.max(1,Number(rt.nextNumericId)||1);while(rt.numericIds.has(n))n++;copy.numericId=n;rt.numericIds.add(n);rt.nextNumericId=n+1;
+    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
+    const originalScripts=rt.dynamicScriptsByNode[oldId]||[],sourceScripts=cloneRuntimeScripts(originalScripts),scriptMap=new Map();sourceScripts.forEach((sn,i)=>{const old=originalScripts[i]?.id;if(old)scriptMap.set(old,sn.id);});
+    const sourceConnections=runtimeClone(rt.dynamicConnectionsByNode[oldId]||[]).map(c=>({...c,from:scriptMap.get(c.from)||c.from,to:scriptMap.get(c.to)||c.to}));
+    const parent=rt.parentById.get(oldId)||null,container=parent?.children||rt.scene.nodes;if(!Array.isArray(container))return null;container.push(copy);
+    rt.dynamicScriptsByNode[copy.id]=sourceScripts;rt.dynamicConnectionsByNode[copy.id]=sourceConnections;rt.localVarsByNode[copy.id]=runtimeClone(rt.localVarsByNode[oldId]||[]);
+    const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;
+    rt.bodies.push(body);rt.renderBodies.push(body);if(body.physics||body.collider)rt.physicsBodies.push(body);rt.bodyById.set(copy.id,body);rt.nodeById.set(copy.id,copy);rt.nodeEntries.push({node:copy,parent});rt.nodeList.push(copy);rt.parentById.set(copy.id,parent);rt.shared?.allNodes?.push(copy);rt.renderOrderDirty=true;
+    runtimeRegisterScripts(copy,sourceScripts,sourceConnections);rt.pendingOnLoad.push(copy);return copy;
+  }
+  function runtimeDestroyNode(node){
+    const rt=state.runtime;if(!node||!rt)return;const id=node.id,body=rt.bodyById.get(id);if(!rt.nodeById.has(id)&&!body)return;
+    const parent=rt.parentById.get(id)||null,container=parent?.children||rt.scene?.nodes;if(Array.isArray(container)){const i=container.findIndex(x=>x?.id===id);if(i>=0)container.splice(i,1);}
+    const deadScripts=new Set((rt.dynamicScriptsByNode?.[id]||[]).map(sn=>sn?.id).filter(Boolean));for(const sid of deadScripts){rt.scriptById.delete(sid);rt.scriptOwnerById.delete(sid);delete rt.intervalStates[sid];}
+    for(const [name,list] of rt.eventScriptsByName){const next=list.filter(x=>x.node?.id!==id&&!deadScripts.has(x.sn?.id));if(next.length)rt.eventScriptsByName.set(name,next);else rt.eventScriptsByName.delete(name);}
+    rt.eventScriptsByNode.delete(id);
+    for(const [from,byOut] of rt.routesByScriptOutput){for(const [out,list] of byOut){const next=list.filter(c=>!deadScripts.has(c.from)&&!deadScripts.has(c.to));if(next.length)byOut.set(out,next);else byOut.delete(out);}if(!byOut.size)rt.routesByScriptOutput.delete(from);}
+    rt.timers=(rt.timers||[]).filter(t=>t?.nodeId!==id&&!deadScripts.has(t?.key));rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>n?.id!==id);
+    delete rt.dynamicScriptsByNode[id];delete rt.dynamicConnectionsByNode[id];delete rt.localVarsByNode[id];delete rt.followTargets[id];delete rt.aiTargets[id];Object.values(rt.followTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});Object.values(rt.aiTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});
+    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>pair?.[0]?.node?.id!==id&&pair?.[1]?.node?.id!==id));
+    if(body){let i=rt.bodies.indexOf(body);if(i>=0)rt.bodies.splice(i,1);i=rt.renderBodies.indexOf(body);if(i>=0)rt.renderBodies.splice(i,1);i=rt.physicsBodies.indexOf(body);if(i>=0)rt.physicsBodies.splice(i,1);rt.bodyById.delete(id);}
+    let i=rt.nodeList.findIndex(n=>n?.id===id);if(i>=0)rt.nodeList.splice(i,1);i=rt.nodeEntries.findIndex(e=>e.node?.id===id);if(i>=0)rt.nodeEntries.splice(i,1);rt.nodeById.delete(id);rt.parentById.delete(id);if(rt.shared?.allNodes){i=rt.shared.allNodes.findIndex(n=>n?.id===id);if(i>=0)rt.shared.allNodes.splice(i,1);}rt.numericIds.delete(Number(node.numericId));
+    if(body){body.node=null;body.physics=null;body.collider=null;body.t=null;body._shapeCache=null;body._aabbCache=null;body._massCache=null;}
+  }
   function vec(x=0,y=0){return{x:Number(x)||0,y:Number(y)||0};}
   function addV(a,b){return{x:a.x+b.x,y:a.y+b.y};}
   function subV(a,b){return{x:a.x-b.x,y:a.y-b.y};}
@@ -2916,14 +2968,9 @@
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
   function drawRuntimeColliders(ctx){if(!state.runtime.debug)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-  function runtimeFindFolderByLabel(label){
-    let found=null;const wanted=String(label||'');
-    const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='folder'){if(`${item.name} [${item.numericId}]`===wanted){found=item;return true;}if(walk(item.children))return true;}}return false;};
-    walk(state.runtime.scene?.nodes);return found;
-  }
+  function runtimeFindFolderByLabel(label){return state.runtime?.shared?.folderByLabel?.get(String(label||''))||null;}
   function runtimeFolderColliderBodies(label,bodyById=null){
-    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];
-    const ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=bodyById?.get(item.id)||(state.runtime.bodies||[]).find(b=>b.node?.id===item.id);if(body?.collider?.collidable!==false && body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
+    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];const map=bodyById||state.runtime.bodyById,ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=map?.get(item.id);if(body?.collider?.collidable!==false&&body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
   }
   function runtimeBodyRadius(body){const g=runtimeColliderShape(body);if(!g)return 0;const a=shapeAABB(g);return Math.max(a.w,a.h)*.5;}
   function pointInPolygon(p,vertices){
@@ -3012,22 +3059,23 @@
     const dir=normV(subV(waypoint,pos));return{x:dir.x*speed,y:dir.y*speed,face:dir};
   }
   function updateRuntimeMovementControllers(dt){
-    const bodyById=new Map((state.runtime.bodies||[]).map(b=>[b.node?.id,b]));
+    const bodyById=state.runtime.bodyById||new Map();
     Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);if(d<=Math.max(1,speed*dt)){owner.vx=0;owner.vy=0;}else{const k=speed/d;owner.vx=dx*k;owner.vy=dy*k;}if(!owner.physics.fixedRotation&&d>1e-6)owner.t.angle[0]=Math.atan2(dy,dx)*180/Math.PI;});
     Object.entries(state.runtime.aiTargets||{}).forEach(([ownerId,ai])=>{const owner=bodyById.get(ownerId);if(!owner||!owner.physics)return;const steer=runtimeSteeringForAI(owner,ai,dt,bodyById);if(!steer)return;owner.vx=steer.x;owner.vy=steer.y;if(!owner.physics.fixedRotation&&steer.face)owner.t.angle[0]=Math.atan2(steer.face.y,steer.face.x)*180/Math.PI;});
   }
-  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);state.runtime.activeCollisionPairs=new Set();state.runtime.frameCollisionPairs=new Map();runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=runtimeClone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=runtimeClone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);state.runtime.activeCollisionPairs=new Set();state.runtime.frameCollisionPairs=new Map();runtimeRebuildCaches();runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
     updateRuntimeMic();
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
-    const substeps=4,subDt=dt/substeps;
+    processRuntimeSpawnQueue(16);
+    const physicsCount=state.runtime.physicsBodies?.length||0;const substeps=physicsCount>40?1:2,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
       updateRuntimeMovementControllers(subDt);
-      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.bodies||[],subDt,pairs=>queueRuntimeCollisionPairs(pairs));
+      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.physicsBodies||[],subDt,pairs=>queueRuntimeCollisionPairs(pairs));
       else queueRuntimeCollisionPairs(updateRuntimeCollisions(subDt));
     }
     flushRuntimeCollisionEvents();processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
-  function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=(state.runtime.bodies||[]).find(b=>b.node?.id===id);return body?body.t:null;}
+  function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=state.runtime.bodyById?.get(id);return body?body.t:null;}
   function updateRuntimeCamera(dt){
     const cam=state.runtime.camera;if(!cam)return;
     const target=runtimeFollowTarget();
@@ -3039,11 +3087,12 @@
     else {const k=1-Math.exp(-speed*Math.max(0,dt)/100);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k;}
     cam.angle=Number(cam.baseAngle||0);
   }
-  function hydrateRuntimeVariables(sceneId){state.runtime.globalVariables=clone(state.globalVariables);state.runtime.sceneVariablesByScene=Object.create(null);for(const s of state.scenes)state.runtime.sceneVariablesByScene[s.id]=clone(state.sceneVariablesByScene[s.id]||[]);state.runtime.localVarsByNode=clone(state.localVarsByNode);}
+  function hydrateRuntimeVariables(sceneId){state.runtime.globalVariables=runtimeClone(state.globalVariables);state.runtime.sceneVariablesByScene=Object.create(null);for(const s of state.scenes)state.runtime.sceneVariablesByScene[s.id]=runtimeClone(state.sceneVariablesByScene[s.id]||[]);state.runtime.localVarsByNode=runtimeClone(state.localVarsByNode);}
   let runtimeLast=0,runtimeFrame=0,runtimeAccumulator=0;
 
   function scriptNodeDefinition(name){
-    return scriptNodes.find(def=>def && def.name===name) || null;
+    const runtimeDef=state.runtime?.defByName?.get(String(name||''));
+    return runtimeDef || scriptNodes.find(def=>def && def.name===name) || null;
   }
   function runtimeScriptList(nodeId){
     const list=state.runtime?.dynamicScriptsByNode?.[nodeId];
@@ -3118,7 +3167,7 @@
       return Array.isArray(value)?value.map(v=>String(v)):[];
     }catch(err){state.runtime.lastError=String(err?.message||err);return[];}
   }
-  function runtimeBodyForNode(node){return (state.runtime.bodies||[]).find(b=>b.node?.id===node?.id)||null;}
+  function runtimeBodyForNode(node){return state.runtime?.bodyById?.get(node?.id)||null;}
   function runtimeVariableArray(scope,node){
     if(scope==='Global')return state.runtime.globalVariables||[];
     if(scope==='Scene')return runtimeSceneVariables(state.runtime.sceneId);
@@ -3133,9 +3182,7 @@
     return true;
   }
   function runtimeSetComponent(node,type,mutator){
-    if(!node)return null;
-    let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}
-    mutator(c);normalizeNode(node);return c;
+    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics')body.physics=clone(c);if(type==='collider')body.collider=clone(c);body._shapeDirty=true;body._massDirty=true;const inList=state.runtime.physicsBodies.includes(body),should=!!body.physics||!!body.collider;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
   }
   async function prepareRuntimeMic(){
     ensureGameSettings();
@@ -3170,7 +3217,7 @@
   function runtimeContext(node){
     const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
     const locals=runtimeVariableArray('Local',node),globals=runtimeVariableArray('Global',node),sceneVars=runtimeVariableArray('Scene',node);
-    const joy=Object.fromEntries((state.runtime.joysticks||[]).map(j=>[j.variable,{distance:j.distance||0,angle:j.angle||0,value_x:j.value_x||0,value_y:j.value_y||0}]));
+    const joy=state.runtime.shared?.joystickObject||Object.create(null);
     const velocity={};
     const setVX=v=>{if(body&&v!==null&&v!==undefined)body.vx=Number(v)||0;};
     const setVY=v=>{if(body&&v!==null&&v!==undefined)body.vy=Number(v)||0;};
@@ -3189,12 +3236,12 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:runtimeAllNodes().map(x=>x.node),folderOptions:runtimeAllNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.numericId}]`),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
+      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
       setVariable:(scope,name,value)=>runtimeSetVariable(scope,name,value,node),
-      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);}},
+      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);b._shapeDirty=true;}},
       setNode:(name,id)=>{if(node){if(name!==null&&name!==undefined)node.name=String(name);if(id!==null&&id!==undefined){const n=Number(id);if(Number.isFinite(n))node.numericId=n;}}},
       setText:(v)=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});}),
       setSprite:(v)=>runtimeSetComponent(node,'sprite',c=>{if(v.Type!==null&&v.Type!==undefined)c.sourceType=v.Type;if(v.Sprite!==null&&v.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v.Animation!==null&&v.Animation!==undefined)c.animation=v.Animation;if(v.Pixelated!==null&&v.Pixelated!==undefined)c.pixelated=!!v.Pixelated;}),
@@ -3213,7 +3260,7 @@
       runtime:state.runtime,
       loadScene:(name)=>{const s=state.scenes.find(v=>v.name===name);if(s)state.runtime.pendingSceneId=s.id;}
     };
-    sceneJoysticks(state.runtime.scene).forEach(j=>{const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;});
+    for(const j of state.runtime.shared?.joysticksList||[]){const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;}
     return ctx;
   }
   let runtimeAudioContext=null,runtimeAudioMaster=null;
@@ -3355,15 +3402,8 @@
   function runtimeStopAudio(){[...(state.runtime.audio||[])].forEach(a=>{try{a.pause();}catch{}});}
   function runtimeClearAudio(){runtimeStopAudio();state.runtime.audio=[];}
   function runtimeCloseAudio(){runtimeStopAudio();runtimeAudioBuffers.clear();runtimeAudioLoading.clear();try{runtimeAudioMaster?.disconnect();}catch{}try{runtimeAudioContext?.close();}catch{}runtimeAudioMaster=null;runtimeAudioContext=null;try{runtimeMIDIContext?.close();}catch{}runtimeMIDIContext=null;}
-  function routeRuntimeOutput(sourceSn,outputId){
-    const sourceNode=runtimeNodeForScript(sourceSn);if(!sourceNode)return;
-    const lists=Object.values(state.runtime.dynamicConnectionsByNode||{});
-    for(const list of lists){if(!Array.isArray(list))continue;const c=list.find(x=>x.from===sourceSn.id&&x.output===outputId);if(!c)continue;const targetNode=runtimeFindNode((runtimeScriptList(sourceNode.id).find(x=>x.id===c.to)?sourceNode.id:null));
-      let targetScript=null,targetOwner=null;
-      for(const [owner,arr] of Object.entries(state.runtime.dynamicScriptsByNode||{})){const hit=(Array.isArray(arr)?arr:[]).find(x=>x.id===c.to);if(hit){targetScript=hit;targetOwner=owner;break;}}
-      if(targetScript){executeRuntimeScriptNode(targetScript,scriptNodeDefinition(targetScript.defName),runtimeFindNode(targetOwner),false);}
-    }
-  }
+  function routeRuntimeOutput(sourceSn,outputId){const rt=state.runtime;if(!sourceSn||!rt)return;for(const c of rt.routesByScriptOutput?.get(sourceSn.id)?.get(outputId)||[]){const targetScript=rt.scriptById.get(c.to),ownerId=rt.scriptOwnerById.get(c.to),targetNode=ownerId?rt.nodeById.get(ownerId):null;if(targetScript&&targetNode)executeRuntimeScriptNode(targetScript,scriptNodeDefinition(targetScript.defName),targetNode,false);}}
+
   function executeRuntimeScriptNode(sn,def,node,isEvent=false){
     if(!sn||!def||!node)return null;
     if(!scriptRequirementEnabled(def))return null;
@@ -3375,30 +3415,22 @@
     Object.entries(result||{}).forEach(([out,val])=>{if(val)routeRuntimeOutput(sn,out);});
     return result;
   }
-  function runRuntimeSceneScripts(){
-    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>runtimeScriptList(node.id).filter(sn=>sn.defName==='onLoad').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true)));
-  }
-  function runRuntimeUnloadScripts(){
-    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>runtimeScriptList(node.id).filter(sn=>sn.defName==='onUnload').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true)));
-  }
+  function runRuntimeSceneScripts(){for(const item of state.runtime.eventScriptsByName?.get('onLoad')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
+  function runRuntimeUnloadScripts(){for(const item of state.runtime.eventScriptsByName?.get('onUnload')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
+  function processRuntimeSpawnQueue(limit=64){const rt=state.runtime;let count=0;while(rt.pendingOnLoad?.length&&count<limit){const node=rt.pendingOnLoad.shift();if(!node||!rt.nodeById.has(node.id))continue;for(const sn of rt.eventScriptsByNode.get(node.id)?.onLoad||[])executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);count++;}}
   function runtimeCollisionKey(a,b){const ai=String(a?.node?.id||''),bi=String(b?.node?.id||'');return ai<bi?`${ai}|${bi}`:`${bi}|${ai}`;}
   function queueRuntimeCollisionPairs(pairs){
     const current=state.runtime.frameCollisionPairs||(state.runtime.frameCollisionPairs=new Map());
     for(const pair of (Array.isArray(pairs)?pairs:[])){const a=pair?.[0],b=pair?.[1];if(!a?.node||!b?.node||a===b)continue;const key=runtimeCollisionKey(a,b);if(!key)continue;current.set(key,[a,b]);}
   }
   function flushRuntimeCollisionEvents(){
-    const current=state.runtime.frameCollisionPairs||new Map(),previous=state.runtime.activeCollisionPairs||new Set(),next=new Set();
-    current.forEach((pair,key)=>{next.add(key);if(previous.has(key))return;const [a,b]=pair;[[a,b],[b,a]].forEach(([body,other])=>{
-      const node=body?.node,target=other?.node;if(!node||!target)return;
-      const label=`${target.name} [${target.numericId}]`;
-      runtimeScriptList(node.id).forEach(sn=>{if(sn.defName!=='onCollideWith')return;const def=scriptNodeDefinition(sn.defName);if(!def)return;const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'&&String(first.selected??'')!==label)return;executeRuntimeScriptNode(sn,def,node,true);});
-    });});
-    state.runtime.activeCollisionPairs=next;state.runtime.frameCollisionPairs=new Map();
+    const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),next=new Set();
+    current.forEach((pair,key)=>{next.add(key);if(previous.has(key))return;const [a,b]=pair;[[a,b],[b,a]].forEach(([body,other])=>{const node=body?.node,target=other?.node;if(!node||!target)return;const label=`${target.name} [${target.numericId}]`;for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'&&String(first.selected??'')!==label)continue;executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);}});});
+    rt.activeCollisionPairs=next;rt.frameCollisionPairs=new Map();
   }
+
   function processRuntimeTimers(now){
-    const due=(state.runtime.timers||[]);state.runtime.timers=[];
-    due.forEach(t=>{if(t.kind==='timeout'&&now>=t.at){const node=runtimeFindNode(t.nodeId);const sn=runtimeScriptList(t.nodeId).find(x=>x.id===t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else state.runtime.timers.push(t);});
-    Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit){routeRuntimeOutput(hit,'next');routeRuntimeOutput(hit,'out');}st.next+=st.ms;}});
+    const rt=state.runtime,due=rt.timers||[];rt.timers=[];for(const t of due){if(t.kind==='timeout'&&now>=t.at){const node=rt.nodeById.get(t.nodeId),sn=rt.scriptById.get(t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else rt.timers.push(t);}for(const [id,st] of Object.entries(rt.intervalStates||{})){if(!st.active||now<st.next)continue;const sn=rt.scriptById.get(id),node=rt.nodeById.get(st.nodeId);if(!sn||!node){delete rt.intervalStates[id];continue;}let n=0;while(now>=st.next&&n++<8){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');st.next+=st.ms;}}
   }
 
   function createRuntimeKeyEventState(){
@@ -3422,208 +3454,8 @@
   }
 
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
+    if(!state.runtime.running)return;state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);for(const item of state.runtime.eventScriptsByName?.get(defName)||[]){const node=item.node,sn=item.sn;if(targetNodeId&&node.id!==targetNodeId)continue;const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)continue;const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'){const selected=first.selected??'';if(defName==='onKeybind'&&selected!==values.key)continue;if(['onTouch','onMouse','onScreenInput'].includes(defName)&&selected!==eventType)continue;if(defName==='onJoystick'&&selected!==values.Variable)continue;if(defName==='onConnectionChange'&&selected!==values.connection)continue;}executeRuntimeScriptNode(sn,def,node,true);}}
 
-    if(!state.runtime.running)return;
-    state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);
-    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>{
-      // Pointer events are delivered only to the node under the pointer.
-      // Keyboard/screen/joystick events remain broadcast when no target is supplied.
-      if(targetNodeId && node.id!==targetNodeId)return;
-      runtimeScriptList(node.id).forEach(sn=>{
-        if(sn.defName!==defName)return;
-        const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)return;
-        const first=flattenEditor(sn.values)[0]?.entry;
-        if(first?.type==='selector'){
-          const selected=first.selected??'';
-          if(defName==='onKeybind' && selected!==values.key)return;
-          if(['onTouch','onMouse','onScreenInput'].includes(defName) && selected!==eventType)return;
-          if(defName==='onJoystick' && selected!==values.Variable)return;
-          if(defName==='onConnectionChange' && selected!==values.connection)return;
-        }
-        executeRuntimeScriptNode(sn,def,node,true);
-      });
-    });
-  }
-  function runtimeJoystickLayout(j,W=1280,H=720){const size=Array.isArray(j.size)?j.size:[110,110],w=Math.max(1,Number(size[0])||110),h=Math.max(1,Number(size[1])||110),p=j.position||{};const x=p.left!=null?Number(p.left)+w/2:p.right!=null?W-Number(p.right)-w/2:W/2;const y=p.top!=null?Number(p.top)+h/2:p.bottom!=null?H-Number(p.bottom)-h/2:H/2;return{x,y,w,h,radius:Math.min(w,h)/2};}
-  function runtimeJoystickAt(x,y){
-    for(const j of sceneJoysticks(state.runtime.scene).slice().reverse()){
-      const r=runtimeJoystickLayout(j),hitRadius=Math.max(r.w,r.h)*0.52;
-      if(Math.hypot(x-r.x,y-r.y)<=hitRadius)return{j,r};
-    }
-    return null;
-  }
-  function runtimeProjection(canvas){
-    const rect=canvas?.getBoundingClientRect?.()||{width:1,height:1};
-    const width=Math.max(1,rect.width),height=Math.max(1,rect.height);
-    const type=normalizeScreenType(state.game.screenType);
-    const baseW=1280,baseH=720;
-    let viewW=baseW,viewH=baseH,scaleX=width/baseW,scaleY=height/baseH,offsetX=0,offsetY=0;
-    if(type==='Windowboxing'){
-      const s=Math.min(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
-    }else if(type==='Stretch'){
-      scaleX=width/baseW;scaleY=height/baseH;
-    }else if(type==='Crop'){
-      const s=Math.max(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
-    }else{
-      const s=height/baseH;scaleX=scaleY=s;viewW=width/s;viewH=baseH;
-    }
-    return {width,height,type,baseW,baseH,viewW,viewH,scaleX,scaleY,offsetX,offsetY,dpr:Math.max(1,Number(window.devicePixelRatio)||1)};
-  }
-  function runtimePointerPosition(e){
-    const canvas=$('#runtimeCanvas');
-    if(!canvas)return null;
-    const r=runtimeProjection(canvas);
-    const px=e.clientX-canvas.getBoundingClientRect().left,py=e.clientY-canvas.getBoundingClientRect().top;
-    return {x:(px-r.offsetX)/r.scaleX+((r.viewW-r.baseW)/2),y:(py-r.offsetY)/r.scaleY};
-  }
-  function updateRuntimeJoystick(e,type){
-    const p=runtimePointerPosition(e); if(!p)return false;
-    const active=state.runtime.activeJoystickPointers ||= Object.create(null);
-    let stateEntry=active[e.pointerId];
-    if(type==='down'){
-      const hit=runtimeJoystickAt(p.x,p.y);
-      if(!hit)return false;
-      const dx=p.x-hit.r.x,dy=p.y-hit.r.y;
-      const d=Math.hypot(dx,dy);
-      const knobRadius=Math.min(hit.r.w,hit.r.h)*0.22;
-      const grabbedKnob=d<=hit.r.radius*0.7;
-      stateEntry={variable:hit.j.variable,offsetX:grabbedKnob?dx:0,offsetY:grabbedKnob?dy:0};
-      active[e.pointerId]=stateEntry;
-      canvasPointerCapture(e);
-    }
-    if(!stateEntry)return false;
-    const j=sceneJoysticks(state.runtime.scene).find(v=>v.variable===stateEntry.variable);
-    if(!j)return false;
-    const r=runtimeJoystickLayout(j);
-    if(type==='up'||type==='cancel'){
-      const st=(state.runtime.joysticks||[]).find(v=>v.variable===stateEntry.variable);
-      if(st){st.distance=0;st.angle=0;st.value_x=0;st.value_y=0;}
-      delete active[e.pointerId];
-      dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
-      return true;
-    }
-    let dx=p.x-r.x-stateEntry.offsetX,dy=p.y-r.y-stateEntry.offsetY;
-    const rad=Math.max(1,r.radius);
-    const d=Math.hypot(dx,dy);
-    if(d>rad){const k=rad/d;dx*=k;dy*=k;}
-    const st=(state.runtime.joysticks||[]).find(v=>v.variable===stateEntry.variable);
-    if(!st)return false;
-    const normalized=Math.min(1,Math.hypot(dx,dy)/rad);
-    st.distance=normalized;
-    st.angle=normalized===0?0:(Math.atan2(dy,dx)*180/Math.PI+360)%360;
-    st.value_x=clamp(dx/rad,-1,1);
-    st.value_y=clamp(dy/rad,-1,1);
-    dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
-    return true;
-  }
-  function canvasPointerCapture(e){try{$('#runtimeCanvas')?.setPointerCapture?.(e.pointerId);}catch{}}
-  function drawRuntimeUIComponents(ctx,W=1280,H=720){for(const st of state.runtime.joysticks||[]){const j=sceneJoysticks(state.runtime.scene).find(v=>v.variable===st.variable);if(!j)continue;const r=runtimeJoystickLayout(j,W,H),travel=Math.min(r.w,r.h)*.28,dx=(Number(st.value_x)||0)*travel,dy=(Number(st.value_y)||0)*travel;ctx.save();ctx.fillStyle=colorCss(j.bgColor,'rgba(51,51,51,.8)');ctx.beginPath();ctx.ellipse(r.x,r.y,r.w/2,r.h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=colorCss(j.knobColor,'#fff');ctx.beginPath();ctx.arc(r.x+dx,r.y+dy,Math.min(r.w,r.h)*.22,0,Math.PI*2);ctx.fill();ctx.restore();}}
-  function runtimeNodeAtPoint(x,y){
-    const ctx=$('#runtimeCanvas')?.getContext?.('2d');
-    for(const {node} of runtimeAllNodes().slice().reverse()){
-      if(node.type!=='node')continue;
-      const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
-      const nx=Number(t.position?.[0]||0),ny=Number(t.position?.[1]||0);
-      let dx=x-nx,dy=y-ny;
-      const a=Number(t.angle?.[0]||0)*Math.PI/180;
-      ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
-      const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-      dx/=sx;dy/=sy;
-      const geo=spriteLocalGeometry(node);
-      if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}
-      let size={w:90,h:54};
-      const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}
-      if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;
-    }
-    return null;
-  }
-  function nodeInputValues(node,x,y,type){
-    const t=component(node,'transform')||{};
-    let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);
-    const angle=Number(t.angle?.[0]||0)*Math.PI/180;
-    ({x:dx,y:dy}=rotatePoint(dx,dy,-angle));
-    const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-    return {
-      [`${type}X`]:dx/sx,
-      [`${type}Y`]:dy/sy
-    };
-  }
-  function installRuntimeInputHandlers(overlay){
-    const canvas=$('#runtimeCanvas',overlay);if(!canvas)return;
-    canvas.style.touchAction='none';
-    overlay.tabIndex=0;overlay.focus?.();
-    const screenPoint=(e)=>{
-      const m=runtimeProjection(canvas),r=canvas.getBoundingClientRect();
-      const px=e.clientX-r.left,py=e.clientY-r.top;
-      return {x:(px-m.offsetX)/m.scaleX-m.viewW/2,y:(py-m.offsetY)/m.scaleY-m.viewH/2};
-    };
-    const worldPoint=(e)=>{
-      const p=screenPoint(e),cam=state.runtime.camera||{};
-      const zoom=Math.max(.0001,Number(cam.scale)||1);
-      const a=Number(cam.angle||0)*Math.PI/180;
-      const q=rotatePoint(p.x/zoom,p.y/zoom,-a);
-      return {x:q.x+Number(cam.x||0),y:q.y+Number(cam.y||0)};
-    };
-    const activeTouchNodes=Object.create(null),activeMouseNodes=Object.create(null);
-    const sendScreen=(type,e)=>{const p=screenPoint(e),prev=state.runtime.inputs||{},values={
-      ScreenUpX:type==='up'?p.x:prev.ScreenUpX??p.x,ScreenUpY:type==='up'?p.y:prev.ScreenUpY??p.y,
-      ScreenDownX:type==='down'?p.x:prev.ScreenDownX??p.x,ScreenDownY:type==='down'?p.y:prev.ScreenDownY??p.y,
-      ScreenMoveX:type==='move'?p.x:prev.ScreenMoveX??p.x,ScreenMoveY:type==='move'?p.y:prev.ScreenMoveY??p.y
-    };
-    dispatchRuntimeEvent('onScreenInput',type,values);};
-    const handlePointerDown=e=>{
-      e.preventDefault();
-      canvas.setPointerCapture?.(e.pointerId);
-      const screen=screenPoint(e), world=worldPoint(e);
-      updateRuntimeJoystick(e,'down');
-      if(e.pointerType==='touch'){
-        const node=runtimeNodeAtPoint(world.x,world.y);
-        if(node){
-          activeTouchNodes[e.pointerId]=node.id;
-          dispatchRuntimeEvent('onTouch','down',nodeInputValues(node,world.x,world.y,'TouchDown'),node.id);
-        }
-      }else if(e.pointerType==='mouse' || !e.pointerType){
-        const node=runtimeNodeAtPoint(world.x,world.y);
-        if(node){
-          activeMouseNodes[e.pointerId]=node.id;
-          dispatchRuntimeEvent('onMouse','down',nodeInputValues(node,world.x,world.y,'MouseDown'),node.id);
-        }
-      }
-      state.runtime.inputs.PointerType=e.pointerType||'mouse';
-      state.runtime.inputs.PointerId=Number(e.pointerId)||0;
-      sendScreen('down',e);
-    };
-    const handlePointerMove=e=>{
-      e.preventDefault();
-      updateRuntimeJoystick(e,'move');
-      const world=worldPoint(e);
-      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','move',nodeInputValues(node,world.x,world.y,'TouchMove'),node.id);}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','move',nodeInputValues(node,world.x,world.y,'MouseMove'),node.id);}
-      sendScreen('move',e);
-    };
-    const handlePointerUp=e=>{
-      e.preventDefault();
-      const world=worldPoint(e);
-      updateRuntimeJoystick(e,'up');
-      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
-      sendScreen('up',e);
-    };
-    const handlePointerCancel=e=>{
-      e.preventDefault();
-      const world=worldPoint(e);updateRuntimeJoystick(e,'cancel');
-      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
-      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
-      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
-      sendScreen('up',e);
-    };
-    canvas.addEventListener('pointerdown',handlePointerDown,{passive:false});
-    canvas.addEventListener('pointermove',handlePointerMove,{passive:false});
-    canvas.addEventListener('pointerup',handlePointerUp,{passive:false});
-    canvas.addEventListener('pointercancel',handlePointerCancel,{passive:false});
-  }
   function normalizeRuntimeKey(e){
     if(!e) return '';
     if(e.key===' ') return 'Space';
@@ -3645,10 +3477,10 @@
     if(!preferred)return;
     let runtimeMic=null;
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
-    const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
+    const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
-    state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
     if(window.__UIX_STANDALONE__){
@@ -3667,7 +3499,7 @@
     $('#runtimeOverlay')?.remove();
     const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){const rt=state.runtime;rt.running=false;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.renderCtx=null;rt.renderCanvas=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -3675,8 +3507,9 @@
     while(runtimeAccumulator>=fixedDt&&steps<8){stepRuntime(fixedDt);runtimeAccumulator-=fixedDt;steps++;}
     drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
+  function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
+  function runtimeRenderContext(canvas){const rt=state.runtime;if(rt.renderCtx&&rt.renderCanvas===canvas)return rt.renderCtx;let ctx=null;try{ctx=canvas.getContext('2d',{alpha:false,desynchronized:true,willReadFrequently:false});}catch{}if(!ctx)ctx=canvas.getContext('2d');rt.renderCanvas=canvas;rt.renderCtx=ctx||null;return ctx;}
   function runtimeViewportMetrics(canvas){
     const m=runtimeProjection(canvas);
     const pw=Math.max(1,Math.round(m.width*m.dpr)),ph=Math.max(1,Math.round(m.height*m.dpr));
@@ -3698,7 +3531,7 @@
   }
   function drawRuntime(){
     const c=$('#runtimeCanvas');if(!c)return;
-    const ctx=c.getContext('2d');
+    const ctx=runtimeRenderContext(c);if(!ctx)return;
     const m=runtimeViewportMetrics(c);
     const W=m.width,H=m.height,cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};
     const zoom=Math.max(.01,Number(cam.scale)||1);
@@ -3720,8 +3553,8 @@
     }
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
-    const renderBodies=(state.runtime.bodies||[]).slice().sort((a,b)=>nodeIndex(a.node)-nodeIndex(b.node));
-    for(const b of renderBodies)drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);
+    runtimeSortRenderBodies();const renderBodies=state.runtime.renderBodies||[];const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
+    for(const b of renderBodies){const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     drawRuntimeColliders(ctx);
     ctx.restore();
 
