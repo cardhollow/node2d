@@ -49,7 +49,7 @@
       editingInput: null, clipboard: null, panelWidths:{left:260,right:250}, leftCollapsed:false, rightCollapsed:false
     },
     dragTree: null,
-    runtime: { running: false, debug: false, bodies: [], physicsBodies: [], renderBodies: [], renderOrderDirty: false, nodeEntries: [], nodeList: [], nodeById: new Map(), bodyById: new Map(), parentById: new Map(), numericIds: new Set(), nextNumericId: 1, scriptById: new Map(), scriptOwnerById: new Map(), eventScriptsByName: new Map(), eventScriptsByNode: new Map(), routesByScriptOutput: new Map(), defByName: new Map(), shared: null, pendingOnLoad: [], renderCtx: null, renderCanvas: null, camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
+    runtime: { running: false, debug: false, bodies: [], camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
     game: { preferredSceneId: '', screenType: 'Windowboxing', requirements: { 'Use Mic': false }, mic: { speechLanguage: 'en-US', continuous: true, interimResults: true } },
     ui: {
       componentCollapsed: Object.create(null),
@@ -73,13 +73,7 @@
   const EDITOR_SETTINGS_STORE='uix.editor.settings.v1';
   const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
   const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
-  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
-  function openUpdates(){
-    const frame=$('#updatesFrame');
-    if(frame && !frame.getAttribute('src')) frame.src='updates/index.html';
-    showModal($('#updatesModal'));
-    requestAnimationFrame(()=>{if(frame && !frame.getAttribute('src'))frame.src='updates/index.html';});
-  }
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30};
   async function loadNode2DVersion(){
     const label=$('#node2dVersion');
     if(!label)return;
@@ -94,10 +88,10 @@
   let autoSaveTimer=0;
   function getEditorSettings(){
     let out={...DEFAULT_EDITOR_SETTINGS};
-    try{const saved=JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORE)||'null');if(saved&&typeof saved==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(saved,k))out[k]=saved[k];});out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;out.autoSave=!!out.autoSave;out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;}}catch{}
+    try{const saved=JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORE)||'null');if(saved&&typeof saved==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(saved,k))out[k]=saved[k];});out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;out.multiSelectionUnifiedEditing=out.multiSelectionUnifiedEditing!==false;out.autoSave=!!out.autoSave;out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;}}catch{}
     return out;
   }
-  function saveEditorSettings(settings){const value={...getEditorSettings(),moveScaleSnap:Math.max(0,Number(settings?.moveScaleSnap)||0),rotateSnap:Math.max(0,Number(settings?.rotateSnap)||0),autoSave:!!settings?.autoSave,autoSaveIntervalSec:clamp(Number(settings?.autoSaveIntervalSec)||30,1,86400)};try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(value));}catch{}resetAutoSaveTimer();return value;}
+  function saveEditorSettings(settings){const value={...getEditorSettings(),moveScaleSnap:Math.max(0,Number(settings?.moveScaleSnap)||0),rotateSnap:Math.max(0,Number(settings?.rotateSnap)||0),multiSelectionUnifiedEditing:settings?.multiSelectionUnifiedEditing!==false,autoSave:!!settings?.autoSave,autoSaveIntervalSec:clamp(Number(settings?.autoSaveIntervalSec)||30,1,86400)};try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(value));}catch{}resetAutoSaveTimer();return value;}
   function resetAutoSaveTimer(){clearTimeout(autoSaveTimer);autoSaveTimer=0;const st=getEditorSettings();if(!st.autoSave||!hasLoadedProject())return;autoSaveTimer=setTimeout(async()=>{if(hasLoadedProject()){await saveProjectToProjectStorage(true);}resetAutoSaveTimer();},Math.max(1,Number(st.autoSaveIntervalSec)||30)*1000);}
   function rememberCurrentProjectSession(){try{if(!state.project?.created){sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);return;}sessionStorage.setItem(CURRENT_PROJECT_SESSION_NAME,String(state.project.name||'Untitled Node2D'));if(state.project.localNdcId)sessionStorage.setItem(CURRENT_PROJECT_SESSION_ID,String(state.project.localNdcId));else sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
   function clearCurrentProjectSession(){try{sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
@@ -113,10 +107,6 @@
     const out = {};
     Object.keys(v).forEach(k => { out[k] = clone(v[k]); });
     return out;
-  };
-  const runtimeClone = v => {
-    try { return typeof structuredClone === 'function' ? structuredClone(v) : clone(v); }
-    catch { return clone(v); }
   };
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
@@ -138,34 +128,6 @@
     });
     walk(scene?.nodes);
     return out;
-  }
-  function ensureNodeIndices(scene=currentScene()) {
-    const entries=allNodes(scene).filter(x=>x.node?.type==='node');
-    let max=-1;
-    entries.forEach(({node})=>{const c=node.components?.find(c=>c?.type==='node');if(c&&Number.isFinite(Number(c.index)))max=Math.max(max,Math.floor(Number(c.index)));});
-    let next=max+1;
-    entries.forEach(({node})=>{normalizeNode(node);const c=node.components?.find(c=>c?.type==='node');if(!c)return;if(!Number.isFinite(Number(c.index))){c.index=next++;}});
-    return entries.map(x=>x.node);
-  }
-  function nodeIndex(node) {
-    const c=node?.components?.find(c=>c?.type==='node');
-    return Number.isFinite(Number(c?.index)) ? Math.max(0,Math.floor(Number(c.index))) : 0;
-  }
-  function sortedRenderNodes(scene=currentScene()) {
-    return ensureNodeIndices(scene).filter(node=>node.type==='node').sort((a,b)=>nodeIndex(a)-nodeIndex(b));
-  }
-  function reorderNodeIndex(node,targetIndex){
-    const nodes=sortedRenderNodes();const i=nodes.indexOf(node);if(i<0)return;
-    const target=clamp(Math.floor(Number(targetIndex)||0),0,nodes.length-1);if(i===target)return;
-    const moved=nodes.splice(i,1)[0];nodes.splice(target,0,moved);nodes.forEach((n,index)=>{const c=n.components?.find(x=>x?.type==='node');if(c)c.index=index;});
-  }
-  function moveNodeIndex(node,delta){
-    if(!node)return;ensureNodeIndices();const nodes=sortedRenderNodes(),i=nodes.indexOf(node),target=i+Number(delta||0);
-    if(i<0||target<0||target>=nodes.length)return status(Number(delta)>0?'Already at top':'Already at bottom');
-    pushHistory();reorderNodeIndex(node,target);renderAll();status(`${node.name} moved ${Number(delta)>0?'up':'down'}`);
-  }
-  function setNodeIndex(node,value){
-    if(!node)return;const n=Math.max(0,Number.isFinite(Number(value))?Math.floor(Number(value)):0);pushHistory();reorderNodeIndex(node,n);renderAll();status(`${node.name} index set to ${nodeIndex(node)}`);
   }
   function findNode(id) { return allNodes().find(x => x.node.id === id)?.node || null; }
   function findContainer(id, items = currentScene()?.nodes) {
@@ -208,7 +170,7 @@
   }
   function selectedSceneNodes(){
     const ids=new Set(Array.isArray(state.selectedIds)?state.selectedIds:[]);
-    return visibleTreeItems().filter(n=>ids.has(n.id));
+    return allNodes().map(x=>x.node).filter(n=>ids.has(n.id));
   }
   function normalizeSelectionState(){
     const valid=new Set(allNodes().map(x=>x.node.id));
@@ -390,8 +352,8 @@
     }).catch(()=>{});
   }
 
-  function historySnapshot(){return clone({scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,selectedIds:state.selectedIds,selectionAnchorId:state.selectionAnchorId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
-  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.selectedIds=clone(snap.selectedIds||[]);state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
+  function historySnapshot(){return clone({project:state.project,nextNodeId:state.nextNodeId,nextVariableId:state.nextVariableId,scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,selectedIds:state.selectedIds,selectionAnchorId:state.selectionAnchorId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
+  function restoreHistorySnapshot(snap){if(!snap)return;state.project=clone(snap.project||state.project);state.nextNodeId=Number(snap.nextNodeId)||1;state.nextVariableId=Number(snap.nextVariableId)||1;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.selectedIds=clone(snap.selectedIds||[]);state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
   function pushHistory(){if(state.history.busy)return;state.history.undo.push(historySnapshot());if(state.history.undo.length>80)state.history.undo.shift();state.history.redo=[];}
   function undo(){const prev=state.history.undo.pop();if(!prev)return status('Nothing to undo');state.history.busy=true;state.history.redo.push(historySnapshot());restoreHistorySnapshot(prev);state.history.busy=false;status('Undo');}
   function redo(){const next=state.history.redo.pop();if(!next)return status('Nothing to redo');state.history.busy=true;state.history.undo.push(historySnapshot());restoreHistorySnapshot(next);state.history.busy=false;status('Redo');}
@@ -531,7 +493,7 @@
     state.nextNodeId = id + 1;
     const node = createNode(`node-${Date.now()}-${id}`, id, name || `Node ${id}`);
     configure?.(node);
-    currentScene().nodes.push(node); ensureNodeIndices(); state.selectedId = node.id;
+    currentScene().nodes.push(node); state.selectedId = node.id;
     renderAll(); status(`${node.name} added`); return node;
   }
 
@@ -574,7 +536,7 @@
   function renderWorkplace(){ resizeWorkplaceCanvas(); drawWorkplace(); }
 
   function renderAll() {
-    ensureProject(); ensureNodeIndices(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace();
+    ensureProject(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace();
     $('#stageSceneName').textContent = currentScene().name; $('#activeModeLabel').textContent = modeLabel(state.mode);
     applyPanelState(); updateZoomLabel(); resizeWorkplaceCanvas(); drawWorkplace();
   }
@@ -638,8 +600,9 @@
         if(!state.selectedIds.includes(node.id)) clearNodeSelection(node.id); else state.selectedId=node.id;
         renderSelectionTree(); renderComponentPanel(); drawWorkplace();
         const count=topLevelSelectedItems().length;
-        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'↑',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'↓',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
+        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()},{label:`Select All - ${node.name||'Node'}`,icon:'☷',action:()=>selectAllNodesWithName(node.name)}];
         if(count>1)items.unshift({label:`${count} selected`,icon:'☷',disabled:true});
+        items.push({label:'Documentation',icon:'?',action:()=>openDocumentation(node.name||'Node')});
         showContextMenu(items,e.clientX??0,e.clientY??0);
       };
       wrap.addEventListener('contextmenu', openTreeContext);
@@ -728,8 +691,7 @@
     const row = document.createElement('div'); row.className = 'property-row property-row-stack';
     const name = labeledInput('Name', node.name, v => { node.name = v; renderSelectionTree(); renderWorkplace(); $('#componentTarget').textContent = v || 'Node'; });
     const id = labeledInput('Id', node.numericId, v => changeNodeId(node, Number(v)), 'number');
-    const nodeIndexInput = labeledInput('Index', nodeIndex(node), v => setNodeIndex(node, Number(v)), 'number');
-    row.append(name, id, nodeIndexInput); body.append(row);
+    row.append(name, id); body.append(row);
     const nodeComp=nodeComponents(node).find(c=>c.type==='node');
     return componentCard('Node', body, false, null, `node:${node.id}`, {node,comp:nodeComp});
   }
@@ -806,17 +768,17 @@
         row.querySelector('.property-control')?.append(remove);block.append(row);
       });
       const add=document.createElement('button');add.className='small-action';add.type='button';add.textContent='＋ Add Sprite';add.addEventListener('click',()=>openAssetSelector('Sprite',asset=>{anim.sprites.push({name:asset.name,src:asset.value});renderComponentPanel();drawWorkplace();}));block.append(add);
-      const activate=document.createElement('button');activate.className='small-action';activate.type='button';activate.textContent=comp.activeAnimation===anim.name?'Active':'Use Animation';activate.disabled=comp.activeAnimation===anim.name;activate.addEventListener('click',()=>{comp.activeAnimation=anim.name;renderComponentPanel();drawWorkplace();});block.append(activate);
+      const activate=document.createElement('button');activate.className='small-action';activate.type='button';activate.textContent=comp.activeAnimation===anim.name?'Active':'Use Animation';activate.disabled=comp.activeAnimation===anim.name;activate.addEventListener('click',()=>{pushHistory();comp.activeAnimation=anim.name;renderComponentPanel();drawWorkplace();});block.append(activate);
       rows.push(block);
     });
-    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.textContent='＋ New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();}));
+    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.textContent='＋ New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');pushHistory();comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();}));
     rows.push(addAnim);return rows;
   }
 
   function removeComponent(node, comp) {
     if (comp.removable === false) return status(`${COMPONENT_LABELS[comp.type]} cannot be removed`);
     askConfirm('Delete Component', `Delete ${COMPONENT_LABELS[comp.type]} from “${node.name}”?`, () => {
-      node.components = nodeComponents(node).filter(c => c !== comp); renderComponentPanel(); drawWorkplace(); status(`${COMPONENT_LABELS[comp.type]} removed`);
+      pushHistory(); node.components = nodeComponents(node).filter(c => c !== comp); renderComponentPanel(); drawWorkplace(); status(`${COMPONENT_LABELS[comp.type]} removed`);
     });
   }
 
@@ -838,6 +800,22 @@
     }
     normalizeNode(node);renderComponentPanel();renderSelectionTree();drawWorkplace();status(`${COMPONENT_LABELS[source.type]||source.type} pasted`);
   }
+  function applyComponentToSameNamedNodes(target){
+    if(!target?.node||!target?.comp)return;
+    const sourceName=String(target.node.name??'');
+    const matches=allNodes().filter(({node})=>node.type==='node'&&String(node.name??'')===sourceName).map(x=>x.node);
+    if(!matches.length)return status('No matching Nodes found');
+    const sourceType=target.comp.type,copy=clone(target.comp);
+    pushHistory();
+    matches.forEach(node=>{
+      normalizeNode(node);
+      const index=node.components.findIndex(c=>c?.type===sourceType);
+      if(index>=0)node.components[index]=clone(copy);
+    });
+    renderSelectionTree();renderComponentPanel();drawWorkplace();
+    status(`Applied ${COMPONENT_LABELS[sourceType]||sourceType} to ${matches.length} Node${matches.length===1?'':'s'} named ${sourceName||'Node'}`);
+  }
+
   function componentCard(title, content, removable, removeFn, foldKey = title, copyTarget = null) {
     const card = document.createElement('section'); card.className='component-card';
     card.dataset.componentCard = 'true'; card.dataset.componentKey = foldKey; card.classList.toggle('component-selected', state.ui.selectedComponentKey===foldKey);
@@ -853,7 +831,7 @@
     header.append(strong,actions); card.append(header,body);
     if (content instanceof DocumentFragment) body.append(content); else if (Array.isArray(content)) content.forEach(x=>body.append(x)); else if (content) body.append(content);
     const selectThis=()=>{if(!copyTarget?.node||!copyTarget?.comp)return;state.ui.selectedComponentKey=foldKey;$$('.component-card.component-selected').forEach(el=>el.classList.remove('component-selected'));card.classList.add('component-selected');drawWorkplace();};
-    const showComponentMenu=e=>{e.preventDefault();e.stopPropagation();selectThis();const items=[{label:'Copy',icon:'⧉',action:()=>copyComponent(copyTarget)},{label:'Paste',icon:'▣',disabled:!state.componentClipboard,action:()=>pasteComponent(copyTarget)}];if(removable)items.push({label:'Delete',icon:'×',action:()=>removeFn?.()});showContextMenu(items,e.clientX??0,e.clientY??0);};
+    const showComponentMenu=e=>{e.preventDefault();e.stopPropagation();selectThis();const sameName=copyTarget?.node?.name??'';const items=[...(copyTarget?.node&&copyTarget?.comp?[{label:`Apply to all - ${sameName}`,icon:'✓',action:()=>applyComponentToSameNamedNodes(copyTarget)}]:[]),{label:'Copy',icon:'⧉',action:()=>copyComponent(copyTarget)},{label:'Paste',icon:'▣',disabled:!state.componentClipboard,action:()=>pasteComponent(copyTarget)}];if(removable)items.push({label:'Delete',icon:'×',action:()=>removeFn?.()});items.push({label:'Documentation',icon:'?',action:()=>openDocumentation(title)});showContextMenu(items,e.clientX??0,e.clientY??0);};
     card.addEventListener('contextmenu',showComponentMenu);
     card.addEventListener('pointerdown',e=>{if(e.button===2){e.stopPropagation();return;}if(e.target.closest('.component-card-header,.component-body'))selectThis();},{capture:true});
     header.addEventListener('contextmenu',showComponentMenu);
@@ -871,15 +849,15 @@
   function empty(text) { const el=document.createElement('div'); el.className='component-empty'; el.textContent=text; return el; }
   function readOnlyField(label,value){ return field(label,value,'readonly'); }
   function labeledInput(label,value,onChange,type='text'){
-    const wrap=document.createElement('div');wrap.className='labeled-control';const l=document.createElement('div');l.className='property-label';l.textContent=label;const input=document.createElement('input');input.type=type;input.value=value??'';input.addEventListener('change',()=>onChange(type==='number'?Number(input.value):input.value));wrap.append(l,input);return wrap;
+    const wrap=document.createElement('div');wrap.className='labeled-control';const l=document.createElement('div');l.className='property-label';l.textContent=label;const input=document.createElement('input');input.type=type;input.value=value??'';input.addEventListener('change',()=>{pushHistory();onChange(type==='number'?Number(input.value):input.value);});wrap.append(l,input);return wrap;
   }
   function field(label,value,type='text',onChange=()=>{},options=[]){
     const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';
     if(type==='readonly'){c.append(Object.assign(document.createElement('div'),{className:'readonly-value',textContent:value??''}));}
-    else if(type==='textarea'){const i=document.createElement('textarea');i.value=value??'';i.addEventListener('change',()=>onChange(i.value));c.append(i);}
+    else if(type==='textarea'){const i=document.createElement('textarea');i.value=value??'';i.addEventListener('change',()=>{pushHistory();onChange(i.value);});c.append(i);}
     else if(type==='button'){const b=document.createElement('button');b.className='script-button';b.textContent=value;b.addEventListener('click',onChange);c.append(b);}
     else if(type==='custom-select') c.append(customSelect(value,options,onChange));
-    else {const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';i.addEventListener('change',()=>onChange(type==='number'?Number(i.value):i.value));c.append(i);}
+    else {const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';i.addEventListener('change',()=>{pushHistory();onChange(type==='number'?Number(i.value):i.value);});c.append(i);}
     row.append(l,c);return row;
   }
   function axisVectorField(label, value, onChange){
@@ -896,7 +874,7 @@
       input.addEventListener('change',()=>{
         const next=[Number(inputs[0]?.value??0),Number(inputs[1]?.value??0)];
         if(!Number.isFinite(next[index])) next[index]=0;
-        onChange(next[0],next[1]);
+        pushHistory(); onChange(next[0],next[1]);
       });
       row.append(l,input); axis.append(row);
     });
@@ -907,10 +885,10 @@
     value = Array.isArray(value) ? value : [0,0];
     const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent=label;wrap.append(title);
     const axes=document.createElement('div');axes.className='axis-grid';
-    ['X','Y'].forEach((axis,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${axis}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(value[index]??0);cell.append(i);axes.append(cell);i.addEventListener('change',()=>onChange(Number(axes.children[0].querySelector('input').value)||0,Number(axes.children[1].querySelector('input').value)||0));});wrap.append(axes);return wrap;
+    ['X','Y'].forEach((axis,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${axis}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(value[index]??0);cell.append(i);axes.append(cell);i.addEventListener('change',()=>{pushHistory();onChange(Number(axes.children[0].querySelector('input').value)||0,Number(axes.children[1].querySelector('input').value)||0);});});wrap.append(axes);return wrap;
   }
   function cornerRadiusFields(radius,onChange){
-    const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent='Corner Radius';wrap.append(title);const grid=document.createElement('div');grid.className='corner-stack';['TL','TR','BR','BL'].forEach((name,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${name}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(radius[index]||0);i.addEventListener('change',()=>{radius[index]=Math.max(0,Number(i.value)||0);onChange([...radius]);});cell.append(i);grid.append(cell);});wrap.append(grid);return wrap;
+    const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent='Corner Radius';wrap.append(title);const grid=document.createElement('div');grid.className='corner-stack';['TL','TR','BR','BL'].forEach((name,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${name}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(radius[index]||0);i.addEventListener('change',()=>{pushHistory();radius[index]=Math.max(0,Number(i.value)||0);onChange([...radius]);});cell.append(i);grid.append(cell);});wrap.append(grid);return wrap;
   }
   function checkboxField(label,value,onChange){
     const row=document.createElement('div');row.className='property-row checkbox-row';
@@ -922,16 +900,16 @@
       const selectionTree=$('#selectionTree');
       const scriptLibrary=$('#scriptNodeLibrary');
       const scrolls=[[componentScroll,componentScroll?.scrollTop],[selectionTree,selectionTree?.scrollTop],[scriptLibrary,scriptLibrary?.scrollTop]];
-      onChange(input.checked);
+      pushHistory(); onChange(input.checked);
       requestAnimationFrame(()=>scrolls.forEach(([el,top])=>{if(el && Number.isFinite(top))el.scrollTop=top;}));
     });
     c.append(input);row.append(l,c);return row;
   }
   function colorField(label,value,onChange){
-    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='color-button';const sw=document.createElement('span');sw.className='color-swatch';sw.style.background=colorCss(value,'transparent');const t=document.createElement('span');t.className='color-value';t.textContent=value||'transparent';b.append(sw,t);b.addEventListener('click',()=>openColorModal(value,onChange,label));c.append(b);row.append(l,c);return row;
+    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='color-button';const sw=document.createElement('span');sw.className='color-swatch';sw.style.background=colorCss(value,'transparent');const t=document.createElement('span');t.className='color-value';t.textContent=value||'transparent';b.append(sw,t);b.addEventListener('click',()=>openColorModal(value,v=>{pushHistory();onChange(v);},label));c.append(b);row.append(l,c);return row;
   }
   function assetField(label,src,type,onSelect){
-    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='asset-select-button';const found=(state.assets[type]||[]).find(a=>a.value===src);b.textContent=found?.name||`Select ${type}`;b.addEventListener('click',()=>openAssetSelector(type,onSelect));c.append(b);row.append(l,c);return row;
+    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='asset-select-button';const found=(state.assets[type]||[]).find(a=>a.value===src);b.textContent=found?.name||`Select ${type}`;b.addEventListener('click',()=>openAssetSelector(type,v=>{pushHistory();onSelect(v);}));c.append(b);row.append(l,c);return row;
   }
 
   let activeSelectMenu=null;
@@ -950,7 +928,7 @@
     const wrap=document.createElement('div');wrap.className='select-wrap';
     const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(value)}</span><span>⌄</span>`;
     const menu=document.createElement('div');menu.className='select-menu floating-select-menu';menu.hidden=true;menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';
-    options.forEach(option=>{const item=document.createElement('button');item.type='button';item.textContent=option;item.className=String(option)===String(value)?'active':'';item.addEventListener('pointerdown',e=>e.stopPropagation());item.addEventListener('click',e=>{e.stopPropagation();onChange(option);b.firstElementChild.textContent=option;closeMenus();});menu.append(item);});
+    options.forEach(option=>{const item=document.createElement('button');item.type='button';item.textContent=option;item.className=String(option)===String(value)?'active':'';item.addEventListener('pointerdown',e=>e.stopPropagation());item.addEventListener('click',e=>{e.stopPropagation();pushHistory();onChange(option);b.firstElementChild.textContent=option;closeMenus();});menu.append(item);});
     b.addEventListener('click',e=>{e.stopPropagation();if(activeSelectMenu===menu){closeMenus();return;}closeMenus();document.body.append(menu);activeSelectMenu=menu;positionFloatingElement(menu,b);});
     wrap.append(b);return wrap;
   }
@@ -1246,8 +1224,8 @@
     // Editor Workplace stays neutral; camera BG Color is runtime-only.
     ctx.fillStyle='#202020';ctx.fillRect(0,0,rect.width,rect.height);drawGrid(ctx,rect);
     ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);drawAxes(ctx);drawCameraViewport(ctx,rect);
-    sortedRenderNodes().forEach(node=>{const t=component(node,'transform');const x=Number(t?.position?.[0]||0),y=Number(t?.position?.[1]||0),sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);drawNodeVisual(ctx,node,x,y,sx,sy,angle);});
-    const selected=selectedNode();if(selected)drawGizmo(ctx,selected);drawSelectedCollider(ctx,selected);drawEditorUIComponents(ctx);ctx.restore();
+    const nodes=allNodes();nodes.forEach(({node})=>{if(node.type!=='node')return;const t=component(node,'transform');const x=Number(t?.position?.[0]||0),y=Number(t?.position?.[1]||0),sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);drawNodeVisual(ctx,node,x,y,sx,sy,angle);});
+    const selectedNodes=editableSelectedNodes();if(selectedNodes.length>1)drawMultiSelectionGizmo(ctx,selectedNodes);else if(selectedNodes.length===1)drawGizmo(ctx,selectedNodes[0]);selectedNodes.forEach(node=>drawSelectedCollider(ctx,node));drawEditorUIComponents(ctx);ctx.restore();
     updateZoomLabel();
     ensureEditorAnimationLoop();
   }
@@ -1368,7 +1346,19 @@
   }
 
   function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d'));return {kind:'node',node,component:t,transform:t,center:[Number(t.position?.[0]||0),Number(t.position?.[1]||0)],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
-  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'||state.mode==='select'){const mx=Math.max(42/state.zoom,g.w*.55),my=Math.max(42/state.zoom,g.h*.55);drawArrow(ctx,0,0,mx,0,'#d85c5c');drawArrow(ctx,0,0,0,-my,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.type==='scale'&&workspace.gizmoDrag.corner===id){const s=(12/state.zoom);ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-s/2-2/state.zoom,y-s/2-2/state.zoom,s+4/state.zoom,s+4/state.zoom);}});}if(state.mode==='rotate'||state.mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
+  function editableSelectedNodes(){return selectedSceneNodes().filter(n=>n.type==='node');}
+  function nodeWorldCorners(g){const c=Math.cos(g.angle),s=Math.sin(g.angle),hw=g.w/2,hh=g.h/2;return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:g.center[0]+x*c-y*s,y:g.center[1]+x*s+y*c}));}
+  function selectionBounds(nodes){let l=Infinity,r=-Infinity,t=Infinity,b=-Infinity;nodes.forEach(node=>nodeWorldCorners(gizmoTarget(node)).forEach(p=>{l=Math.min(l,p.x);r=Math.max(r,p.x);t=Math.min(t,p.y);b=Math.max(b,p.y);}));if(!Number.isFinite(l))return null;return {left:l,right:r,top:t,bottom:b,x:(l+r)/2,y:(t+b)/2,w:Math.max(1,r-l),h:Math.max(1,b-t)};}
+  function drawSelectionOutlines(ctx,nodes,unified){
+    if(nodes.length===1){const g=gizmoTarget(nodes[0]);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);ctx.restore();return;}
+    if(unified){const b=selectionBounds(nodes);if(!b)return;ctx.save();ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(b.left,b.top,b.w,b.h);ctx.restore();}
+    else nodes.forEach(node=>{const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);ctx.restore();});
+  }
+  function drawGizmoControls(ctx,g,drawBox=true){ctx.save();ctx.translate(g.center[0],g.center[1]);if(g.angle)ctx.rotate(g.angle);if(drawBox){ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);}if(state.mode==='move'||state.mode==='all'||state.mode==='select'){const mx=Math.max(42/state.zoom,g.w*.55),my=Math.max(42/state.zoom,g.h*.55);drawArrow(ctx,0,0,mx,0,'#d85c5c');drawArrow(ctx,0,0,0,-my,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.type==='scale'&&workspace.gizmoDrag.corner===id){const ss=12/state.zoom;ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-ss/2-2/state.zoom,y-ss/2-2/state.zoom,ss+4/state.zoom,ss+4/state.zoom);}});}if(state.mode==='rotate'||state.mode==='all'){const rr=Math.max(g.w,g.h)/2+30/state.zoom;ctx.beginPath();ctx.arc(0,0,rr,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-rr,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
+  function drawGizmo(ctx,node){drawGizmoControls(ctx,gizmoTarget(node),true);}
+  function drawMultiSelectionGizmo(ctx,nodes){if(!nodes.length)return;const b=selectionBounds(nodes);if(!b)return;const unified=getEditorSettings().multiSelectionUnifiedEditing!==false;drawSelectionOutlines(ctx,nodes,unified);drawGizmoControls(ctx,{center:[b.x,b.y],w:b.w,h:b.h,angle:0},false);}
+  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=Math.max(g.w,g.h)/2+30/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate'};}if(mode==='move'||mode==='all'){const hit=12/state.zoom,mx=Math.max(42/state.zoom,g.w*.55),my=Math.max(42/state.zoom,g.h*.55);if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free'};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x'};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y'};}return null;}
+  function getSelectionGizmoHit(nodes,world){const b=selectionBounds(nodes);if(!b)return null;const dx=world.x-b.x,dy=world.y-b.y,hit=12/state.zoom,mode=state.mode;if(mode==='scale'||mode==='all'){for(const p of [[-b.w/2,-b.h/2,'tl'],[0,-b.h/2,'top'],[b.w/2,-b.h/2,'tr'],[-b.w/2,0,'left'],[b.w/2,0,'right'],[-b.w/2,b.h/2,'bl'],[0,b.h/2,'bottom'],[b.w/2,b.h/2,'br']])if(Math.hypot(dx-p[0],dy-p[1])<10/state.zoom)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=Math.max(b.w,b.h)/2+30/state.zoom;if(Math.abs(Math.hypot(dx,dy)-r)<10/state.zoom&&dy<0)return {type:'rotate'};}if(mode==='move'||mode==='all'){const mx=Math.max(42/state.zoom,b.w*.55),my=Math.max(42/state.zoom,b.h*.55);if(Math.hypot(dx,dy)<=hit*1.25)return {type:'move',axis:'free'};if(Math.abs(dy)<hit&&dx>8/state.zoom&&dx<mx+hit)return {type:'move',axis:'x'};if(Math.abs(dx)<hit&&dy<-8/state.zoom&&dy>-my-hit)return {type:'move',axis:'y'};}return null;}
 
   function drawArrow(ctx,x1,y1,x2,y2,color){ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const ang=Math.atan2(y2-y1,x2-x1);const s=7/state.zoom;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-Math.cos(ang-.55)*s,y2-Math.sin(ang-.55)*s);ctx.lineTo(x2-Math.cos(ang+.55)*s,y2-Math.sin(ang+.55)*s);ctx.closePath();ctx.fill();ctx.restore();}
   function drawScaleHandle(ctx,x,y){const s=11/state.zoom;ctx.fillStyle='#e4ca4e';ctx.fillRect(x-s/2,y-s/2,s,s);}
@@ -1391,6 +1381,14 @@
     const p=t.position||n.position||[0,0];
     state.pan.x=-Number(p[0]||0)*state.zoom;state.pan.y=-Number(p[1]||0)*state.zoom;drawWorkplace();status(`Snapped to ${n.name}`);
   }
+  function selectAllNodesWithName(name){
+    const wanted=String(name??'');
+    const ids=allNodes().filter(({node})=>node.type==='node'&&String(node.name??'')===wanted).map(({node})=>node.id);
+    if(!ids.length)return status(`No Nodes named ${wanted||'Node'}`);
+    state.selectedIds=ids;state.selectedId=ids.at(-1)||null;state.selectionAnchorId=state.selectedId;state.ui.selectedComponentKey='';
+    renderSelectionTree();renderComponentPanel();drawWorkplace();status(`${ids.length} Nodes named ${wanted||'Node'} selected`);
+  }
+
   function mainNodeContextMenu(node,x,y){
     if(node){if(!state.selectedIds.includes(node.id)){clearNodeSelection(node.id);}else state.selectedId=node.id;renderSelectionTree();renderComponentPanel();drawWorkplace();}
     const many=topLevelSelectedItems().length>1;
@@ -1403,8 +1401,10 @@
       {label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),disabled:!topLevelSelectedItems().length,action:()=>deleteSelectedNodes()},
       {label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),disabled:!selectedNode(),action:()=>snapSelectedMainNode()},
       {label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('selectAll',{scope:'editor'})},
+      ...(node?.type==='node'?[{label:`Select All - ${node.name||'Node'}`,icon:'☷',action:()=>selectAllNodesWithName(node.name)}]:[]),
       {label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('deselectAll',{scope:'editor'})},
-      {label:'Add Node',icon:'◇',action:()=>addNode()}
+      {label:'Add Node',icon:'◇',action:()=>addNode()},
+      ...(node?[{label:'Documentation',icon:'?',action:()=>openDocumentation(node.name||'Node')}]:[])
     ],x,y);
   }
 
@@ -1418,11 +1418,13 @@
       const rect=canvas.getBoundingClientRect(),world=screenToWorld(e.clientX,e.clientY),joystickHit=joystickAtEditorPoint(world,rect);
       if(joystickHit){
         state.selectedId=joystickHit.j.id;
-        const cam=cameraEditorFrame(),offsetLocal=inverseRotatePoint(world.x-joystickHit.r.x,world.y-joystickHit.r.y,cam.angle);workspace.joystickDrag={joystick:joystickHit.j,offsetX:offsetLocal.x,offsetY:offsetLocal.y};
+        const cam=cameraEditorFrame(),offsetLocal=inverseRotatePoint(world.x-joystickHit.r.x,world.y-joystickHit.r.y,cam.angle);workspace.joystickDrag={joystick:joystickHit.j,offsetX:offsetLocal.x,offsetY:offsetLocal.y,historyPushed:false};
         canvas.setPointerCapture(e.pointerId);renderSelectionTree();renderComponentPanel();drawWorkplace();return;
       }
-      const worldPoint=screenToWorld(e.clientX,e.clientY),selected=selectedNode();
-      if(selected){const giz=getGizmoHit(selected,worldPoint);if(giz){{const target=gizmoTarget(selected);workspace.gizmoDrag={node:selected,type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransform:clone(target.transform)};}canvas.setPointerCapture(e.pointerId);return;}}
+      const worldPoint=screenToWorld(e.clientX,e.clientY),selectedNodes=editableSelectedNodes();
+      if(selectedNodes.length>1){const giz=getSelectionGizmoHit(selectedNodes,worldPoint);if(giz){workspace.gizmoDrag={multi:true,nodes:selectedNodes.slice(),type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransforms:Object.fromEntries(selectedNodes.map(n=>[n.id,clone(component(n,'transform')||{})])),startBounds:selectionBounds(selectedNodes),historyPushed:false};canvas.setPointerCapture(e.pointerId);return;}}
+      const selected=selectedNode();
+      if(selected){const giz=getGizmoHit(selected,worldPoint);if(giz){{const target=gizmoTarget(selected);workspace.gizmoDrag={multi:false,node:selected,type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransform:clone(target.transform),historyPushed:false};}canvas.setPointerCapture(e.pointerId);return;}}
       const node=nodeAt(worldPoint);if(node){setNodeSelection(node,e);renderSelectionTree();renderComponentPanel();drawWorkplace();return;}
       if(state.selectedId!==null){state.selectedId=null;renderSelectionTree();renderComponentPanel();}
       clearTimeout(longPressTimer);startPan(e);
@@ -1438,6 +1440,7 @@
         pinch.lastDistance=dist;pinch.lastMidX=midX;pinch.lastMidY=midY;drawWorkplace();return;
       }
       if(workspace.joystickDrag){
+        if(!workspace.joystickDrag.historyPushed){pushHistory();workspace.joystickDrag.historyPushed=true;}
         const j=workspace.joystickDrag.joystick,world=screenToWorld(e.clientX,e.clientY),cam=cameraEditorFrame();
         const local=inverseRotatePoint(world.x-cam.x,world.y-cam.y,cam.angle);const w=Math.max(1,Number(j.size?.[0]||110)),h=Math.max(1,Number(j.size?.[1]||110));
         const localX=local.x-workspace.joystickDrag.offsetX,localY=local.y-workspace.joystickDrag.offsetY;
@@ -1460,7 +1463,11 @@
   }
 
   function updateGizmoDrag(e){
-    const d=workspace.gizmoDrag,n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
+    const d=workspace.gizmoDrag;
+    if(!d)return;
+    if(!d.historyPushed){pushHistory();d.historyPushed=true;}
+    if(d.multi)return updateMultiGizmoDrag(e);
+    const n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
     if(d.type==='move'){
       const px=d.axis==='y'?d.startTransform.position[0]:d.startTransform.position[0]+dx;
       const py=d.axis==='x'?d.startTransform.position[1]:d.startTransform.position[1]+dy;
@@ -1473,22 +1480,38 @@
       let nx=sx,ny=sy;
       if(d.corner==='left'||d.corner==='right') nx=sx+(L.x/baseX)*(right?1:-1)*2;
       else if(d.corner==='top'||d.corner==='bottom') ny=sy+(L.y/baseY)*(bottom?1:-1)*2;
-      else {
-        const rawX=sx+(L.x/baseX)*(right?1:-1)*2,rawY=sy+(L.y/baseY)*(bottom?1:-1)*2;
-        const bx=Math.max(1e-6,Math.abs(sx)),by=Math.max(1e-6,Math.abs(sy));
-        const fx=rawX/sx,fy=rawY/sy;
-        const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;
-        nx=sx*factor;ny=sy*factor;
-      }
+      else {const rawX=sx+(L.x/baseX)*(right?1:-1)*2,rawY=sy+(L.y/baseY)*(bottom?1:-1)*2,fx=rawX/(sx||1),fy=rawY/(sy||1),factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;nx=sx*factor;ny=sy*factor;}
       nx=Math.max(0.01,nx);ny=Math.max(0.01,ny);
-      if(snap>0 && d.corner!=='left' && d.corner!=='right' && d.corner!=='top' && d.corner!=='bottom'){
-        const dominant=Math.abs(nx-sx)>=Math.abs(ny-sy)?'x':'y';
-        if(dominant==='x'){nx=snapEditorValue(nx,snap);ny=Math.max(0.01,sx!==0?sy*(nx/sx):ny);}
-        else {ny=snapEditorValue(ny,snap);nx=Math.max(0.01,sy!==0?sx*(ny/sy):nx);}
-      }else{
-        nx=snapEditorValue(nx,snap);ny=snapEditorValue(ny,snap);
-      }
+      if(snap>0&&d.corner!=='left'&&d.corner!=='right'&&d.corner!=='top'&&d.corner!=='bottom'){const dominant=Math.abs(nx-sx)>=Math.abs(ny-sy)?'x':'y';if(dominant==='x'){nx=snapEditorValue(nx,snap);ny=Math.max(0.01,sx!==0?sy*(nx/sx):ny);}else{ny=snapEditorValue(ny,snap);nx=Math.max(0.01,sy!==0?sx*(ny/sy):nx);}}else{nx=snapEditorValue(nx,snap);ny=snapEditorValue(ny,snap);}
       t.scale[0]=Number(nx.toFixed(12));t.scale[1]=Number(ny.toFixed(12));
+    }
+    drawWorkplace();
+  }
+  function updateMultiGizmoDrag(e){
+    const d=workspace.gizmoDrag,nodes=d.nodes||[],b=d.startBounds;if(!nodes.length||!b)return;
+    const current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0),unified=settings.multiSelectionUnifiedEditing!==false;
+    if(d.type==='move'){
+      let tx=dx,ty=dy;
+      if(snap>0){const targetX=snapEditorValue(b.x+dx,snap),targetY=snapEditorValue(b.y+dy,snap);tx=targetX-b.x;ty=targetY-b.y;}
+      nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;t.position=[Number(st.position?.[0]||0)+tx,Number(st.position?.[1]||0)+ty];});
+    }else if(d.type==='rotate'){
+      const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(b.x,b.y),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);let delta=(nowA-startA)*180/Math.PI;
+      if(rotateSnap)delta=snapEditorValue(delta,rotateSnap);
+      const rad=delta*Math.PI/180;
+      nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};if(unified){const q=rotatePoint(sp.x,sp.y,rad);t.position=[Number((b.x+q.x).toFixed(12)),Number((b.y+q.y).toFixed(12))];}else t.position=[Number(st.position?.[0]||0),Number(st.position?.[1]||0)];t.angle=[Number((Number(st.angle?.[0]||0)+delta).toFixed(12))];});
+    }else if(d.type==='scale'){
+      const left=['left','tl','bl'].includes(d.corner),right=['right','tr','br'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),bottom=['bottom','bl','br'].includes(d.corner);
+      let fx=1,fy=1;
+      if(left||right)fx=1+(dx/b.w)*(right?1:-1)*2;
+      if(top||bottom)fy=1+(dy/b.h)*(bottom?1:-1)*2;
+      if(!left&&!right&&!top&&!bottom){fx=1+dx/b.w*2;fy=1+dy/b.h*2;}
+      else if(left||right){if(!(top||bottom))fy=1;}
+      else if(top||bottom)fx=1;
+      if(['tl','tr','bl','br'].includes(d.corner)){const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;fx=factor;fy=factor;}
+      fx=Math.max(.01,fx);fy=Math.max(.01,fy);
+      const newW=b.w*fx,newH=b.h*fy;
+      if(snap>0){if(['tl','tr','bl','br'].includes(d.corner)){const w=snapEditorValue(newW,snap),h=snapEditorValue(newH,snap),sx=w/b.w,sy=h/b.h,fac=Math.abs(sx-1)>=Math.abs(sy-1)?sx:sy;fx=Math.max(.01,fac);fy=fx;}else{if(left||right)fx=Math.max(.01,snapEditorValue(newW,snap)/b.w);if(top||bottom)fy=Math.max(.01,snapEditorValue(newH,snap)/b.h);}}
+      nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;let sx=(Number(st.scale?.[0]??1))*fx,sy=(Number(st.scale?.[1]??1))*fy;if(unified){const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};t.position=[Number((b.x+sp.x*fx).toFixed(12)),Number((b.y+sp.y*fy).toFixed(12))];}t.scale=[Number(Math.max(.01,sx).toFixed(12)),Number(Math.max(.01,sy).toFixed(12))];});
     }
     drawWorkplace();
   }
@@ -1507,6 +1530,15 @@
   function toggleSubMenu(id,anchor){const m=$('#'+id);if(!m)return;const open=!m.classList.contains('open');$$('.context-menu.nested-menu').forEach(x=>{if(x!==m)hideMenuElement(x);});if(!open){hideMenuElement(m);return;}m.classList.add('open');positionSubMenu(m,anchor);}
   function positionMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor?.getBoundingClientRect?.()||{left:0,right:0,top:0,bottom:0},mr=menu.getBoundingClientRect(),pad=6;let left=ar.left,top=ar.bottom+2;if(top+mr.height>innerHeight-pad)top=ar.top-mr.height-2;if(left+mr.width>innerWidth-pad)left=innerWidth-mr.width-pad;if(left<pad)left=pad;if(top<pad)top=pad;menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function positionSubMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor.getBoundingClientRect(),mr=menu.getBoundingClientRect(),pad=6;let left=ar.right+2,top=ar.top;if(left+mr.width>innerWidth-pad)left=ar.left-mr.width-2;if(top+mr.height>innerHeight-pad)top=innerHeight-mr.height-pad;if(top<pad)top=pad;menu.style.left=`${Math.max(pad,left)}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
+  function openDocumentation(query){
+    const frame=$('#helpFrame');
+    if(!frame)return;
+    const url=new URL('./help/index.html',location.href);
+    const value=String(query??'').trim();
+    if(value)url.searchParams.set('search',value);else url.searchParams.delete('search');
+    frame.src=url.href;
+    showModal($('#helpModal'));
+  }
   function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function closeContextMenu(){const m=$('#floatingContextMenu');m.hidden=true;m.classList.remove('open');m.innerHTML='';}
   function askConfirm(title,text,onConfirm,okText='Delete'){ $('#confirmModalTitle').textContent=title;$('#confirmModalText').textContent=text;$('#confirmModalOk').textContent=okText;confirmAction=onConfirm;showModal($('#confirmModal')); }
@@ -1538,6 +1570,8 @@
     const makeRow=(label,value,options={})=>{const row=document.createElement('div');row.className='editor-snap-row';const name=document.createElement('div');name.className='keybind-name';name.textContent=label;const control=document.createElement('div');control.className='editor-snap-control';if(options.select){const select=document.createElement('select');select.className='editor-snap-input';options.select.forEach(v=>{const opt=document.createElement('option');opt.value=String(v);opt.textContent=v===0?'0° (Off)':`${v}°`;opt.selected=Number(v)===Number(value);select.append(opt);});select.addEventListener('change',()=>{const next=getEditorSettings();next.rotateSnap=Math.max(0,Number(select.value)||0);saveEditorSettings(next);});control.append(select);}else{const input=document.createElement('input');input.className='editor-snap-input';input.type='number';input.min='0';input.step='0.01';input.value=String(value);input.addEventListener('change',()=>{const next=getEditorSettings();next.moveScaleSnap=Math.max(0,Number(input.value)||0);input.value=String(next.moveScaleSnap);saveEditorSettings(next);});control.append(input);}row.append(name,control);settingsWrap.append(row);};
     makeRow('Move / Scale Snap',settings.moveScaleSnap);
     makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
+    const multiRow=document.createElement('div');multiRow.className='editor-snap-row';const multiLabel=document.createElement('label');multiLabel.className='game-setting-check';const multiCheck=document.createElement('input');multiCheck.type='checkbox';multiCheck.checked=settings.multiSelectionUnifiedEditing!==false;const multiText=document.createElement('span');multiText.textContent='Multiselection Unified Editing';multiLabel.append(multiCheck,multiText);multiRow.append(multiLabel);settingsWrap.append(multiRow);
+    multiCheck.addEventListener('change',()=>{const next=getEditorSettings();next.multiSelectionUnifiedEditing=multiCheck.checked;saveEditorSettings(next);drawWorkplace();});
     const saveHeading=document.createElement('div');saveHeading.className='editor-snap-heading';saveHeading.textContent='Saving';settingsWrap.append(saveHeading);
     const autoRow=document.createElement('div');autoRow.className='editor-snap-row';const autoLabel=document.createElement('label');autoLabel.className='game-setting-check';const autoCheck=document.createElement('input');autoCheck.type='checkbox';autoCheck.checked=!!settings.autoSave;const autoText=document.createElement('span');autoText.textContent='Auto Save';autoLabel.append(autoCheck,autoText);autoRow.append(autoLabel);settingsWrap.append(autoRow);
     const intervalRow=document.createElement('div');intervalRow.className='editor-snap-row';const intervalName=document.createElement('div');intervalName.className='keybind-name';intervalName.textContent='Auto Save Interval';const intervalControl=document.createElement('div');intervalControl.className='editor-snap-control';const intervalInput=document.createElement('input');intervalInput.className='editor-snap-input';intervalInput.type='number';intervalInput.min='1';intervalInput.step='1';intervalInput.value=String(settings.autoSaveIntervalSec);const intervalUnit=document.createElement('span');intervalUnit.className='editor-snap-unit';intervalUnit.textContent='Seconds';intervalControl.append(intervalInput,intervalUnit);intervalRow.append(intervalName,intervalControl);settingsWrap.append(intervalRow);
@@ -1641,12 +1675,7 @@
       case 'import-project': openProjectImport(); break;
       case 'save-project': saveProjectToProjectStorage(); break;
       case 'export-project': openExportProjectModal(); break;
-      case 'help': {
-        const frame=$('#helpFrame');
-        if(frame && !frame.getAttribute('src')) frame.src='help/index.html';
-        showModal($('#helpModal'));
-        break;
-      }
+      case 'help': openDocumentation(''); break;
       case 'export-ndc': exportProjectNDC(); break;
       case 'game-settings': openGameSettings(); break;
       case 'editor-settings': openEditorSettings(); break;
@@ -2231,7 +2260,7 @@
     const rect=canvas.getBoundingClientRect(),point=scriptClientToWorld(rect.left+rect.width/2,rect.top+rect.height/2);
     const list=state.script.nodesByNode[state.script.nodeId] ||= [];
     const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x:point.x,y:point.y,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
-    list.push(sn);renderScriptCanvas();status(`${def.name} ScriptNode added`);return sn;
+    pushHistory(); list.push(sn);renderScriptCanvas();status(`${def.name} ScriptNode added`);return sn;
   }
   function flattenEditor(entries,path='',out=[]){
     (Array.isArray(entries)?entries:[entries]).forEach((entry,i)=>{
@@ -2280,7 +2309,7 @@
     const entry=item.entry,type=scriptEntryTypeForSetVariable(sn,item),wrap=document.createElement('div');wrap.className='script-inline-editor';
     const finish=(value,cancel=false)=>{if(cancel)return renderScriptCanvas();entry.value=value;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);renderScriptCanvas();};
     if(type==='col'){
-      openColorModal(String(entry.value||'#FFFFFFFF'),v=>{entry.value=v;delete sn.expressions[item.path];renderScriptCanvas();},entry.name);return;
+      openColorModal(String(entry.value||'#FFFFFFFF'),v=>{pushHistory();entry.value=v;delete sn.expressions[item.path];renderScriptCanvas();},entry.name);return;
     }
     if(type==='selector'){
       const options=evaluateSelector(entry.value);const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{entry.selected=v;delete sn.expressions[item.path];renderScriptCanvas();});return select;
@@ -2316,13 +2345,13 @@
     }
     const b=document.createElement('button');b.type='button';b.className='script-input';
     const effectiveType=scriptEntryTypeForSetVariable(sn,item);
-    let sliding=false,slideStartX=0,slideLastX=0,slideAccum=0,slideValue=0,slideStep=1;
+    let sliding=false,slideStartX=0,slideLastX=0,slideAccum=0,slideValue=0,slideStep=1,slideHistoryPushed=false;
     const decimalPlaces=n=>{const text=String(n??'');const m=text.toLowerCase().match(/(?:\.(\d+))?(?:e([+-]?\d+))?$/);if(!m)return 0;const decimals=(m[1]||'').length,exp=Number(m[2]||0);return Math.max(0,decimals-exp);};
     const calcStep=n=>{const d=decimalPlaces(n);return d>0?Math.pow(10,-d):1;};
     if(effectiveType==='int'&&!isExpression){
       let suppressClick=false;
-      const begin=e=>{slideStartX=e.clientX;slideLastX=e.clientX;slideAccum=0;slideValue=Number(scriptEditorValue(sn,item));if(!Number.isFinite(slideValue))slideValue=0;slideStep=calcStep(slideValue);sliding=false;suppressClick=false;b.setPointerCapture?.(e.pointerId);};
-      const move=e=>{if(e.pointerId==null)return;const dx=e.clientX-slideLastX;if(!sliding&&Math.abs(e.clientX-slideStartX)<8)return;if(Math.abs(e.clientX-slideStartX)>=8){sliding=true;suppressClick=true;e.preventDefault();e.stopPropagation();b.classList.add('sliding');}if(!sliding)return;slideAccum+=dx;const units=Math.trunc(slideAccum/20);if(units!==0){slideAccum-=units*20;slideValue+=units*slideStep;const places=decimalPlaces(slideStep);slideValue=places?Number(slideValue.toFixed(places)):Math.round(slideValue);entry.value=slideValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);const label=b.querySelector('.script-input-value');if(label)label.textContent=String(slideValue);}slideLastX=e.clientX;};
+      const begin=e=>{slideStartX=e.clientX;slideLastX=e.clientX;slideAccum=0;slideValue=Number(scriptEditorValue(sn,item));if(!Number.isFinite(slideValue))slideValue=0;slideStep=calcStep(slideValue);sliding=false;suppressClick=false;slideHistoryPushed=false;b.setPointerCapture?.(e.pointerId);};
+      const move=e=>{if(e.pointerId==null)return;const dx=e.clientX-slideLastX;if(!sliding&&Math.abs(e.clientX-slideStartX)<8)return;if(Math.abs(e.clientX-slideStartX)>=8){if(!slideHistoryPushed){pushHistory();slideHistoryPushed=true;}sliding=true;suppressClick=true;e.preventDefault();e.stopPropagation();b.classList.add('sliding');}if(!sliding)return;slideAccum+=dx;const units=Math.trunc(slideAccum/20);if(units!==0){slideAccum-=units*20;slideValue+=units*slideStep;const places=decimalPlaces(slideStep);slideValue=places?Number(slideValue.toFixed(places)):Math.round(slideValue);entry.value=slideValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);const label=b.querySelector('.script-input-value');if(label)label.textContent=String(slideValue);}slideLastX=e.clientX;};
       const end=()=>{if(sliding)b.classList.remove('sliding');sliding=false;};
       b.addEventListener('pointerdown',begin);b.addEventListener('pointermove',move);b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);b.addEventListener('click',e=>{if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;}});
     }
@@ -2357,6 +2386,7 @@
   }
   function deleteScriptNodeNow(id){
     const list=state.script.nodesByNode[state.script.nodeId]||[];
+    pushHistory();
     const target=list.find(n=>n.id===id);
     state.script.nodesByNode[state.script.nodeId]=list.filter(n=>n.id!==id);
     const con=state.script.connectionsByNode[state.script.nodeId]||[];
@@ -2392,10 +2422,11 @@
   function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
   function cutScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to cut');copyScriptNodes();requestDeleteScriptNodes(nodes.map(n=>n.id),'Cut');}
   function pasteScriptNodes(){const clip=state.script.clipboard;if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory();const pasted=clone(clip.nodes);pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
-  function deleteScriptNodesNow(ids){const set=new Set(ids||[]);if(!set.size)return;const list=scriptList();state.script.nodesByNode[state.script.nodeId]=list.filter(sn=>!set.has(sn.id));state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>!set.has(c.from)&&!set.has(c.to));state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(id=>!set.has(id));state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();status(`${set.size} ScriptNode${set.size===1?'':'s'} deleted`);}
+  function deleteScriptNodesNow(ids){const set=new Set(ids||[]);if(!set.size)return;const list=scriptList();pushHistory();state.script.nodesByNode[state.script.nodeId]=list.filter(sn=>!set.has(sn.id));state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>!set.has(c.from)&&!set.has(c.to));state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(id=>!set.has(id));state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();status(`${set.size} ScriptNode${set.size===1?'':'s'} deleted`);}
   function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
-  function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
-  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>{copyScriptNodes();pasteScriptNodes();}},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}}],x,y);}
+  function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];if(!con.some(c=>c.from===id||c.to===id))return;pushHistory();state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
+  function defForScriptDoc(sn){return scriptNodeDefinition(sn?.defName)?.name||sn?.defName||'ScriptNode';}
+  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>{copyScriptNodes();pasteScriptNodes();}},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Documentation',icon:'?',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
   function applyScriptPanelState(){
     const layout=$('#scriptModal .script-layout'),left=$('#scriptModal .script-left'),right=$('#scriptInspector');
     if(!layout||!left||!right)return;
@@ -2455,6 +2486,8 @@
     }
     const disconnectNode=id=>{
       const con=state.script.connectionsByNode[state.script.nodeId]||[];
+      if(!con.some(c=>c.from===id||c.to===id))return;
+      pushHistory();
       state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);
       renderScriptCanvas();
       status('ScriptNode disconnected');
@@ -2561,11 +2594,11 @@
     if(!validateExpression())return status('Fix the expression error first');
     const edit=state.script.editingInput;if(!edit)return;
     const value=$('#expressionInput').value.trim();
-    if(value&&value!==String(edit.entry.value??''))edit.sn.expressions[edit.path]=value;else delete edit.sn.expressions[edit.path];
+    if(value&&value!==String(edit.entry.value??'')){pushHistory();edit.sn.expressions[edit.path]=value;}else if(Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path)){pushHistory();delete edit.sn.expressions[edit.path];}
     state.script.editingInput=null;closeModal($('#expressionModal'));renderScriptCanvas();
   }
   function clearExpression(){
-    const edit=state.script.editingInput;if(edit)delete edit.sn.expressions[edit.path];
+    const edit=state.script.editingInput;if(edit&&Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path)){pushHistory();delete edit.sn.expressions[edit.path];}
     if(edit)$('#expressionInput').value=String(edit.entry.value??'');
     validateExpression();renderScriptCanvas();
   }
@@ -2669,7 +2702,7 @@
     if(node&&component(node,'progressbar'))list['Progress Bar']=[{label:'Value',value:'ctx.progressBar.value'},{label:'Min',value:'ctx.progressBar.min'},{label:'Max',value:'ctx.progressBar.max'},{label:'Width',value:'ctx.progressBar.width'},{label:'Height',value:'ctx.progressBar.height'},{label:'Position X',value:'ctx.progressBar.position[0]'},{label:'Position Y',value:'ctx.progressBar.position[1]'}];
     return list;
   }
-  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const canvas=$('#scriptCanvas');const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y};card.setPointerCapture?.(e.pointerId);function move(ev){sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);});}
+  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const canvas=$('#scriptCanvas');const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y,historyPushed:false};card.setPointerCapture?.(e.pointerId);function move(ev){if(!start.historyPushed&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)>2){pushHistory();start.historyPushed=true;}sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);});}
   function attachOutputDrag(port){
     port.addEventListener('pointerdown',e=>{
       e.stopPropagation();e.preventDefault();
@@ -2680,12 +2713,14 @@
         const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.script-input-port');
         const outputNode=port.closest('.script-node-card')?.dataset.scriptNodeId, outputId=port.dataset.outputId;
         const list=state.script.connectionsByNode[state.script.nodeId] ||= [];
+        pushHistory(); const before=JSON.stringify(list);
         // This output owns at most one connection. Releasing it on empty space disconnects it.
         for(let i=list.length-1;i>=0;i--) if(list[i].from===outputNode&&list[i].output===outputId) list.splice(i,1);
         if(target && outputNode){
           const nodeId=target.closest('.script-node-card')?.dataset.scriptNodeId;
           if(nodeId) list.push({from:outputNode,output:outputId,to:nodeId});
         }
+        
         temp.remove();document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);renderScriptConnections();
       }
       move(e);document.addEventListener('pointermove',move);document.addEventListener('pointerup',up,{once:true});
@@ -2776,79 +2811,11 @@
   }
 
   // ---------------- Runtime preview ----------------
-  let runtimeOutputRestore=null;
-  function runtimeOutputValue(v){
-    if(v instanceof Error)return v.stack||v.message||String(v);
-    if(typeof v==='string')return v;
-    try{return JSON.stringify(v);}catch{return String(v);}
-  }
-  function runtimeOutput(level,message){
-    const rt=state.runtime;if(!rt)return;
-    rt.output ||= [];
-    rt.output.push({level:String(level||'log'),message:String(message??''),time:new Date().toLocaleTimeString()});
-    if(rt.output.length>500)rt.output.splice(0,rt.output.length-500);
-    renderRuntimeOutput();
-  }
-  function renderRuntimeOutput(){
-    const host=$('#runtimeOutputList');if(!host)return;
-    const items=state.runtime?.output||[];
-    host.innerHTML='';
-    for(const item of items){
-      const row=document.createElement('div');row.className=`runtime-output-item ${item.level==='error'?'error':item.level==='warn'?'warn':'log'}`;
-      const meta=document.createElement('span');meta.className='runtime-output-meta';meta.textContent=`${String(item.level||'log').toUpperCase()} · ${item.time||''}`;
-      const msg=document.createElement('pre');msg.className='runtime-output-message';msg.textContent=String(item.message??'');
-      row.append(meta,msg);host.append(row);
-    }
-    host.scrollTop=host.scrollHeight;
-    const button=$('#runtimeOutputButton');if(button){const errors=items.filter(x=>x.level==='error').length,warns=items.filter(x=>x.level==='warn').length;button.textContent=(errors||warns)?`Output · ${errors||0}${warns?` / ${warns}`:''}`:'Output';}
-  }
-  function setRuntimeOutputOpen(open){
-    const panel=$('#runtimeOutputPanel');if(!panel)return;panel.hidden=!open;state.runtime.outputOpen=!!open;if(open)renderRuntimeOutput();
-  }
-  function installRuntimeOutputCapture(){
-    if(runtimeOutputRestore)runtimeOutputRestore();
-    if(!state.runtime?.debug)return;
-    const originals={log:console.log,warn:console.warn,error:console.error};
-    const wrap=(level,fn)=>(...args)=>{fn.apply(console,args);runtimeOutput(level,args.map(runtimeOutputValue).join(' '));};
-    console.log=wrap('log',originals.log);console.warn=wrap('warn',originals.warn);console.error=wrap('error',originals.error);
-    const onError=e=>runtimeOutput('error',e?.error?.stack||e?.message||String(e));
-    const onRejection=e=>runtimeOutput('error',e?.reason?.stack||e?.reason?.message||String(e?.reason??'Unhandled promise rejection'));
-    window.addEventListener('error',onError);window.addEventListener('unhandledrejection',onRejection);
-    runtimeOutputRestore=()=>{console.log=originals.log;console.warn=originals.warn;console.error=originals.error;window.removeEventListener('error',onError);window.removeEventListener('unhandledrejection',onRejection);runtimeOutputRestore=null;};
-  }
   function runtimeScene(){ return state.runtime.scene || null; }
   function runtimeAllNodes(scene=runtimeScene()){
-    const rt=state.runtime;
-    if(scene===rt.scene && Array.isArray(rt.nodeEntries) && rt.nodeEntries.length)return rt.nodeEntries;
-    const out=[];const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{out.push({node,parent});if(node.type==='folder')walk(node.children,node);});walk(scene?.nodes);return out;
+    const out=[]; const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{out.push({node,parent});if(node.type==='folder')walk(node.children,node);}); walk(scene?.nodes); return out;
   }
-  function runtimeFindNode(id){
-    const rt=state.runtime;if(rt?.nodeById?.has(id))return rt.nodeById.get(id)||null;
-    return runtimeAllNodes().find(x=>x.node.id===id)?.node||null;
-  }
-  function runtimeRebuildCaches(){
-    const rt=state.runtime;if(!rt)return;
-    const entries=[],nodes=[],nodeById=new Map(),parentById=new Map(),folderByLabel=new Map();
-    const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){entries.push({node,parent});parentById.set(node.id,parent||null);if(node.type==='node'){nodes.push(node);nodeById.set(node.id,node);}else if(node.type==='folder'){folderByLabel.set(`${node.name} [${node.numericId}]`,node);walk(node.children,node);}}};
-    walk(rt.scene?.nodes);
-    const bodyById=new Map(),physicsBodies=[];for(const body of (rt.bodies||[])){if(!body?.node?.id)continue;bodyById.set(body.node.id,body);if(body.physics||body.collider)physicsBodies.push(body);}
-    const renderBodies=(rt.bodies||[]).filter(Boolean).slice().sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));
-    const scriptById=new Map(),scriptOwnerById=new Map(),eventScriptsByName=new Map(),eventScriptsByNode=new Map(),routesByScriptOutput=new Map();
-    const defByName=new Map(scriptNodes.filter(Boolean).map(def=>[def.name,def]));
-    for(const node of nodes){
-      const scripts=Array.isArray(rt.dynamicScriptsByNode?.[node.id])?rt.dynamicScriptsByNode[node.id]:[];const byDef=Object.create(null);
-      for(const sn of scripts){if(!sn?.id)continue;scriptById.set(sn.id,sn);scriptOwnerById.set(sn.id,node.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=eventScriptsByName.get(name)||[];list.push({node,sn});eventScriptsByName.set(name,list);}}
-      eventScriptsByNode.set(node.id,byDef);
-      const connections=Array.isArray(rt.dynamicConnectionsByNode?.[node.id])?rt.dynamicConnectionsByNode[node.id]:[];
-      for(const c of connections){if(!c?.from||!c?.to||!c?.output)continue;const byOut=routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);routesByScriptOutput.set(c.from,byOut);}
-    }
-    const joyList=sceneJoysticks(rt.scene).map(j=>({variable:j.variable}));const joystickObject=Object.create(null);for(const j of joyList)joystickObject[j.variable]={distance:0,angle:0,value_x:0,value_y:0};
-    rt.nodeEntries=entries;rt.nodeList=nodes;rt.nodeById=nodeById;rt.bodyById=bodyById;rt.parentById=parentById;rt.physicsBodies=physicsBodies;rt.renderBodies=renderBodies;rt.renderOrderDirty=false;rt.numericIds=new Set(nodes.map(n=>Number(n.numericId)).filter(Number.isFinite));
-    let next=1;while(rt.numericIds.has(next))next++;rt.nextNumericId=Math.max(next,...nodes.map(n=>Number(n.numericId)+1).filter(Number.isFinite),1);
-    rt.scriptById=scriptById;rt.scriptOwnerById=scriptOwnerById;rt.eventScriptsByName=eventScriptsByName;rt.eventScriptsByNode=eventScriptsByNode;rt.routesByScriptOutput=routesByScriptOutput;rt.defByName=defByName;
-    rt.shared={allNodes:nodes,folderOptions:[...folderByLabel.keys()],folderByLabel,spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]),...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],joysticksList:joyList,joystickObject};
-  }
-  function runtimeSortRenderBodies(){const rt=state.runtime;if(!rt?.renderOrderDirty)return;rt.renderBodies.sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));rt.renderOrderDirty=false;}
+  function runtimeFindNode(id){ return runtimeAllNodes().find(x=>x.node.id===id)?.node || null; }
   function runScriptGraphForNode(node){
     if(!node)return;
     runtimeScriptList(node.id).filter(sn=>sn.defName==='onLoad').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true));
@@ -2856,44 +2823,17 @@
   function runtimeSceneVariables(sceneId=state.runtime.sceneId){ return state.runtime.sceneVariablesByScene?.[sceneId] || []; }
   function buildRuntimeBody(node){
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
-    return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
+    return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,vx:0,vy:0,omega:0,colliding:false};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
-  function cloneRuntimeScripts(sourceScripts){
-    const used=new Set();return (Array.isArray(sourceScripts)?sourceScripts:[]).map(sn=>{const copy=runtimeClone(sn);let id;do{id=`snode-runtime-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;}while(used.has(id));used.add(id);copy.id=id;return copy;});
-  }
-  function runtimeRegisterScripts(ownerNode,scripts,connections){
-    const rt=state.runtime,byDef=rt.eventScriptsByNode.get(ownerNode.id)||Object.create(null);
-    for(const sn of scripts||[]){rt.scriptById.set(sn.id,sn);rt.scriptOwnerById.set(sn.id,ownerNode.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=rt.eventScriptsByName.get(name)||[];list.push({node:ownerNode,sn});rt.eventScriptsByName.set(name,list);}}rt.eventScriptsByNode.set(ownerNode.id,byDef);
-    for(const c of connections||[]){const byOut=rt.routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);rt.routesByScriptOutput.set(c.from,byOut);}
-  }
   function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
-    const rt=state.runtime,source=runtimeFindNode(sourceId);if(!source)return null;const copy=runtimeClone(source),oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    let n=Math.max(1,Number(rt.nextNumericId)||1);while(rt.numericIds.has(n))n++;copy.numericId=n;rt.numericIds.add(n);rt.nextNumericId=n+1;
-    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
-    const originalScripts=rt.dynamicScriptsByNode[oldId]||[],sourceScripts=cloneRuntimeScripts(originalScripts),scriptMap=new Map();sourceScripts.forEach((sn,i)=>{const old=originalScripts[i]?.id;if(old)scriptMap.set(old,sn.id);});
-    const sourceConnections=runtimeClone(rt.dynamicConnectionsByNode[oldId]||[]).map(c=>({...c,from:scriptMap.get(c.from)||c.from,to:scriptMap.get(c.to)||c.to}));
-    const parent=rt.parentById.get(oldId)||null,container=parent?.children||rt.scene.nodes;if(!Array.isArray(container))return null;container.push(copy);
-    rt.dynamicScriptsByNode[copy.id]=sourceScripts;rt.dynamicConnectionsByNode[copy.id]=sourceConnections;rt.localVarsByNode[copy.id]=runtimeClone(rt.localVarsByNode[oldId]||[]);
-    const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;
-    rt.bodies.push(body);rt.renderBodies.push(body);if(body.physics||body.collider)rt.physicsBodies.push(body);rt.bodyById.set(copy.id,body);rt.nodeById.set(copy.id,copy);rt.nodeEntries.push({node:copy,parent});rt.nodeList.push(copy);rt.parentById.set(copy.id,parent);rt.shared?.allNodes?.push(copy);rt.renderOrderDirty=true;
-    runtimeRegisterScripts(copy,sourceScripts,sourceConnections);rt.pendingOnLoad.push(copy);return copy;
+    const source=runtimeFindNode(sourceId);if(!source)return null;const copy=clone(source);const oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+    const used=new Set(runtimeAllNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Number(copy.numericId)||1;while(used.has(n))n++;copy.numericId=n;const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
+    state.runtime.scene.nodes.push(copy);state.runtime.dynamicScriptsByNode[copy.id]=clone(state.runtime.dynamicScriptsByNode[oldId]||[]);state.runtime.dynamicConnectionsByNode[copy.id]=clone(state.runtime.dynamicConnectionsByNode[oldId]||[]);state.runtime.localVarsByNode[copy.id]=clone(state.runtime.localVarsByNode[oldId]||[]);const body=buildRuntimeBody(copy);body.vx=Number(vx)||0;body.vy=Number(vy)||0;body.omega=Number(angularVelocity||0)*Math.PI/180;state.runtime.bodies.push(body);runScriptGraphForNode(copy);return copy;
   }
-  function runtimeDestroyNode(node){
-    const rt=state.runtime;if(!node||!rt)return;const id=node.id,body=rt.bodyById.get(id);if(!rt.nodeById.has(id)&&!body)return;
-    const parent=rt.parentById.get(id)||null,container=parent?.children||rt.scene?.nodes;if(Array.isArray(container)){const i=container.findIndex(x=>x?.id===id);if(i>=0)container.splice(i,1);}
-    const deadScripts=new Set((rt.dynamicScriptsByNode?.[id]||[]).map(sn=>sn?.id).filter(Boolean));for(const sid of deadScripts){rt.scriptById.delete(sid);rt.scriptOwnerById.delete(sid);delete rt.intervalStates[sid];}
-    for(const [name,list] of rt.eventScriptsByName){const next=list.filter(x=>x.node?.id!==id&&!deadScripts.has(x.sn?.id));if(next.length)rt.eventScriptsByName.set(name,next);else rt.eventScriptsByName.delete(name);}
-    rt.eventScriptsByNode.delete(id);
-    for(const [from,byOut] of rt.routesByScriptOutput){for(const [out,list] of byOut){const next=list.filter(c=>!deadScripts.has(c.from)&&!deadScripts.has(c.to));if(next.length)byOut.set(out,next);else byOut.delete(out);}if(!byOut.size)rt.routesByScriptOutput.delete(from);}
-    rt.timers=(rt.timers||[]).filter(t=>t?.nodeId!==id&&!deadScripts.has(t?.key));rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>n?.id!==id);
-    delete rt.dynamicScriptsByNode[id];delete rt.dynamicConnectionsByNode[id];delete rt.localVarsByNode[id];delete rt.followTargets[id];delete rt.aiTargets[id];Object.values(rt.followTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});Object.values(rt.aiTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});
-    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>pair?.[0]?.node?.id!==id&&pair?.[1]?.node?.id!==id));
-    if(body){let i=rt.bodies.indexOf(body);if(i>=0)rt.bodies.splice(i,1);i=rt.renderBodies.indexOf(body);if(i>=0)rt.renderBodies.splice(i,1);i=rt.physicsBodies.indexOf(body);if(i>=0)rt.physicsBodies.splice(i,1);rt.bodyById.delete(id);}
-    let i=rt.nodeList.findIndex(n=>n?.id===id);if(i>=0)rt.nodeList.splice(i,1);i=rt.nodeEntries.findIndex(e=>e.node?.id===id);if(i>=0)rt.nodeEntries.splice(i,1);rt.nodeById.delete(id);rt.parentById.delete(id);if(rt.shared?.allNodes){i=rt.shared.allNodes.findIndex(n=>n?.id===id);if(i>=0)rt.shared.allNodes.splice(i,1);}rt.numericIds.delete(Number(node.numericId));
-    if(body){body.node=null;body.physics=null;body.collider=null;body.t=null;body._shapeCache=null;body._aabbCache=null;body._massCache=null;}
-  }
+  function runtimeDestroyNode(node){const container=runtimeContainerForNode(node.id);if(container){const i=container.findIndex(x=>x.id===node.id);if(i>=0)container.splice(i,1);}state.runtime.bodies=state.runtime.bodies.filter(b=>b.node?.id!==node.id);delete state.runtime.dynamicScriptsByNode[node.id];delete state.runtime.dynamicConnectionsByNode[node.id];delete state.runtime.localVarsByNode[node.id];delete state.runtime.followTargets[node.id];delete state.runtime.aiTargets[node.id];}
+
   function vec(x=0,y=0){return{x:Number(x)||0,y:Number(y)||0};}
   function addV(a,b){return{x:a.x+b.x,y:a.y+b.y};}
   function subV(a,b){return{x:a.x-b.x,y:a.y-b.y};}
@@ -3009,14 +2949,19 @@
     }
   }
   function solvePositionContacts(contacts){for(let iter=0;iter<6;iter++){let changed=false;for(const c of contacts){const fresh=collideShapes(runtimeColliderShape(c.A),runtimeColliderShape(c.B));if(!fresh)continue;c.hit=fresh;c.n=normV(fresh.normal);const total=c.ap.invMass+c.bp.invMass;if(total<=0)continue;const correction=Math.min(1.0,Math.max(fresh.penetration-0.25,0)*0.22);if(correction<=0)continue;const move=mulV(c.n,correction/total);if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;}if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}changed=true;}if(!changed)break;}}
-  function updateRuntimeCollisions(dt=1/120){const bodies=state.runtime.bodies||[];bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if(!(bodies[i].physics?.isCollider===true||bodies[j].physics?.isCollider===true))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
+  function updateRuntimeCollisions(dt=1/120){const bodies=state.runtime.bodies||[];bodies.forEach(b=>b.colliding=false);const contacts=[];for(let i=0;i<bodies.length;i++){const A=runtimeColliderShape(bodies[i]);if(!A)continue;const aabbA=shapeAABB(A);for(let j=i+1;j<bodies.length;j++){const B=runtimeColliderShape(bodies[j]);if(!B)continue;const aabbB=shapeAABB(B);if(aabbA.r<aabbB.l||aabbA.l>aabbB.r||aabbA.b<aabbB.t||aabbA.t>aabbB.b)continue;const hit=collideShapes(A,B);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;if(!(bodies[i].physics?.isCollider===true||bodies[j].physics?.isCollider===true))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<12;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}}
   function runtimeIsCollided(aNode,targetLabel){
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
   function drawRuntimeColliders(ctx){if(!state.runtime.debug)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-  function runtimeFindFolderByLabel(label){return state.runtime?.shared?.folderByLabel?.get(String(label||''))||null;}
+  function runtimeFindFolderByLabel(label){
+    let found=null;const wanted=String(label||'');
+    const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='folder'){if(`${item.name} [${item.numericId}]`===wanted){found=item;return true;}if(walk(item.children))return true;}}return false;};
+    walk(state.runtime.scene?.nodes);return found;
+  }
   function runtimeFolderColliderBodies(label,bodyById=null){
-    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];const map=bodyById||state.runtime.bodyById,ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=map?.get(item.id);if(body?.collider?.collidable!==false&&body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
+    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];
+    const ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=bodyById?.get(item.id)||(state.runtime.bodies||[]).find(b=>b.node?.id===item.id);if(body?.collider?.collidable!==false && body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
   }
   function runtimeBodyRadius(body){const g=runtimeColliderShape(body);if(!g)return 0;const a=shapeAABB(g);return Math.max(a.w,a.h)*.5;}
   function pointInPolygon(p,vertices){
@@ -3105,23 +3050,22 @@
     const dir=normV(subV(waypoint,pos));return{x:dir.x*speed,y:dir.y*speed,face:dir};
   }
   function updateRuntimeMovementControllers(dt){
-    const bodyById=state.runtime.bodyById||new Map();
+    const bodyById=new Map((state.runtime.bodies||[]).map(b=>[b.node?.id,b]));
     Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);if(d<=Math.max(1,speed*dt)){owner.vx=0;owner.vy=0;}else{const k=speed/d;owner.vx=dx*k;owner.vy=dy*k;}if(!owner.physics.fixedRotation&&d>1e-6)owner.t.angle[0]=Math.atan2(dy,dx)*180/Math.PI;});
     Object.entries(state.runtime.aiTargets||{}).forEach(([ownerId,ai])=>{const owner=bodyById.get(ownerId);if(!owner||!owner.physics)return;const steer=runtimeSteeringForAI(owner,ai,dt,bodyById);if(!steer)return;owner.vx=steer.x;owner.vy=steer.y;if(!owner.physics.fixedRotation&&steer.face)owner.t.angle[0]=Math.atan2(steer.face.y,steer.face.x)*180/Math.PI;});
   }
-  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=runtimeClone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=runtimeClone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);state.runtime.activeCollisionPairs=new Set();state.runtime.frameCollisionPairs=new Map();runtimeRebuildCaches();runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
+  function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const next=state.scenes.find(s=>s.id===state.runtime.pendingSceneId);if(next){runRuntimeUnloadScripts();state.runtime.scene=clone(next);state.runtime.sceneId=next.id;state.runtime.scene.camera=clone(ensureSceneCamera(next));state.runtime.bodies=buildRuntimeState(state.runtime.scene);state.runtime.camera=runtimeCameraFromScene(state.runtime.scene);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.dynamicScriptsByNode=Object.create(null);state.runtime.dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(state.runtime.scene).filter(({node})=>node.type==='node').forEach(({node})=>{state.runtime.dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);state.runtime.dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);runRuntimeSceneScripts();}state.runtime.pendingSceneId='';}
     updateRuntimeMic();
     if(state.runtime.running)dispatchRuntimeEvent('onTick','tick',{delta:dt,time:now});
-    processRuntimeSpawnQueue(16);
-    const physicsCount=state.runtime.physicsBodies?.length||0;const substeps=physicsCount>40?1:2,subDt=dt/substeps;
+    const substeps=4,subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
       updateRuntimeMovementControllers(subDt);
-      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.physicsBodies||[],subDt,pairs=>queueRuntimeCollisionPairs(pairs));
-      else queueRuntimeCollisionPairs(updateRuntimeCollisions(subDt));
+      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.bodies||[],subDt);
+      else updateRuntimeCollisions(subDt);
     }
-    flushRuntimeCollisionEvents();processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
+    processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
-  function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=state.runtime.bodyById?.get(id);return body?body.t:null;}
+  function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=(state.runtime.bodies||[]).find(b=>b.node?.id===id);return body?body.t:null;}
   function updateRuntimeCamera(dt){
     const cam=state.runtime.camera;if(!cam)return;
     const target=runtimeFollowTarget();
@@ -3133,12 +3077,11 @@
     else {const k=1-Math.exp(-speed*Math.max(0,dt)/100);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k;}
     cam.angle=Number(cam.baseAngle||0);
   }
-  function hydrateRuntimeVariables(sceneId){state.runtime.globalVariables=runtimeClone(state.globalVariables);state.runtime.sceneVariablesByScene=Object.create(null);for(const s of state.scenes)state.runtime.sceneVariablesByScene[s.id]=runtimeClone(state.sceneVariablesByScene[s.id]||[]);state.runtime.localVarsByNode=runtimeClone(state.localVarsByNode);}
+  function hydrateRuntimeVariables(sceneId){state.runtime.globalVariables=clone(state.globalVariables);state.runtime.sceneVariablesByScene=Object.create(null);for(const s of state.scenes)state.runtime.sceneVariablesByScene[s.id]=clone(state.sceneVariablesByScene[s.id]||[]);state.runtime.localVarsByNode=clone(state.localVarsByNode);}
   let runtimeLast=0,runtimeFrame=0,runtimeAccumulator=0;
 
   function scriptNodeDefinition(name){
-    const runtimeDef=state.runtime?.defByName?.get(String(name||''));
-    return runtimeDef || scriptNodes.find(def=>def && def.name===name) || null;
+    return scriptNodes.find(def=>def && def.name===name) || null;
   }
   function runtimeScriptList(nodeId){
     const list=state.runtime?.dynamicScriptsByNode?.[nodeId];
@@ -3213,7 +3156,7 @@
       return Array.isArray(value)?value.map(v=>String(v)):[];
     }catch(err){state.runtime.lastError=String(err?.message||err);return[];}
   }
-  function runtimeBodyForNode(node){return state.runtime?.bodyById?.get(node?.id)||null;}
+  function runtimeBodyForNode(node){return (state.runtime.bodies||[]).find(b=>b.node?.id===node?.id)||null;}
   function runtimeVariableArray(scope,node){
     if(scope==='Global')return state.runtime.globalVariables||[];
     if(scope==='Scene')return runtimeSceneVariables(state.runtime.sceneId);
@@ -3228,7 +3171,9 @@
     return true;
   }
   function runtimeSetComponent(node,type,mutator){
-    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics')body.physics=clone(c);if(type==='collider')body.collider=clone(c);body._shapeDirty=true;body._massDirty=true;const inList=state.runtime.physicsBodies.includes(body),should=!!body.physics||!!body.collider;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
+    if(!node)return null;
+    let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}
+    mutator(c);normalizeNode(node);return c;
   }
   async function prepareRuntimeMic(){
     ensureGameSettings();
@@ -3260,10 +3205,32 @@
   }
   function runtimeStopSpeechRecognition(){const mic=state.runtime?.mic;if(!mic)return false;mic.speechActive=false;try{mic.speechRecognition?.stop();}catch{}mic.speechRecognition=null;return true;}
 
+  function normalizeRuntimeStateName(name){const key=String(name??'').trim().toLowerCase();return key||null;}
+  function runtimeStateBucket(sceneId=state.runtime.sceneId){if(!state.runtime.sceneStatesByScene)state.runtime.sceneStatesByScene=Object.create(null);return state.runtime.sceneStatesByScene[sceneId] ||= Object.create(null);}
+  function captureRuntimeSceneState(){
+    const scene=clone(state.runtime.scene);
+    const bodies=(state.runtime.bodies||[]).map(b=>({nodeId:b.node?.id||'',vx:Number(b.vx)||0,vy:Number(b.vy)||0,omega:Number(b.omega)||0,colliding:!!b.colliding}));
+    const bodyMap=new Map((state.runtime.bodies||[]).map(b=>[b.node?.id,b]));
+    runtimeAllNodes(scene).forEach(({node})=>{const body=bodyMap.get(node.id),t=component(node,'transform');if(!body||!t)return;t.position=[Number(body.t?.position?.[0])||0,Number(body.t?.position?.[1])||0];t.scale=[Number(body.t?.scale?.[0]??1),Number(body.t?.scale?.[1]??1)];t.angle=[Number(body.t?.angle?.[0])||0];});
+    return {scene,sceneId:state.runtime.sceneId,bodies,camera:clone(state.runtime.camera),globalVariables:clone(state.runtime.globalVariables||[]),sceneVariablesByScene:clone(state.runtime.sceneVariablesByScene||{}),localVarsByNode:clone(state.runtime.localVarsByNode||{}),dynamicScriptsByNode:clone(state.runtime.dynamicScriptsByNode||{}),dynamicConnectionsByNode:clone(state.runtime.dynamicConnectionsByNode||{})};
+  }
+  function restoreRuntimeSceneState(snapshot){
+    if(!snapshot?.scene)return false;
+    runtimeStopAudio();
+    state.runtime.scene=clone(snapshot.scene);state.runtime.sceneId=snapshot.sceneId||state.runtime.sceneId;state.runtime.pendingSceneId='';state.runtime.bodies=buildRuntimeState(state.runtime.scene);
+    const savedBodies=new Map((snapshot.bodies||[]).map(b=>[b.nodeId,b]));
+    state.runtime.bodies.forEach(b=>{const saved=savedBodies.get(b.node?.id);if(!saved)return;b.vx=Number(saved.vx)||0;b.vy=Number(saved.vy)||0;b.omega=Number(saved.omega)||0;b.colliding=!!saved.colliding;});
+    state.runtime.camera=clone(snapshot.camera||runtimeCameraFromScene(state.runtime.scene));state.runtime.globalVariables=clone(snapshot.globalVariables||[]);state.runtime.sceneVariablesByScene=clone(snapshot.sceneVariablesByScene||{});state.runtime.localVarsByNode=clone(snapshot.localVarsByNode||{});state.runtime.dynamicScriptsByNode=clone(snapshot.dynamicScriptsByNode||{});state.runtime.dynamicConnectionsByNode=clone(snapshot.dynamicConnectionsByNode||{});state.runtime.followTargets=Object.create(null);state.runtime.aiTargets=Object.create(null);state.runtime.events={key:createRuntimeKeyEventState(),lastKey:''};state.runtime.joysticks=sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));state.runtime.activeJoystickPointers={};return true;
+  }
+  function runtimeSaveState(name){const key=normalizeRuntimeStateName(name);if(!key)return false;runtimeStateBucket()[key]={name:String(name).trim(),snapshot:captureRuntimeSceneState()};return true;}
+  function runtimeLoadState(name){const key=normalizeRuntimeStateName(name);if(!key)return false;const saved=runtimeStateBucket()[key];return !!saved&&restoreRuntimeSceneState(saved.snapshot);}
+  function runtimeRemoveState(name){const key=normalizeRuntimeStateName(name);if(!key)return false;const bucket=runtimeStateBucket();const exists=Object.prototype.hasOwnProperty.call(bucket,key);delete bucket[key];return exists;}
+  function runtimeClearState(){const bucket=runtimeStateBucket();Object.keys(bucket).forEach(k=>delete bucket[k]);return true;}
+
   function runtimeContext(node){
     const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
     const locals=runtimeVariableArray('Local',node),globals=runtimeVariableArray('Global',node),sceneVars=runtimeVariableArray('Scene',node);
-    const joy=state.runtime.shared?.joystickObject||Object.create(null);
+    const joy=Object.fromEntries((state.runtime.joysticks||[]).map(j=>[j.variable,{distance:j.distance||0,angle:j.angle||0,value_x:j.value_x||0,value_y:j.value_y||0}]));
     const velocity={};
     const setVX=v=>{if(body&&v!==null&&v!==undefined)body.vx=Number(v)||0;};
     const setVY=v=>{if(body&&v!==null&&v!==undefined)body.vy=Number(v)||0;};
@@ -3282,12 +3249,12 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
+      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:sceneJoysticks(state.runtime.scene).map(j=>({variable:j.variable})),mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:runtimeAllNodes().map(x=>x.node),folderOptions:runtimeAllNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.numericId}]`),spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
       setVariable:(scope,name,value)=>runtimeSetVariable(scope,name,value,node),
-      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);b._shapeDirty=true;}},
+      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);}},
       setNode:(name,id)=>{if(node){if(name!==null&&name!==undefined)node.name=String(name);if(id!==null&&id!==undefined){const n=Number(id);if(Number.isFinite(n))node.numericId=n;}}},
       setText:(v)=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});}),
       setSprite:(v)=>runtimeSetComponent(node,'sprite',c=>{if(v.Type!==null&&v.Type!==undefined)c.sourceType=v.Type;if(v.Sprite!==null&&v.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v.Animation!==null&&v.Animation!==undefined)c.animation=v.Animation;if(v.Pixelated!==null&&v.Pixelated!==undefined)c.pixelated=!!v.Pixelated;}),
@@ -3301,12 +3268,13 @@
       avoid:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.aiTargets[node.id]={kind:'avoid',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
       destroyObject:()=>runtimeDestroyNode(node),
       createObject:(label,x,y,angle,vx,vy,angular)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)runtimeAddObject(t.node.id,x,y,angle,vx,vy,angular);},
+      saveState:(name)=>runtimeSaveState(name),loadState:(name)=>runtimeLoadState(name),removeState:(name)=>runtimeRemoveState(name),clearState:()=>runtimeClearState(),
       playAudio:(v)=>runtimePlayAudio(v),stopAudio:()=>runtimeStopAudio(),clearAudio:()=>runtimeClearAudio(),
       isCollidedWith:(label)=>runtimeIsCollided(node,label),
       runtime:state.runtime,
       loadScene:(name)=>{const s=state.scenes.find(v=>v.name===name);if(s)state.runtime.pendingSceneId=s.id;}
     };
-    for(const j of state.runtime.shared?.joysticksList||[]){const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;}
+    sceneJoysticks(state.runtime.scene).forEach(j=>{const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;});
     return ctx;
   }
   let runtimeAudioContext=null,runtimeAudioMaster=null;
@@ -3448,8 +3416,15 @@
   function runtimeStopAudio(){[...(state.runtime.audio||[])].forEach(a=>{try{a.pause();}catch{}});}
   function runtimeClearAudio(){runtimeStopAudio();state.runtime.audio=[];}
   function runtimeCloseAudio(){runtimeStopAudio();runtimeAudioBuffers.clear();runtimeAudioLoading.clear();try{runtimeAudioMaster?.disconnect();}catch{}try{runtimeAudioContext?.close();}catch{}runtimeAudioMaster=null;runtimeAudioContext=null;try{runtimeMIDIContext?.close();}catch{}runtimeMIDIContext=null;}
-  function routeRuntimeOutput(sourceSn,outputId){const rt=state.runtime;if(!sourceSn||!rt)return;for(const c of rt.routesByScriptOutput?.get(sourceSn.id)?.get(outputId)||[]){const targetScript=rt.scriptById.get(c.to),ownerId=rt.scriptOwnerById.get(c.to),targetNode=ownerId?rt.nodeById.get(ownerId):null;if(targetScript&&targetNode)executeRuntimeScriptNode(targetScript,scriptNodeDefinition(targetScript.defName),targetNode,false);}}
-
+  function routeRuntimeOutput(sourceSn,outputId){
+    const sourceNode=runtimeNodeForScript(sourceSn);if(!sourceNode)return;
+    const lists=Object.values(state.runtime.dynamicConnectionsByNode||{});
+    for(const list of lists){if(!Array.isArray(list))continue;const c=list.find(x=>x.from===sourceSn.id&&x.output===outputId);if(!c)continue;const targetNode=runtimeFindNode((runtimeScriptList(sourceNode.id).find(x=>x.id===c.to)?sourceNode.id:null));
+      let targetScript=null,targetOwner=null;
+      for(const [owner,arr] of Object.entries(state.runtime.dynamicScriptsByNode||{})){const hit=(Array.isArray(arr)?arr:[]).find(x=>x.id===c.to);if(hit){targetScript=hit;targetOwner=owner;break;}}
+      if(targetScript){executeRuntimeScriptNode(targetScript,scriptNodeDefinition(targetScript.defName),runtimeFindNode(targetOwner),false);}
+    }
+  }
   function executeRuntimeScriptNode(sn,def,node,isEvent=false){
     if(!sn||!def||!node)return null;
     if(!scriptRequirementEnabled(def))return null;
@@ -3457,26 +3432,20 @@
     if(def.receiver && !isEvent && def.name==='Timeout'){const key=sn.id,now=performance.now(),v=runtimeValuesForScript(sn,node);state.runtime.timers.push({kind:'timeout',key,nodeId:node.id,at:now+Math.max(0,Number(v.Milliseconds)||0)});return null;}
     const ctx=runtimeContext(node);const values=runtimeValuesForScript(sn,node);
     let result={};
-    try{result=def.func(ctx,values)||{};}catch(err){const msg=String(err?.message||err);state.runtime.lastError=msg;runtimeOutput('error',`ScriptNode ${def.name} on ${node.name}: ${msg}`);return null;}
+    try{result=def.func(ctx,values)||{};}catch(err){state.runtime.lastError=String(err?.message||err);return null;}
     Object.entries(result||{}).forEach(([out,val])=>{if(val)routeRuntimeOutput(sn,out);});
     return result;
   }
-  function runRuntimeSceneScripts(){for(const item of state.runtime.eventScriptsByName?.get('onLoad')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
-  function runRuntimeUnloadScripts(){for(const item of state.runtime.eventScriptsByName?.get('onUnload')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
-  function processRuntimeSpawnQueue(limit=64){const rt=state.runtime;let count=0;while(rt.pendingOnLoad?.length&&count<limit){const node=rt.pendingOnLoad.shift();if(!node||!rt.nodeById.has(node.id))continue;for(const sn of rt.eventScriptsByNode.get(node.id)?.onLoad||[])executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);count++;}}
-  function runtimeCollisionKey(a,b){const ai=String(a?.node?.id||''),bi=String(b?.node?.id||'');return ai<bi?`${ai}|${bi}`:`${bi}|${ai}`;}
-  function queueRuntimeCollisionPairs(pairs){
-    const current=state.runtime.frameCollisionPairs||(state.runtime.frameCollisionPairs=new Map());
-    for(const pair of (Array.isArray(pairs)?pairs:[])){const a=pair?.[0],b=pair?.[1];if(!a?.node||!b?.node||a===b)continue;const key=runtimeCollisionKey(a,b);if(!key)continue;current.set(key,[a,b]);}
+  function runRuntimeSceneScripts(){
+    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>runtimeScriptList(node.id).filter(sn=>sn.defName==='onLoad').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true)));
   }
-  function flushRuntimeCollisionEvents(){
-    const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),next=new Set();
-    current.forEach((pair,key)=>{next.add(key);if(previous.has(key))return;const [a,b]=pair;[[a,b],[b,a]].forEach(([body,other])=>{const node=body?.node,target=other?.node;if(!node||!target)return;const label=`${target.name} [${target.numericId}]`;for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'&&String(first.selected??'')!==label)continue;executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);}});});
-    rt.activeCollisionPairs=next;rt.frameCollisionPairs=new Map();
+  function runRuntimeUnloadScripts(){
+    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>runtimeScriptList(node.id).filter(sn=>sn.defName==='onUnload').forEach(sn=>executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true)));
   }
-
   function processRuntimeTimers(now){
-    const rt=state.runtime,due=rt.timers||[];rt.timers=[];for(const t of due){if(t.kind==='timeout'&&now>=t.at){const node=rt.nodeById.get(t.nodeId),sn=rt.scriptById.get(t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else rt.timers.push(t);}for(const [id,st] of Object.entries(rt.intervalStates||{})){if(!st.active||now<st.next)continue;const sn=rt.scriptById.get(id),node=rt.nodeById.get(st.nodeId);if(!sn||!node){delete rt.intervalStates[id];continue;}let n=0;while(now>=st.next&&n++<8){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');st.next+=st.ms;}}
+    const due=(state.runtime.timers||[]);state.runtime.timers=[];
+    due.forEach(t=>{if(t.kind==='timeout'&&now>=t.at){const node=runtimeFindNode(t.nodeId);const sn=runtimeScriptList(t.nodeId).find(x=>x.id===t.key);if(node&&sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}else state.runtime.timers.push(t);});
+    Object.entries(state.runtime.intervalStates||{}).forEach(([id,st])=>{if(!st.active||now<st.next)return;let n=0;while(now>=st.next&&n++<8){const hit=Object.values(state.runtime.dynamicScriptsByNode||{}).flatMap(v=>Array.isArray(v)?v:[]).find(sn=>sn.id===id);if(hit){routeRuntimeOutput(hit,'next');routeRuntimeOutput(hit,'out');}st.next+=st.ms;}});
   }
 
   function createRuntimeKeyEventState(){
@@ -3500,8 +3469,28 @@
   }
 
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
-    if(!state.runtime.running)return;state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);for(const item of state.runtime.eventScriptsByName?.get(defName)||[]){const node=item.node,sn=item.sn;if(targetNodeId&&node.id!==targetNodeId)continue;const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)continue;const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'){const selected=first.selected??'';if(defName==='onKeybind'&&selected!==values.key)continue;if(['onTouch','onMouse','onScreenInput'].includes(defName)&&selected!==eventType)continue;if(defName==='onJoystick'&&selected!==values.Variable)continue;if(defName==='onConnectionChange'&&selected!==values.connection)continue;}executeRuntimeScriptNode(sn,def,node,true);}}
 
+    if(!state.runtime.running)return;
+    state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);
+    runtimeAllNodes().filter(({node})=>node.type==='node').forEach(({node})=>{
+      // Pointer events are delivered only to the node under the pointer.
+      // Keyboard/screen/joystick events remain broadcast when no target is supplied.
+      if(targetNodeId && node.id!==targetNodeId)return;
+      runtimeScriptList(node.id).forEach(sn=>{
+        if(sn.defName!==defName)return;
+        const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)return;
+        const first=flattenEditor(sn.values)[0]?.entry;
+        if(first?.type==='selector'){
+          const selected=first.selected??'';
+          if(defName==='onKeybind' && selected!==values.key)return;
+          if(['onTouch','onMouse','onScreenInput'].includes(defName) && selected!==eventType)return;
+          if(defName==='onJoystick' && selected!==values.Variable)return;
+          if(defName==='onConnectionChange' && selected!==values.connection)return;
+        }
+        executeRuntimeScriptNode(sn,def,node,true);
+      });
+    });
+  }
   function runtimeJoystickLayout(j,W=1280,H=720){const size=Array.isArray(j.size)?j.size:[110,110],w=Math.max(1,Number(size[0])||110),h=Math.max(1,Number(size[1])||110),p=j.position||{};const x=p.left!=null?Number(p.left)+w/2:p.right!=null?W-Number(p.right)-w/2:W/2;const y=p.top!=null?Number(p.top)+h/2:p.bottom!=null?H-Number(p.bottom)-h/2:H/2;return{x,y,w,h,radius:Math.min(w,h)/2};}
   function runtimeJoystickAt(x,y){
     for(const j of sceneJoysticks(state.runtime.scene).slice().reverse()){
@@ -3703,10 +3692,10 @@
     if(!preferred)return;
     let runtimeMic=null;
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
-    const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
+    const sceneClone=clone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,debugLastDraw:0,lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
-    state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),sceneStatesByScene:Object.create(null),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime.bodies=buildRuntimeState(sceneClone); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
     if(window.__UIX_STANDALONE__){
@@ -3715,7 +3704,6 @@
       if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111;display:grid;place-items:center;';
       applyRuntimeScreenType(root,canvas,state.game.screenType);
       canvas.style.touchAction='none';
-      if(debug)installRuntimeOutputCapture();
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();runtimeWarmAudioAssets();
       runtimeLast=performance.now();
@@ -3724,9 +3712,9 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-actions">${debug?'<button id="runtimeOutputButton" type="button">Output</button>':''}<button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>':''}`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;if(debug){$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();}const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){const rt=state.runtime;rt.running=false;runtimeOutputRestore?.();runtimeOutputRestore=null;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.renderCtx=null;rt.renderCanvas=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){state.runtime.running=false;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();state.runtime.bodies=[];$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -3734,9 +3722,8 @@
     while(runtimeAccumulator>=fixedDt&&steps<8){stepRuntime(fixedDt);runtimeAccumulator-=fixedDt;steps++;}
     drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
+  function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
-  function runtimeRenderContext(canvas){const rt=state.runtime;if(rt.renderCtx&&rt.renderCanvas===canvas)return rt.renderCtx;let ctx=null;try{ctx=canvas.getContext('2d',{alpha:false,desynchronized:true,willReadFrequently:false});}catch{}if(!ctx)ctx=canvas.getContext('2d');rt.renderCanvas=canvas;rt.renderCtx=ctx||null;return ctx;}
   function runtimeViewportMetrics(canvas){
     const m=runtimeProjection(canvas);
     const pw=Math.max(1,Math.round(m.width*m.dpr)),ph=Math.max(1,Math.round(m.height*m.dpr));
@@ -3758,7 +3745,7 @@
   }
   function drawRuntime(){
     const c=$('#runtimeCanvas');if(!c)return;
-    const ctx=c.getContext('2d');if(!ctx)return;
+    const ctx=c.getContext('2d');
     const m=runtimeViewportMetrics(c);
     const W=m.width,H=m.height,cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};
     const zoom=Math.max(.01,Number(cam.scale)||1);
@@ -3780,8 +3767,7 @@
     }
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
-    runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
-    for(const b of renderBodies){const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
+    for(const b of state.runtime.bodies||[])drawNodeVisual(ctx,b.node,b.t.position[0],b.t.position[1],b.t.scale[0],b.t.scale[1],b.t.angle[0]);
     drawRuntimeColliders(ctx);
     ctx.restore();
 
@@ -4040,7 +4026,7 @@
     document.documentElement.classList.add('uix-standalone');
   }else{
     state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;ensureGameSettings();
-    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();$('#node2dVersion')?.addEventListener('click',openUpdates);renderAll();applyTopbarAnchors();loadNode2DVersion();
+    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();applyTopbarAnchors();loadNode2DVersion();
     const bootURL=new URLSearchParams(location.search).get('load');
     if(bootURL)bootstrapURLLoad();
     else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
