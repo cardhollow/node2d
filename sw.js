@@ -1,5 +1,6 @@
-const CACHE_NAME='uix-node2d-v31';
+const CACHE_NAME='uix-node2d-v51';
 const ROOT=new URL('./',self.location.href);
+const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 
 function sameOrigin(url){return url.origin===self.location.origin;}
 function shouldCache(request){
@@ -30,7 +31,8 @@ async function getAppShell(){
       if(sameOrigin(u) && u.pathname!==new URL(self.location.href).pathname){refs.add(u.href);}
     }catch{}
   }
-  await Promise.all([...refs].map(async href=>{
+  const extraHrefs=EXTRA_FILES.map(path=>new URL(path,ROOT.href).href);
+  await Promise.all([...refs,...extraHrefs].map(async href=>{
     try{
       const req=new Request(href,{cache:'no-store'});
       const r=await fetch(req);

@@ -1362,7 +1362,8 @@
     const canvas=$('#workplaceCanvas');const pointers=new Map();let pinch=null;
     const startPan=e=>{workspace.panDrag={x:e.clientX,y:e.clientY,panX:state.pan.x,panY:state.pan.y};canvas.setPointerCapture(e.pointerId);$('#workplace').classList.add('panning');};
     canvas.addEventListener('pointerdown',e=>{
-      if(state.runtime.running)return;if(e.pointerType==='mouse'&&e.button!==0)return;
+      if(state.runtime.running)return;
+      closeMenus();if(e.pointerType==='mouse'&&e.button!==0)return;
       pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pointers.size===2){const[a,b]=[...pointers.values()];pinch={lastDistance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),lastMidX:(a.x+b.x)/2,lastMidY:(a.y+b.y)/2};workspace.panDrag=null;workspace.joystickDrag=null;workspace.gizmoDrag=null;return;}
       const rect=canvas.getBoundingClientRect(),world=screenToWorld(e.clientX,e.clientY),joystickHit=joystickAtEditorPoint(world,rect);
@@ -2619,7 +2620,21 @@
     if(node&&component(node,'progressbar'))list['Progress Bar']=[{label:'Value',value:'ctx.progressBar.value'},{label:'Min',value:'ctx.progressBar.min'},{label:'Max',value:'ctx.progressBar.max'},{label:'Width',value:'ctx.progressBar.width'},{label:'Height',value:'ctx.progressBar.height'},{label:'Position X',value:'ctx.progressBar.position[0]'},{label:'Position Y',value:'ctx.progressBar.position[1]'}];
     return list;
   }
-  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const canvas=$('#scriptCanvas');const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y};card.setPointerCapture?.(e.pointerId);function move(ev){sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);});}
+  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{
+    if(e.target.closest('button'))return;
+    const canvas=$('#scriptCanvas');
+    const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y};
+    let moved=false;
+    card.setPointerCapture?.(e.pointerId);
+    function move(ev){
+      const nx=start.sx+(ev.clientX-start.x)/state.script.zoom,ny=start.sy+(ev.clientY-start.y)/state.script.zoom;
+      if(!moved&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)<2)return;
+      if(!moved){moved=true;pushHistory();}
+      sn.x=nx;sn.y=ny;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();
+    }
+    function end(){card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);}
+    card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);
+  });}
   function attachOutputDrag(port){
     port.addEventListener('pointerdown',e=>{
       e.stopPropagation();e.preventDefault();
@@ -2630,19 +2645,23 @@
         const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.script-input-port');
         const outputNode=port.closest('.script-node-card')?.dataset.scriptNodeId, outputId=port.dataset.outputId;
         const list=state.script.connectionsByNode[state.script.nodeId] ||= [];
-        // This output owns at most one connection. Releasing it on empty space disconnects it.
-        for(let i=list.length-1;i>=0;i--) if(list[i].from===outputNode&&list[i].output===outputId) list.splice(i,1);
+        const before=JSON.stringify(list);
+        const next=list.filter(c=>!(c.from===outputNode&&c.output===outputId));
         if(target && outputNode){
           const nodeId=target.closest('.script-node-card')?.dataset.scriptNodeId;
-          if(nodeId) list.push({from:outputNode,output:outputId,to:nodeId});
+          if(nodeId) next.push({from:outputNode,output:outputId,to:nodeId});
         }
-        temp.remove();document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);renderScriptConnections();
+        if(JSON.stringify(next)!==before){
+          pushHistory();
+          state.script.connectionsByNode[state.script.nodeId]=next;
+        }
+        temp.remove();document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);renderScriptConnections();updateHistoryButtons();
       }
       move(e);document.addEventListener('pointermove',move);document.addEventListener('pointerup',up,{once:true});
     });
   }
 
-  function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0)list.splice(i,1);renderScriptConnections();});svg.append(line);});}
+  function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0){pushHistory();list.splice(i,1);updateHistoryButtons();}renderScriptConnections();});svg.append(line);});}
   function enableScriptCanvas(){
     enableScriptPanelControls();
     const canvas=$('#scriptCanvas'); let pan=null;const pointers=new Map();let pinch=null;
@@ -2699,7 +2718,8 @@
     const point=scriptClientToWorld(clientX,clientY);
     const list=state.script.nodesByNode[state.script.nodeId] ||= [];
     const sn={id:`snode-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,defName:def.name,x:point.x,y:point.y,values:cloneEditorDefinition(def.editor||[]).map(normalizeEditor),expressions:{}};
-    list.push(sn); renderScriptCanvas(); status(`${def.name} ScriptNode added`);
+    pushHistory();
+    list.push(sn); renderScriptCanvas(); updateHistoryButtons(); status(`${def.name} ScriptNode added`);
   }
 
   // Custom Math helpers are still regular JavaScript and are available inside expressions.
