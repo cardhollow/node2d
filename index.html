@@ -58,12 +58,14 @@
       <div class="top-part part-actions" anchor="center">
         <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon">↶</span><span class="label">Actions</span><span class="chevron">⌄</span></button>
         <div id="actionsMenu" class="context-menu" data-close-outside="true">
-          <button data-action="undo"><span>↶</span>Undo</button>
-          <button data-action="redo"><span>↷</span>Redo</button>
+          <button id="topUndoButton" data-action="undo"><span>↶</span>Undo</button>
+          <button id="topRedoButton" data-action="redo"><span>↷</span>Redo</button>
           <div class="menu-separator"></div>
           <button data-action="cut-node"><span>✂</span>Cut Node</button>
           <button data-action="copy-node"><span>⧉</span>Copy Node</button>
           <button data-action="paste-node"><span>▣</span>Paste Node</button>
+          <div class="menu-separator"></div>
+          <button data-action="open-history"><span>◷</span>History</button>
         </div>
       </div>
 
@@ -85,6 +87,7 @@
         <button id="fullscreenButton" class="top-button icon-only fullscreen-button" data-action="toggle-fullscreen" title="Fullscreen" type="button"><span class="icon">⛶</span><span class="shortcut-hint">F11</span></button>
       </div>
     </header>
+    <div id="stageStatus" class="workplace-status">Ready</div>
 
     <main class="editor-body">
       <section id="workplace" class="workplace" aria-label="Workplace">
@@ -93,7 +96,6 @@
           <div class="stage-badge"><span class="stage-dot"></span><span id="stageSceneName">Main</span></div>
           <div class="stage-hint"><span id="activeModeLabel">Select</span> · Zoom <span id="zoomLabel">100%</span> · <span id="panLabel">Pan 0, 0</span></div>
         </div>
-        <div id="stageStatus" class="workplace-status">Ready</div>
       </section>
 
       <aside id="inspectorDock" class="inspector-dock">
@@ -231,7 +233,7 @@
   </section>
 
   <section id="scriptModal" class="modal script-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><div class="script-header-actions"><button id="scriptUndoButton" class="script-history-button" data-action="undo" title="Undo">↶</button><button id="scriptRedoButton" class="script-history-button" data-action="redo" title="Redo">↷</button><button class="modal-close" data-action="close-modal">×</button></div></div>
     <div class="script-layout">
       <aside class="script-left">
         <div class="script-panel-header">
@@ -250,6 +252,17 @@
       </section>
       <aside id="scriptInspector" class="script-right"></aside>
     </div>
+  </section>
+
+  <section id="historyModal" class="modal history-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>History</h3><p>Every Node2D editor edit in the current session.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div id="historyList" class="history-list"></div>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Close</button></div>
+  </section>
+
+  <section id="updatesModal" class="modal updates-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Updates</h3><p>Node2D changes and version history.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="updates-frame-wrap"><iframe id="updatesFrame" title="Node2D Updates"></iframe></div>
   </section>
 
   <section id="helpModal" class="modal help-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
