@@ -40,7 +40,7 @@
       {
         "subtitle": "Multi Selection and locked Nodes",
         "id": "node2d-basics--multi-selection-and-locked-nodes",
-        "contents": "<h2>Multi Selection and locked Nodes</h2><p>Use <strong>Actions → Multi Selection</strong> to turn on keyboard-free multi-selection. With it enabled, ordinary clicks add or remove Nodes from the selection, so Ctrl/Shift are not required.</p><p>Use the Node component's <strong>Locked</strong> option to prevent a Node from being selected in the workspace. A locked Node is skipped by workspace hit testing, so clicking it selects an unlocked Node behind it when one exists. In the Selection Panel, a locked Node can still be selected by itself, but it is never included in a multiple selection.</p><p><strong>Duplicate</strong> creates a new independent Node or ScriptNode directly; it does not use or replace the clipboard.</p>"
+        "contents": "<h2>Multi Selection and locked Nodes</h2><p>Use <strong>Actions → Multi Selection</strong> to turn on keyboard-free multi-selection. With it enabled, ordinary clicks add or remove Nodes from the selection, so Ctrl/Shift are not required.</p><p>Use the Node component's <strong>Locked</strong> option to prevent a Node from being selected in the workspace. A locked Node is skipped by workspace hit testing, so clicking it selects an unlocked Node behind it when one exists. In the Selection Panel, a locked Node can still be selected by itself, but it is never included in a multiple selection.</p><p><strong>Closed folders are unselectable in Multi Selection.</strong> They may still be opened first and then their child Nodes can be selected.</p><p><strong>Duplicate</strong> creates a new independent Node or ScriptNode directly; it does not use or replace the clipboard.</p>"
       },
       {
         "subtitle": "Node2D source, copyright, and app link",
@@ -64,12 +64,12 @@
       },
       {
         "subtitle": "Multi-selection",
-        "contents": "<h2>Multi-selection</h2><p>Select several Nodes with Shift or Ctrl/Command when the browser delivers modifier keys to the viewport. The selected Nodes can be transformed together with the gizmo.</p><p>If keyboard modifiers are inconvenient, open <strong>Actions</strong> and turn on <strong>Multi Selection</strong>. While it is on, clicking a Node adds it to the current selection or removes it when it is already selected. This works directly in the workspace without needing Ctrl, Shift, or Command. Click <strong>Multi Selection</strong> again to turn the mode off.</p><p>Use <strong>Select All - &lt;Name&gt;</strong> from a Node context menu to select every Node in the current Scene with the same name.</p><p>The <a class=\"help-ref\" href=\"#help:editor-settings--multiselection-unified-editing\" data-help-topic=\"editor-settings--multiselection-unified-editing\">Multiselection Unified Editing</a> setting controls group behavior. When True, the selected Nodes are transformed as one group and keep their relative positions and sizes. The selection uses one large yellow outline. When False, each Node has its own yellow outline; Scale and Rotate affect each Node individually instead of transforming the group as one object.</p><p>Selected Nodes also show their <a class=\"help-ref\" href=\"#help:components-collider\" data-help-topic=\"components-collider\">Collider</a> outlines when they have a Collider.</p>",
+        "contents": "<h2>Multi-selection</h2><p>Select several Nodes with Shift or Ctrl/Command when the browser delivers modifier keys to the viewport. The selected Nodes can be transformed together with the gizmo.</p><p>If keyboard modifiers are inconvenient, open <strong>Actions</strong> and turn on <strong>Multi Selection</strong>. While it is on, clicking a Node adds it to the current selection or removes it when it is already selected. This works directly in the workspace without needing Ctrl, Shift, or Command. Click <strong>Multi Selection</strong> again to turn the mode off.</p><p><strong>Closed folders are unselectable while Multi Selection is active.</strong></p><p>Use <strong>Select All - &lt;Name&gt;</strong> from a Node context menu to select every Node in the current Scene with the same name.</p><p>The <a class=\"help-ref\" href=\"#help:editor-settings--multiselection-unified-editing\" data-help-topic=\"editor-settings--multiselection-unified-editing\">Multiselection Unified Editing</a> setting controls group behavior. When True, the selected Nodes are transformed as one group and keep their relative positions and sizes. The selection uses one large yellow outline. When False, each Node has its own yellow outline; Scale and Rotate affect each Node individually instead of transforming the group as one object.</p><p>Editing a Component property while multiple Nodes are selected follows the normal Component value pipeline and keeps the <code>&lt;&gt;</code> mixed-value presentation. It does not open a per-Node picker, and the Component edit remains an individual value edit even when Multi Unified Editing is enabled or disabled.</p><p>Selected Nodes also show their <a class=\"help-ref\" href=\"#help:components-collider\" data-help-topic=\"components-collider\">Collider</a> outlines when they have a Collider.</p><p><strong>When a Component value is committed while multiple Nodes are selected, the edited value is applied to all selected Nodes first, even when their previous values were different.</strong></p>",
         "id": "editor-layout-and-controls--multi-selection"
       },
       {
         "subtitle": "Context menus",
-        "contents": "<h2>Context menus</h2><p>Node and Component context menus contain commands for the selected item.</p><p>For a Component, <strong>Apply to all - &lt;Name&gt;</strong> copies the current Component values to the same Component type on every Node with the same Node name.</p><p>For a Node, <strong>Select All - &lt;Name&gt;</strong> selects every Node with the same name. The normal <strong>Select All</strong> command selects all selectable Scene items.</p>",
+        "contents": "<h2>Context menus</h2><p>Node and Component context menus contain commands for the selected item.</p><p>For a Component, <strong>Apply to all - &lt;name&gt;</strong> applies the current Component values to every Node with the same Node name. It follows the same transfer pipeline used by Component Copy/Paste, including Script components and their ScriptNode graph data, can add the Component when a target Node does not have it, and does not use or modify the clipboard.</p><p>For a Node, <strong>Select All - &lt;Name&gt;</strong> selects every Node with the same name. The normal <strong>Select All</strong> command selects all selectable Scene items.</p>",
         "id": "editor-layout-and-controls--context-menus"
       },
       {
@@ -156,6 +156,11 @@
         "subtitle": "Sprite Editor side panels",
         "contents": "<h2>Sprite Editor side panels</h2><p>The Sprite Editor keeps both the Tools panel and Sprite Inspector available. Each side panel can be resized with its edge handle and collapsed with its header arrow.</p><p>On a narrow screen, the editor can scroll horizontally so the Inspector remains reachable instead of simply removing it from the editor.</p>",
         "id": "ui-layout-panels-and-fullscreen--sprite-editor-side-panels"
+      },
+      {
+        "subtitle": "Selection and Components panels",
+        "contents": "<h2>Selection and Components panels</h2><p>The editor keeps the <strong>Selection panel on the left</strong> and the <strong>Components panel on the right</strong>, with the Workspace between them.</p><p>Both panels behave like the ScriptNode modal side panels: each is independently resizable and collapsible. Collapsing a panel shrinks it to its side tab and gives the released width to the Workspace. Expanding it restores its stored width, and resizing one side does not move the other side unexpectedly.</p>",
+        "id": "ui-layout-panels-and-fullscreen--selection-and-components-panels"
       }
     ]
   },
@@ -266,6 +271,11 @@
         "subtitle": "Pending edits and selection changes",
         "contents": "<h2>Pending edits</h2><p>The editor flushes an unfinished field edit before changing the selection, rebuilding the inspector, opening another relevant editor, or applying Undo/Redo. This prevents an edit from disappearing when a newly selected Node replaces the current inspector.</p><p>This applies to single selection and multi-selection component editing.</p>",
         "id": "history--pending-edits"
+      },
+      {
+        "subtitle": "Toolbar Undo and Redo",
+        "contents": "<h2>Undo and Redo</h2><p>Undo and Redo are standalone toolbar controls placed between <strong>Actions</strong> and the Select/Move/Rotate/Scale/All controls. They use the same editor history pipeline as the other actions.</p><p>At compact widths their text labels hide and only the existing icon remains, matching the responsive behavior of the other topbar controls.</p>",
+        "id": "history--toolbar-undo-redo"
       }
     ]
   },
@@ -294,12 +304,12 @@
       },
       {
         "subtitle": "Sprite",
-        "contents": "<h2>Sprite Component</h2><p>Sprite displays an imported image asset.</p><table><thead><tr><th>Property</th><th>What it does</th></tr></thead><tbody><tr><td>Type</td><td>Use a normal Sprite or use an <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> source.</td></tr><tr><td>Sprite</td><td>Select the image asset.</td></tr><tr><td>Animation</td><td>Select the animation when the Sprite is using Animation mode.</td></tr><tr><td>Pixelated</td><td>Disables canvas smoothing so the image is drawn with hard pixel edges.</td></tr><tr><td>Position X/Y</td><td>Offsets the Sprite inside the Node.</td></tr><tr><td>Size X/Y</td><td>Sets the local Sprite size. Zero uses the asset's natural/constrained size.</td></tr></tbody></table><p>The Asset Manager can create a new Node directly from a Sprite asset.</p><p><strong>GIF files are not supported as imported assets.</strong> Use <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> with individual Sprite frames for animation.</p>",
+        "contents": "<h2>Sprite Component</h2><p>Sprite displays an imported image asset.</p><table><thead><tr><th>Property</th><th>What it does</th></tr></thead><tbody><tr><td>Type</td><td>Use a normal Sprite or use an <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> source.</td></tr><tr><td>Sprite</td><td>Select the image asset.</td></tr><tr><td>Animation</td><td>Select the animation when the Sprite is using Animation mode.</td></tr><tr><td>Opacity</td><td>Controls Sprite transparency from 0–100.</td></tr><tr><td>Pixelated</td><td>Disables canvas smoothing so the image is drawn with hard pixel edges.</td></tr><tr><td>Position X/Y</td><td>Offsets the Sprite inside the Node.</td></tr><tr><td>Size X/Y</td><td>Sets the local Sprite size. Zero uses the asset's natural/constrained size.</td></tr></tbody></table><p>The Asset Manager can create a new Node directly from a Sprite asset.</p><p>GIF files can be imported, but the editor converts the GIF into individual PNG images with transparent pixels and frame positioning preserved, one image per GIF frame (for example Apple.gif becomes Apple1.png, Apple2.png, and so on). Each resulting PNG is a static image. GIF transparency/alpha is preserved in the generated PNG frames. The imported result is rendered as static images, not as an animated GIF.</p>",
         "id": "components--sprite"
       },
       {
         "subtitle": "Animation Sprite",
-        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite stores frame-based animations made from Sprite assets.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>The animation's name.</td></tr><tr><td>FPS</td><td>Frames played per second.</td></tr><tr><td>Frames</td><td>Sprite assets used as frames.</td></tr><tr><td>Active Animation</td><td>The animation used by the Sprite when Sprite Type is Animation.</td></tr></tbody></table><p> Use Animation Sprite when you want explicit frame sequencing. GIF files are not supported as assets; use Animation Sprite with individual Sprite frames instead.</p>",
+        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite stores frame-based animations made from Sprite assets.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>The animation's name.</td></tr><tr><td>FPS</td><td>Frames played per second.</td></tr><tr><td>Frames</td><td>Sprite assets used as frames.</td></tr><tr><td>Active Animation</td><td>The animation used by the Sprite when Sprite Type is Animation.</td></tr></tbody></table><p> Use Animation Sprite when you want explicit frame sequencing. GIF files are converted into individual PNG Sprite assets; use the resulting frames with Animation Sprite when you want frame-by-frame playback.</p>",
         "id": "components--animation-sprite"
       },
       {
@@ -331,6 +341,17 @@
         "subtitle": "Component list and required Components",
         "contents": "<h2>Built-in Components</h2><p>The built-in Node Component system includes <strong>Node</strong>, <strong>Script</strong>, <strong>Transform</strong>, <strong>Text</strong>, <strong>Sprite</strong>, <strong>Animation Sprite</strong>, <strong>Physics</strong>, <strong>Collider</strong>, and <strong>Progress Bar</strong>. Node, Script, and Transform are required and are not removable.</p><p>Additional UI and editor systems include Joystick, Camera, Variables, and the ScriptNode system.</p>",
         "id": "components--component-list"
+      },
+      {
+        "subtitle": "Color Wheel controls",
+        "contents": "<h2>Color Wheel controls</h2><p>Color inputs in Component inspectors and ScriptNode inputs show a small colored swatch followed by the uppercase hexadecimal value, for example <code>[color box] #FFFFFFFF</code>.</p>",
+        "id": "components--color-wheel-controls"
+      },
+      {
+        "id": "components-input",
+        "title": "Input Component",
+        "subtitle": "Editable text input attached to a Node",
+        "contents": "<h2>Input Component</h2><p>Input Component creates an editable text input box positioned and scaled relative to its Node.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Text</td><td>The current text value.</td></tr><tr><td>Placeholder</td><td>Text shown when the input is empty. Its color follows <strong>Outline Color</strong>.</td></tr><tr><td>Position</td><td>X/Y position relative to the Node.</td></tr><tr><td>Scale</td><td>X/Y scale relative to the Node.</td></tr><tr><td>Multiline</td><td>Allows multiple lines when enabled.</td></tr><tr><td>FG Color</td><td>Text color.</td></tr><tr><td>BG Color</td><td>Input background color.</td></tr><tr><td>Outline Color</td><td>Input border and placeholder color.</td></tr><tr><td>Font Family</td><td>CSS font-family used to draw the text.</td></tr><tr><td>Font Size</td><td>Text size.</td></tr><tr><td>Width / Height</td><td>Input box size.</td></tr><tr><td>Padding</td><td>Inner text padding.</td></tr><tr><td>Outline Width</td><td>Border thickness.</td></tr><tr><td>Border Radius</td><td>Corner radius.</td></tr><tr><td>Max Length</td><td>Maximum text length; 0 means unlimited.</td></tr></tbody></table><p>The ScriptNode action <code>setInputComponent</code> can independently update text, placeholder, position, scale, size, multiline, colors, font settings, padding, outline settings, and max length.</p><p>Color Wheel values are shown with a color swatch followed by uppercase hexadecimal text.</p>"
       }
     ]
   },
@@ -344,7 +365,7 @@
       },
       {
         "subtitle": "Mixed values and &lt;&gt;",
-        "contents": "<h2>Mixed values</h2><p>When a property has different values across the selected Nodes, the existing component control shows <code>&lt;&gt;</code> instead of inventing a second kind of editor.</p><p>Click <code>&lt;&gt;</code> to activate the <strong>same control used for a single Node</strong>. Its starting value comes from the <strong>first selected Node</strong>. Editing the control then applies that value to every currently selected Node.</p><p>If all selected Nodes already have the same value, the normal value is shown immediately.</p>",
+        "contents": "<h2>Mixed values</h2><p>When a property has different values across the selected Nodes, the existing component control shows <code>&lt;&gt;</code> instead of inventing a second kind of editor.</p><p>Click <code>&lt;&gt;</code> to activate the <strong>same control used for a single Node</strong>. Its starting value comes from the <strong>first selected Node</strong> as an editing baseline only. The baseline is not used to decide whether the edit is allowed. On commit, the engine compares the proposed value against <strong>all selected Nodes</strong>; when any selected Node differs, the value is assigned to the entire selection through the normal component pipeline without opening a node-picker list.</p><p>When several Nodes are selected, editing Component values remains a value edit and does not depend on the Multi Unified Editing transform setting.</p><p>If all selected Nodes already have the same value, the normal value is shown immediately.</p>",
         "id": "multi-editing--mixed-values"
       },
       {
@@ -409,7 +430,7 @@
       },
       {
         "subtitle": "Supported asset types",
-        "contents": "<h2>Supported asset types</h2><table><thead><tr><th>Type</th><th>Supported examples</th><th>Notes</th></tr></thead><tbody><tr><td>Sprite / Image</td><td>PNG, JPEG, JPG, WebP, SVG, and other supported image types</td><td>GIF files are not supported as assets. Use Animation Sprite for animated images.</td></tr><tr><td>Audio</td><td>MP3, WAV, OGG, M4A and other browser-supported audio types</td><td>Audio can be previewed from the Asset Manager.</td></tr><tr><td>MIDI</td><td>MID, MIDI</td><td>Opens in the MIDI Editor.</td></tr></tbody></table><p>The file picker accepts image, audio, and MIDI files. Files are stored as project asset data, so saved projects can restore their imported assets.</p>",
+        "contents": "<h2>Supported asset types</h2><table><thead><tr><th>Type</th><th>Supported examples</th><th>Notes</th></tr></thead><tbody><tr><td>Sprite / Image</td><td>PNG, JPEG, JPG, WebP, SVG, GIF, and other supported image types</td><td>GIF imports are converted into individual PNG images, one per frame (for example Apple.gif becomes Apple1.png, Apple2.png, and so on). Each resulting PNG is static.</td></tr><tr><td>Audio</td><td>MP3, WAV, OGG, M4A and other browser-supported audio types</td><td>Audio can be previewed from the Asset Manager.</td></tr><tr><td>MIDI</td><td>MID, MIDI</td><td>Opens in the MIDI Editor.</td></tr></tbody></table><p>The file picker accepts image, audio, and MIDI files. Files are stored as project asset data, so saved projects can restore their imported assets.</p>",
         "id": "asset-manager--supported-asset-types"
       },
       {
@@ -464,7 +485,7 @@
       },
       {
         "subtitle": "GIF files",
-        "contents": "<h2>GIF files</h2><p><strong>GIF files are not supported as imported assets.</strong></p><p>For animation, import individual image frames as Sprite assets and use <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> to sequence them and control FPS.</p>",
+        "contents": "<h2>GIF files</h2><p>GIF files are importable. The editor decodes every frame and creates individual PNG assets, so Apple.gif becomes Apple1.png, Apple2.png, and so on. Each imported PNG is rendered as a static image.</p><p>For animated playback, import individual frames and use <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a>.</p>",
         "id": "asset-manager--gif-files"
       },
       {
@@ -559,7 +580,7 @@
       },
       {
         "subtitle": "onCollideWith",
-        "contents": "<h2>onCollideWith</h2><p>An event-style collision trigger for simple collision reactions.<span> See <a class=\"help-ref\" data-help-topic=\"controls-iscollidedwith\" href=\"?topic=controls-iscollidedwith\">isCollidedWith</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> for related details.</span></p><p>Input: <code>Target</code>. Outputs: <code>next</code> and <code>truth</code>. There is intentionally no <code>falsy</code> output.</p><p>Use this when you want a flow to start when the selected target begins colliding with the current Node. It is optimized for event use instead of checking collision state repeatedly with <code>isCollidedWith</code>.</p>",
+        "contents": "<h2>onCollideWith</h2><p>An event-style collision trigger for simple collision reactions. See <a class=\"help-ref\" data-help-topic=\"controls-iscollidedwith\" href=\"?topic=controls-iscollidedwith\">isCollidedWith</a> for related details.</p><p>Inputs: <code>Target</code> and Boolean <code>applyByName</code>. When <code>applyByName</code> is true, the collision target is matched by Node name; when false, name-only matching does not apply.</p><p>Outputs: <code>next</code> and <code>truth</code>. There is intentionally no <code>falsy</code> output.</p><p>Use this when you want a flow to start when the selected target begins colliding with the current Node.</p>",
         "id": "events-oncollidewith"
       }
     ]
@@ -614,7 +635,7 @@
       },
       {
         "subtitle": "setSprite",
-        "contents": "<h2>setSprite</h2><p>Changes the visible Sprite or Animation selection.</p><p>Inputs: <code>Type</code> (Sprite or Animation), <code>Sprite</code>, <code>Animation</code>, <code>Pixelated</code>. Output: <code>out</code>.</p>",
+        "contents": "<h2>setSprite</h2><p>Changes the visible Sprite or Animation selection.</p><p>Inputs: <code>Type</code>, <code>Sprite</code>, <code>Animation</code>, <code>Pixelated</code>, and <code>Opacity</code>. Opacity uses a 0–100 value.</p><p>Output: <code>out</code>.</p>",
         "id": "scriptnodes-actions--setsprite"
       },
       {
@@ -704,17 +725,17 @@
       },
       {
         "subtitle": "Interval",
-        "contents": "<h2>Interval</h2><p>Repeatedly continues a flow after a time interval.</p><p>Input: <code>Milliseconds</code>. Outputs: <code>next</code> and <code>out</code>. Both outputs fire each time the interval elapses.</p>",
+        "contents": "<h2>Interval</h2><p>Repeatedly continues a flow after a time interval.</p><p>Inputs: <code>Milliseconds</code> and Boolean <code>cancellable</code>, which defaults to <code>false</code>.</p><p>When <code>cancellable</code> is true, the input signal must remain active. The interval runs only once for that signal activation; when the signal disappears, the pending interval no longer fires. Outputs: <code>next</code> and <code>out</code>.</p>",
         "id": "controls-interval"
       },
       {
         "subtitle": "Timeout",
-        "contents": "<h2>Timeout</h2><p>Delays a flow once by the selected time.</p><p>Input: <code>Milliseconds</code>. Outputs: <code>next</code> and <code>out</code>. Both outputs fire when the timeout expires.</p>",
+        "contents": "<h2>Timeout</h2><p>Delays a flow once by the selected time.</p><p>Inputs: <code>Milliseconds</code> and Boolean <code>cancellable</code>, which defaults to <code>false</code>.</p><p>When <code>cancellable</code> is true, the pending timeout itself is cancelled when its input signal disappears before the timeout completes. Outputs: <code>next</code> and <code>out</code>.</p>",
         "id": "controls-timeout"
       },
       {
         "subtitle": "isCollidedWith",
-        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with a selected target.<span> See <a class=\"help-ref\" data-help-topic=\"events-oncollidewith\" href=\"?topic=events-oncollidewith\">onCollideWith</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> for related details.</span></p><p>Input: <code>Target</code>. Outputs: <code>next</code>, <code>truth</code>, and <code>falsy</code>. <code>next</code> continues the flow whether the collision result is true or false.</p>",
+        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with a selected target.</p><p>Inputs: <code>Target</code> and Boolean <code>applyByName</code>. When <code>applyByName</code> is true, the collision is considered true when the target Node name matches. When false, name-only matching does not apply.</p><p>Outputs: <code>next</code>, <code>truth</code>, and <code>falsy</code>. <code>next</code> continues the flow whether the collision result is true or false.</p>",
         "id": "controls-iscollidedwith"
       }
     ]
@@ -766,6 +787,11 @@
         "subtitle": "ScriptNode duplication and history",
         "contents": "<h2>ScriptNode editing</h2><p>ScriptNodes can be copied, pasted, and duplicated. Duplicate creates an independent ScriptNode with a fresh ID.</p><p>Changing ScriptNode values, selectors, booleans, expressions, connections, creation, deletion, and duplication participates in history so Undo/Redo restores the visible ScriptNode editor state too.</p>",
         "id": "scriptnodes--editing-and-history"
+      },
+      {
+        "subtitle": "Component transfer and color inputs",
+        "contents": "<h2>Component transfer and color inputs</h2><p><strong>Apply to all - &lt;name&gt;</strong> is an independent Component transfer command. It uses the same underlying value-transfer behavior as Copy/Paste, including Script components and their ScriptNode graph, but never touches the clipboard.</p><p>ScriptNode Color Wheel inputs show a colored swatch before the uppercase hexadecimal color value.</p><p><code>setInputComponent</code> updates an Input Component. Its inputs include Text, Placeholder, PosX/PosY, ScaleX/ScaleY, Width, Height, Multiline, FG Color, BG Color, Outline Color, Font Size, Font Family, Padding, Outline Width, Border Radius, and Max Length.</p>",
+        "id": "scriptnodes--component-transfer-and-color-inputs"
       }
     ]
   },
