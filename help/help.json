@@ -579,6 +579,16 @@
         "id": "scriptnodes-events--onaudiopickup"
       },
       {
+        "subtitle": "onInputFocus",
+        "contents": "<h2>onInputFocus</h2><p>Runs when an Input Component receives focus in Play or Debug. The event runs on the Node containing the focused Input Component.</p><p>Output: <code>out</code>. The current input text is available as <code>ctx.input.value</code>.</p>",
+        "id": "scriptnodes-events--oninputfocus"
+      },
+      {
+        "subtitle": "onInputBlur",
+        "contents": "<h2>onInputBlur</h2><p>Runs when an Input Component loses focus in Play or Debug. The event runs on the Node containing the Input Component that lost focus.</p><p>Output: <code>out</code>. The final current input text is available as <code>ctx.input.value</code>.</p>",
+        "id": "scriptnodes-events--oninputblur"
+      },
+      {
         "subtitle": "onCollideWith",
         "contents": "<h2>onCollideWith</h2><p>An event-style collision trigger for simple collision reactions. See <a class=\"help-ref\" data-help-topic=\"controls-iscollidedwith\" href=\"?topic=controls-iscollidedwith\">isCollidedWith</a> for related details.</p><p>Inputs: <code>Target</code> and Boolean <code>applyByName</code>. When <code>applyByName</code> is true, the collision target is matched by Node name; when false, name-only matching does not apply.</p><p>Outputs: <code>next</code> and <code>truth</code>. There is intentionally no <code>falsy</code> output.</p><p>Use this when you want a flow to start when the selected target begins colliding with the current Node.</p>",
         "id": "events-oncollidewith"
@@ -662,6 +672,16 @@
         "subtitle": "Destroy Object",
         "contents": "<h2>Destroy Object</h2><p>Removes the current runtime object from the running Scene.<span> See <a class=\"help-ref\" data-help-topic=\"actions-create-object\" href=\"?topic=actions-create-object\">Create Object</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-memory\" href=\"?topic=play-runtime-memory\">Runtime object lifecycle</a> for related details.</span></p><p>Its runtime Node, Physics body, ScriptNode state, connections, timers, follow/AI targets, collision references, render entry, and lookup references are removed so it can become eligible for JavaScript garbage collection when no outside reference remains.</p>",
         "id": "actions-destroy-object"
+      },
+      {
+        "subtitle": "focusInput",
+        "contents": "<h2>focusInput</h2><p>Focuses the Input Component on the current Node in Play or Debug and makes it ready for keyboard or touch text entry.</p><p>Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--focusinput"
+      },
+      {
+        "subtitle": "blurInput",
+        "contents": "<h2>blurInput</h2><p>Removes focus from the current Node&apos;s Input Component in Play or Debug.</p><p>Output: <code>out</code>. Losing focus triggers <code>onInputBlur</code>.</p>",
+        "id": "scriptnodes-actions--blurinput"
       },
       {
         "subtitle": "Create Object",
@@ -810,7 +830,7 @@
       },
       {
         "subtitle": "Input and event values",
-        "contents": "<h2>Input and event values</h2><p>Expressions can use keyboard, touch, mouse, screen-input, and joystick values provided by the current game state.</p>",
+        "contents": "<h2>Input and event values</h2><p>Use <code>ctx.input.value</code> to read the current text of the Input Component on the current Node.</p><p><code>onInputFocus</code> runs when the Input Component receives focus and <code>onInputBlur</code> runs when it loses focus.</p><p>Example:</p><pre><code>ctx.input.value.length\nctx.input.value === \"Player\"</code></pre>",
         "id": "expressions--input-and-event-values"
       },
       {
@@ -1360,12 +1380,12 @@
       },
       {
         "subtitle": "Events",
-        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, <code>onUnload</code>.</p><p><a class=\"help-ref\" href=\"?topic=events-oncollidewith\" data-help-topic=\"events-oncollidewith\">Open onCollideWith</a></p>",
+        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onInputFocus</code>, <code>onInputBlur</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, <code>onUnload</code>.</p>",
         "id": "quickref-events"
       },
       {
         "subtitle": "Actions",
-        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Chase</code>, <code>Avoid</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>",
+        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>setVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setInputComponent</code>, <code>focusInput</code>, <code>blurInput</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Chase</code>, <code>Avoid</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>",
         "id": "quickref-actions"
       },
       {
