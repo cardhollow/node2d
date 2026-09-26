@@ -1,0 +1,147 @@
+[
+  {
+    "title": "v28.0.0",
+    "items": [
+      {
+        "id": "v28--runtime-rendering",
+        "subtitle": "Runtime objects render again",
+        "contents": "<h2>Runtime rendering fix</h2><p>Fixed a runtime cache initialization bug that caused the optimized renderer to see an empty node list when a game started. Runtime nodes are now discovered before the cache is populated, so scene objects render normally while the v25-v27 optimization system remains active.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v27.0.0",
+    "items": [
+      {
+        "id": "v27--rendering",
+        "subtitle": "Runtime rendering restored",
+        "contents": "<h2>Runtime rendering restored</h2><p>Runtime rendering was restored to the known-good v24 rendering path while keeping the later runtime caches and optimization work. The renderer again uses the normal 2D canvas context path, while cached render ordering and visibility culling remain active.</p>"
+      },
+      {
+        "id": "v27--updates",
+        "subtitle": "Updates viewer",
+        "contents": "<h2>Updates viewer</h2><p>The version shown on the Node2D creation screen is now clickable. It opens this searchable version history using the same navigation style as Help.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v26.0.0",
+    "items": [
+      {
+        "id": "v26--debug-output",
+        "subtitle": "Debug Output",
+        "contents": "<h2>Debug Output</h2><p>Debug runtime gained an <code>Output</code> panel for logs, warnings, errors, ScriptNode exceptions, JavaScript errors, and unhandled promise rejections.</p>"
+      },
+      {
+        "id": "v26--runtime-input",
+        "subtitle": "Runtime input fixes",
+        "contents": "<h2>Runtime input</h2><p>Restored runtime pointer, touch, mouse, screen input, joystick helpers, and the runtime projection used by those systems.</p>"
+      },
+      {
+        "id": "v26--help",
+        "subtitle": "Help references",
+        "contents": "<h2>Help references</h2><p>Help documentation was expanded with recent ScriptNode, collision, object lifecycle, audio, AI, optimization, and runtime documentation.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v25.0.0",
+    "items": [
+      {
+        "id": "v25--optimization",
+        "subtitle": "Runtime optimization",
+        "contents": "<h2>Runtime optimization</h2><p>Runtime gained cached node/body/script lookups, cached render ordering, render culling, batched spawn startup work, faster cloning, collision broadphase improvements, and more aggressive cleanup when objects are destroyed.</p>"
+      },
+      {
+        "id": "v25--destroy",
+        "subtitle": "Destroy Object cleanup",
+        "contents": "<h2>Destroy Object cleanup</h2><p>Destroy Object now removes runtime scene data, bodies, ScriptNodes, timers, routes, references, and lookup entries so destroyed objects no longer remain reachable through the runtime caches.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v24.0.0",
+    "items": [
+      {
+        "id": "v24--collision",
+        "subtitle": "Collision updates",
+        "contents": "<h2>Collision updates</h2><p>Added optimized <code>onCollideWith</code> behavior and improved runtime collision processing.</p>"
+      },
+      {
+        "id": "v24--index",
+        "subtitle": "Node Index",
+        "contents": "<h2>Node Index</h2><p>Nodes gained an Index that controls draw order. The Node context menu gained Move Up and Move Down controls.</p>"
+      },
+      {
+        "id": "v24--duplicates",
+        "subtitle": "Runtime duplicates",
+        "contents": "<h2>Runtime duplicates</h2><p>Duplicated runtime objects keep their original scripts and connections with unique runtime IDs and remapped ScriptNode connections.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v23.0.0",
+    "items": [
+      {
+        "id": "v23--audio",
+        "subtitle": "Audio volume and low-latency playback",
+        "contents": "<h2>Audio</h2><p><code>playAudio</code> gained volume and improved playback caching using Web Audio where available. Existing start, duration, loop, and fade controls remain supported.</p>"
+      },
+      {
+        "id": "v23--follow",
+        "subtitle": "Follow, Chase, and Avoid",
+        "contents": "<h2>Movement AI</h2><p>Follow Object gained Speed. Chase and Avoid gained map-based obstacle handling and physics-driven movement.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v22.0.0",
+    "items": [
+      {
+        "id": "v22--angle",
+        "subtitle": "Create Object Angle",
+        "contents": "<h2>Create Object Angle</h2><p>Create Object gained an Angle input so a spawned object can start with a chosen rotation before velocity is applied.</p>"
+      },
+      {
+        "id": "v22--version",
+        "subtitle": "Version display",
+        "contents": "<h2>Version display</h2><p>The Node2D creation screen reads the displayed version from <code>manifest.json</code>.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v21.0.0",
+    "items": [
+      {
+        "id": "v21--chase",
+        "subtitle": "A* Chase paths",
+        "contents": "<h2>Chase pathfinding</h2><p>Chase changed from local steering to actual A* pathfinding across a map built from collider obstacles, with replanning for moving targets.</p>"
+      }
+    ]
+  },
+  {
+    "title": "v20.0.0",
+    "items": [
+      {
+        "id": "v20--script-memory",
+        "subtitle": "Script viewport memory",
+        "contents": "<h2>Script viewport memory</h2><p>Each ScriptNode remembers its Script editor pan and zoom position.</p>"
+      },
+      {
+        "id": "v20--sliding",
+        "subtitle": "Sliding numeric inputs",
+        "contents": "<h2>Sliding numeric inputs</h2><p>Swipe numeric ScriptNode inputs left or right to decrease or increase by a step derived from the current value.</p>"
+      },
+      {
+        "id": "v20--follow",
+        "subtitle": "Follow Object",
+        "contents": "<h2>Follow Object</h2><p>Follow Object moves the current Physics node directly toward a target using its configured Speed and rotates toward movement unless rotation is fixed.</p>"
+      },
+      {
+        "id": "v20--ai",
+        "subtitle": "Chase and Avoid",
+        "contents": "<h2>Chase and Avoid</h2><p>Added Map, Target, and Speed controls for physics-based target movement using collider obstacles from a selected folder.</p>"
+      }
+    ]
+  }
+]
