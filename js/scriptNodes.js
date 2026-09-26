@@ -88,8 +88,8 @@
     },
     {
       name:'Create Object', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Object',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'PosX',type:'int',value:0},{name:'PosY',type:'int',value:0},{name:'Angle',type:'int',value:0},{name:'VelocityX',type:'int',value:null},{name:'VelocityY',type:'int',value:null},{name:'AngularVelocity',type:'int',value:null}],
-      func:(ctx,v)=>{ctx.createObject?.(v.Object,v.PosX,v.PosY,v.Angle,v.VelocityX,v.VelocityY,v.AngularVelocity);return {out:true};}
+      editor:[{name:'Object',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'PosX',type:'int',value:0},{name:'PosY',type:'int',value:0},{name:'Angle',type:'int',value:0},{name:'ScaleX',type:'int',value:1},{name:'ScaleY',type:'int',value:1},{name:'VelocityX',type:'int',value:null},{name:'VelocityY',type:'int',value:null},{name:'AngularVelocity',type:'int',value:null}],
+      func:(ctx,v)=>{ctx.createObject?.(v.Object,v.PosX,v.PosY,v.Angle,v.ScaleX,v.ScaleY,v.VelocityX,v.VelocityY,v.AngularVelocity);return {out:true};}
     },
     {
       name:'setVelocity', receiver:true, group:'Actions', output:[{id:'out'}],

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // Runtime-only assets. Persistence is deliberately not implemented yet.
+  // Asset containers shared by the editor and runtime. Project save/export serializes these assets.
   const Assets = {
     Sprite: [],
     Audio: [],

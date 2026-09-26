@@ -31,7 +31,8 @@
     nodeClipboard: null,
     selectedIds: [],
     selectionAnchorId: null,
-    history: { undo: [], redo: [], busy: false },
+    multiSelectionMode: false,
+    history: { root: null, currentId: null, nodes: Object.create(null), busy: false, pending: null, pendingSeq: 0 },
     camera: {
       enabled: true,
       followId: 'this',
@@ -68,12 +69,16 @@
   let confirmAction = null;
   let suppressClickUntil = 0;
   let assetImageCache = new Map();
+  const editorModifierState = {shiftKey:false, ctrlKey:false, altKey:false, metaKey:false};
   let dpr = 1;
   let editorAnimationRAF = 0;
   const EDITOR_SETTINGS_STORE='uix.editor.settings.v1';
   const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
   const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
-  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30};
+  const FLAPPY_BIRD_SAMPLE_FLAG='flappybirdsample';
+  const FLAPPY_BIRD_SAMPLE_RELATIVE='./samples/flappybird.ndc';
+  const FLAPPY_BIRD_SAMPLE_ROOT='/samples/flappybird.ndc';
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30,createNewMissingComponent:false};
   function openUpdates(){
     const frame=$('#updatesFrame');
     if(frame && !frame.getAttribute('src')) frame.src='updates/index.html';
@@ -94,10 +99,10 @@
   let autoSaveTimer=0;
   function getEditorSettings(){
     let out={...DEFAULT_EDITOR_SETTINGS};
-    try{const saved=JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORE)||'null');if(saved&&typeof saved==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(saved,k))out[k]=saved[k];});out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;out.multiSelectionUnifiedEditing=out.multiSelectionUnifiedEditing!==false;out.autoSave=!!out.autoSave;out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;}}catch{}
+    try{const saved=JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORE)||'null');if(saved&&typeof saved==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(saved,k))out[k]=saved[k];});out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;out.multiSelectionUnifiedEditing=out.multiSelectionUnifiedEditing!==false;out.autoSave=!!out.autoSave;out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;out.createNewMissingComponent=!!out.createNewMissingComponent;}}catch{}
     return out;
   }
-  function saveEditorSettings(settings){const value={...getEditorSettings(),moveScaleSnap:Math.max(0,Number(settings?.moveScaleSnap)||0),rotateSnap:Math.max(0,Number(settings?.rotateSnap)||0),multiSelectionUnifiedEditing:settings?.multiSelectionUnifiedEditing!==false,autoSave:!!settings?.autoSave,autoSaveIntervalSec:clamp(Number(settings?.autoSaveIntervalSec)||30,1,86400)};try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(value));}catch{}resetAutoSaveTimer();return value;}
+  function saveEditorSettings(settings){const value={...getEditorSettings(),moveScaleSnap:Math.max(0,Number(settings?.moveScaleSnap)||0),rotateSnap:Math.max(0,Number(settings?.rotateSnap)||0),multiSelectionUnifiedEditing:settings?.multiSelectionUnifiedEditing!==false,autoSave:!!settings?.autoSave,autoSaveIntervalSec:clamp(Number(settings?.autoSaveIntervalSec)||30,1,86400),createNewMissingComponent:!!settings?.createNewMissingComponent};try{localStorage.setItem(EDITOR_SETTINGS_STORE,JSON.stringify(value));}catch{}resetAutoSaveTimer();return value;}
   function resetAutoSaveTimer(){clearTimeout(autoSaveTimer);autoSaveTimer=0;const st=getEditorSettings();if(!st.autoSave||!hasLoadedProject())return;autoSaveTimer=setTimeout(async()=>{if(hasLoadedProject()){await saveProjectToProjectStorage(true);}resetAutoSaveTimer();},Math.max(1,Number(st.autoSaveIntervalSec)||30)*1000);}
   function rememberCurrentProjectSession(){try{if(!state.project?.created){sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);return;}sessionStorage.setItem(CURRENT_PROJECT_SESSION_NAME,String(state.project.name||'Untitled Node2D'));if(state.project.localNdcId)sessionStorage.setItem(CURRENT_PROJECT_SESSION_ID,String(state.project.localNdcId));else sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
   function clearCurrentProjectSession(){try{sessionStorage.removeItem(CURRENT_PROJECT_SESSION_NAME);sessionStorage.removeItem(CURRENT_PROJECT_SESSION_ID);}catch{}}
@@ -239,6 +244,7 @@
   function runtimeStateBucket(sceneId=state.runtime.sceneId){if(!state.runtime.sceneStatesByScene)state.runtime.sceneStatesByScene=Object.create(null);return state.runtime.sceneStatesByScene[sceneId] ||= Object.create(null);}
 
   function selectAllNodesWithName(name){
+      flushPendingValueEditors();
       const wanted=String(name??'');
       const ids=allNodes().filter(({node})=>node.type==='node'&&String(node.name??'')===wanted).map(({node})=>node.id);
       if(!ids.length)return status(`No Nodes named ${wanted||'Node'}`);
@@ -327,18 +333,51 @@
     if(state.selectionAnchorId&&!valid.has(state.selectionAnchorId))state.selectionAnchorId=null;
     if(state.selectedIds.length===1)state.selectedId=state.selectedIds[0];
   }
+  function resolvedEditorModifiers(e={}){
+    let shift=!!(e.shiftKey||editorModifierState.shiftKey),ctrl=!!(e.ctrlKey||editorModifierState.ctrlKey),alt=!!(e.altKey||editorModifierState.altKey),meta=!!(e.metaKey||editorModifierState.metaKey);
+    try{
+      if(typeof e.getModifierState==='function'){
+        shift=shift||!!e.getModifierState('Shift');ctrl=ctrl||!!e.getModifierState('Control');alt=alt||!!e.getModifierState('Alt');meta=meta||!!e.getModifierState('Meta');
+      }
+    }catch{}
+    return {shiftKey:shift,ctrlKey:ctrl,altKey:alt,metaKey:meta};
+  }
+  function setMultiSelectionMode(enabled,announce=true){
+    state.multiSelectionMode=!!enabled;
+    updateMultiSelectionActionUI();
+    if(announce)status(state.multiSelectionMode?'Multi Selection: ON — click Nodes to add/remove them':'Multi Selection: OFF');
+    return state.multiSelectionMode;
+  }
+  function updateMultiSelectionActionUI(){
+    const button=$('#toggleMultiSelectionAction');
+    if(!button)return;
+    const on=!!state.multiSelectionMode;
+    button.setAttribute('aria-pressed',String(on));
+    button.classList.toggle('active',on);
+    const icon=button.querySelector('[data-multi-selection-icon]');
+    if(icon)icon.textContent=on?'☑':'☐';
+  }
   function setNodeSelection(node,e={}){
+    flushPendingValueEditors();
     const id=node?.id;if(!id)return;
+    const mods=resolvedEditorModifiers(e);
     const list=visibleTreeItems();const ids=list.map(n=>n.id);const primary=state.selectedId;
-    if(e.shiftKey&&state.selectionAnchorId&&ids.includes(state.selectionAnchorId)){
+    if(mods.shiftKey&&state.selectionAnchorId&&ids.includes(state.selectionAnchorId)){
       const a=ids.indexOf(state.selectionAnchorId),b=ids.indexOf(id),lo=Math.min(a,b),hi=Math.max(a,b);state.selectedIds=ids.slice(lo,hi+1);state.selectedId=id;
-    }else if(e.ctrlKey||e.metaKey){
-      const set=new Set(state.selectedIds||[]);if(set.has(id))set.delete(id);else set.add(id);state.selectedIds=list.filter(n=>set.has(n.id)).map(n=>n.id);state.selectedId=set.has(id)?id:(state.selectedIds.at(-1)||null);
+    }else if(mods.ctrlKey||mods.metaKey||state.multiSelectionMode){
+      const current=Array.isArray(state.selectedIds)?state.selectedIds.slice():[];
+      const at=current.indexOf(id);
+      if(at>=0)current.splice(at,1);else current.push(id);
+      const valid=new Set(ids);
+      state.selectedIds=current.filter(itemId=>valid.has(itemId));
+      state.selectedId=state.selectedIds.includes(id)?id:(state.selectedIds.at(-1)||null);
     }else{state.selectedIds=[id];state.selectedId=id;}
     state.selectionAnchorId=id;state.ui.selectedComponentKey='';
     return primary!==state.selectedId||state.selectedIds.length>1;
   }
-  function clearNodeSelection(fallback='scene-camera'){if(fallback&&findNode(fallback)){state.selectedIds=[fallback];state.selectionAnchorId=fallback;}else{state.selectedIds=[];state.selectionAnchorId=null;}state.selectedId=fallback;state.ui.selectedComponentKey='';}
+  function clearNodeSelection(fallback='scene-camera'){
+    flushPendingValueEditors();
+    if(fallback&&findNode(fallback)){state.selectedIds=[fallback];state.selectionAnchorId=fallback;}else{state.selectedIds=[];state.selectionAnchorId=null;}state.selectedId=fallback;state.ui.selectedComponentKey='';}
   function topLevelSelectedItems(){
     const items=selectedSceneNodes(),set=new Set(items.map(n=>n.id));
     return items.filter(item=>!items.some(parent=>parent!==item&&parent.type==='folder'&&set.has(parent.id)&&isDescendant(parent,item.id)));
@@ -500,43 +539,240 @@
     }).catch(()=>{});
   }
 
-  function historySnapshot(){return clone({project:state.project,nextNodeId:state.nextNodeId,nextVariableId:state.nextVariableId,scenes:state.scenes,currentSceneId:state.currentSceneId,selectedId:state.selectedId,selectedIds:state.selectedIds,selectionAnchorId:state.selectionAnchorId,globalVariables:state.globalVariables,sceneVariablesByScene:state.sceneVariablesByScene,localVarsByNode:state.localVarsByNode,uiComponentsByScene:state.uiComponentsByScene,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode},game:state.game});}
-  function restoreHistorySnapshot(snap){if(!snap)return;state.scenes=clone(snap.scenes||[]);state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';state.selectedId=snap.selectedId||'scene-camera';state.selectedIds=clone(snap.selectedIds||[]);state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;state.globalVariables=clone(snap.globalVariables||[]);state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});state.localVarsByNode=clone(snap.localVarsByNode||{});state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});state.script.nodesByNode=clone(snap.script?.nodesByNode||{});state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});state.game.screenType=normalizeScreenType(state.game.screenType);state.ui.selectedComponentKey='';syncSceneCamera();renderAll();}
+  function historySnapshot(){return clone({
+    project:state.project,
+    nextNodeId:state.nextNodeId,
+    nextVariableId:state.nextVariableId,
+    scenes:state.scenes,
+    currentSceneId:state.currentSceneId,
+    mode:state.mode,
+    selectedId:state.selectedId,
+    selectedIds:state.selectedIds,
+    selectionAnchorId:state.selectionAnchorId,
+    globalVariables:state.globalVariables,
+    sceneVariablesByScene:state.sceneVariablesByScene,
+    localVarsByNode:state.localVarsByNode,
+    uiComponentsByScene:state.uiComponentsByScene,
+    script:{
+      nodesByNode:state.script.nodesByNode,
+      connectionsByNode:state.script.connectionsByNode,
+      nodeId:state.script.nodeId,
+      selectedNodeId:state.script.selectedNodeId,
+      selectedNodeIds:state.script.selectedNodeIds,
+      selectionAnchorId:state.script.selectionAnchorId
+    },
+    camera:state.camera,
+    game:state.game
+  });}
+  function restoreHistorySnapshot(snap){
+    if(!snap)return;
+    state.project=clone(snap.project||state.project);
+    state.nextNodeId=Number(snap.nextNodeId)||1;
+    state.nextVariableId=Number(snap.nextVariableId)||1;
+    state.scenes=clone(snap.scenes||[]);
+    state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';
+    state.mode=snap.mode||'select';
+    state.selectedId=snap.selectedId||'scene-camera';
+    state.selectedIds=clone(snap.selectedIds||[]);
+    state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;
+    state.globalVariables=clone(snap.globalVariables||[]);
+    state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});
+    state.localVarsByNode=clone(snap.localVarsByNode||{});
+    state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});
+    state.script.nodesByNode=restoreScriptNodeDefinitions(snap.script?.nodesByNode||{});
+    state.script.connectionsByNode=clone(snap.script?.connectionsByNode||{});
+    state.script.nodeId=snap.script?.nodeId&&state.script.nodesByNode[snap.script.nodeId]?snap.script.nodeId:state.script.nodeId;
+    state.script.selectedNodeId=snap.script?.selectedNodeId||null;
+    state.script.selectedNodeIds=clone(snap.script?.selectedNodeIds||[]);
+    state.script.selectionAnchorId=snap.script?.selectionAnchorId||null;
+    state.camera=clone(snap.camera||defaultCamera());
+    state.game=clone(snap.game||{preferredSceneId:'',screenType:'Windowboxing'});
+    ensureGameSettings();
+    state.game.screenType=normalizeScreenType(state.game.screenType);
+    state.ui.selectedComponentKey='';
+    syncSceneCamera();
+    normalizeSelectionState();
+    renderAll();
+    const scriptModal=$('#scriptModal');
+    if(scriptModal&&!scriptModal.hidden&&state.script.nodeId){
+      const node=findNode(state.script.nodeId);
+      if(node)$('#scriptTarget').textContent=node.name||'Node';
+      renderLocalVariables();
+      renderScriptLibrary();
+      renderScriptCanvas();
+      renderScriptInspector();
+      applyScriptPanelState();
+      requestAnimationFrame(renderScriptConnections);
+    }else if(scriptModal&&!scriptModal.hidden){
+      closeModal(scriptModal);
+    }
+  }
+  function historyCurrentNode(){return state.history.currentId?state.history.nodes[state.history.currentId]||null:null;}
+  function historyCanUndo(){const h=state.history;return !!h.currentId&&h.currentId!==h.root;}
+  function historyCanRedo(){const n=historyCurrentNode();return !!n&&Array.isArray(n.children)&&n.children.length>0;}
+  function historyNodeId(){return `h-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;}
+  function historyRootSnapshot(){
+    const h=state.history;
+    if(h.root&&h.nodes[h.root])return h.nodes[h.root].snapshot;
+    return null;
+  }
+  function commitHistoryPendingSnapshot(p,after){
+    const h=state.history;
+    if(!h.root){
+      const rootId=historyNodeId();
+      h.root=rootId;
+      h.nodes[rootId]={id:rootId,parentId:null,children:[],preferredChildId:null,snapshot:clone(p.before),action:'Initial State',timestamp:Date.now(),createdOrder:0};
+      h.currentId=rootId;
+    }
+    const parent=h.currentId||h.root;
+    const parentNode=h.nodes[parent];
+    const existing=(parentNode?.children||[]).map(id=>h.nodes[id]).find(n=>n&&sameHistoryState(n.snapshot,after)&&String(n.action||'')===String(p.action||''));
+    if(existing){
+      h.currentId=existing.id;
+      if(parentNode)parentNode.preferredChildId=existing.id;
+      syncHistoryUi();
+      renderHistory();
+      return;
+    }
+    const id=historyNodeId();
+    const createdOrder=Object.keys(h.nodes).length;
+    h.nodes[id]={id,parentId:parent,children:[],preferredChildId:null,snapshot:clone(after),action:p.action,timestamp:Date.now(),createdOrder};
+    if(parentNode){
+      parentNode.children.push(id);
+      parentNode.preferredChildId=id;
+    }
+    h.currentId=id;
+    syncHistoryUi();
+    renderHistory();
+  }
+  function flushPendingHistory(){
+    const p=state.history.pending;
+    if(!p)return false;
+    state.history.pending=null;
+    state.history.pendingSeq++;
+    if(state.history.busy)return false;
+    const after=historySnapshot();
+    if(sameHistoryState(p.before,after)){syncHistoryUi();return false;}
+    commitHistoryPendingSnapshot(p,after);
+    return true;
+  }
   function pushHistory(action='Edit'){
-    if(state.history.busy)return;
+    const h=state.history;
+    if(h.busy)return;
+    const normalizedAction=String(action||'Edit').trim()||'Edit';
+    // Every explicit mutation gets its own transaction. If an earlier transaction
+    // is still open, close it against the current state before starting another.
+    if(h.pending)flushPendingHistory();
     const before=historySnapshot();
-    const token=++state.history.pendingSeq;
-    state.history.pending={token,before,action:String(action||'Edit').trim()||'Edit'};
+    const token=++h.pendingSeq;
+    h.pending={token,before,action:normalizedAction};
     queueMicrotask(()=>{
-      const p=state.history.pending;if(!p||p.token!==token)return;state.history.pending=null;if(state.history.busy)return;
-      const after=historySnapshot();if(sameHistoryState(p.before,after)){syncHistoryUi();return;}
-      const h=state.history;if(h.index<h.entries.length-1)h.entries.splice(h.index+1);
-      h.entries.push({before:p.before,snapshot:after,action:p.action,timestamp:Date.now()});
-      if(h.entries.length>80)h.entries.shift();h.index=h.entries.length-1;syncHistoryUi();
+      const pending=h.pending;
+      if(!pending||pending.token!==token)return;
+      flushPendingHistory();
     });
   }
-  function undo(){const h=state.history;if(h.index<0)return status('Nothing to undo');const entry=h.entries[h.index];h.busy=true;restoreHistorySnapshot(h.index===0?entry.before:h.entries[h.index-1].snapshot);h.index--;h.busy=false;syncHistoryUi();renderHistory();status(`Undo - ${entry.action}`);}
-  function redo(){const h=state.history;if(h.index>=h.entries.length-1)return status('Nothing to redo');const entry=h.entries[h.index+1];h.busy=true;restoreHistorySnapshot(entry.snapshot);h.index++;h.busy=false;syncHistoryUi();renderHistory();status(`Redo - ${entry.action}`);}
+  function undo(){
+    flushPendingValueEditors();
+    flushPendingHistory();
+    const h=state.history,n=historyCurrentNode();
+    if(!n||!n.parentId)return status('Nothing to undo');
+    h.pending=null;h.pendingSeq++;h.busy=true;
+    restoreHistorySnapshot(h.nodes[n.parentId]?.snapshot);
+    h.busy=false;h.currentId=n.parentId;
+    if(h.nodes[n.parentId])h.nodes[n.parentId].preferredChildId=n.id;
+    syncHistoryUi();renderHistory();status(`Undo - ${n.action||'Edit'}`);
+  }
+  function redo(){
+    flushPendingValueEditors();
+    flushPendingHistory();
+    const h=state.history,n=historyCurrentNode();
+    if(!n?.children?.length)return status('Nothing to redo');
+    const childId=(n.preferredChildId&&n.children.includes(n.preferredChildId))?n.preferredChildId:n.children[n.children.length-1];
+    const child=h.nodes[childId];if(!child)return status('Nothing to redo');
+    h.pending=null;h.pendingSeq++;h.busy=true;restoreHistorySnapshot(child.snapshot);h.busy=false;h.currentId=child.id;
+    syncHistoryUi();renderHistory();status(`Redo - ${child.action||'Edit'}`);
+  }
   function nextNodeNumericId(){const used=new Set(allNodes().map(({node})=>node.numericId).filter(Number.isFinite));let n=Math.max(1,state.nextNodeId||1);while(used.has(n))n++;state.nextNodeId=n+1;return n;}
   function uniqueNodeName(base,items){const names=new Set((items||[]).map(n=>String(n.name||'').toLowerCase()));let name=base||'Node';if(!names.has(name.toLowerCase()))return name;let i=2;while(names.has(`${name} ${i}`.toLowerCase()))i++;return `${name} ${i}`;}
   function remapScriptNodeIds(sourceId,targetId){const nodes=clone(state.script.nodesByNode[sourceId]||[]),con=clone(state.script.connectionsByNode[sourceId]||[]),map=new Map();nodes.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;map.set(old,sn.id);});state.script.nodesByNode[targetId]=nodes;state.script.connectionsByNode[targetId]=con.map(x=>({...x,from:map.get(x.from)||x.from,to:map.get(x.to)||x.to}));}
   function isNodeItem(item){ return !!item && (item.type === 'node' || item.type === 'folder'); }
   function sameHistoryState(a,b){try{return JSON.stringify(a)===JSON.stringify(b);}catch{return false;}}
   function syncHistoryUi(){
-      const h=state.history,canUndo=h.index>=0,canRedo=h.index<h.entries.length-1;
-      ['#topUndoButton','#scriptUndoButton'].forEach(sel=>{const b=$(sel);if(b)b.disabled=!canUndo;});
-      ['#topRedoButton','#scriptRedoButton'].forEach(sel=>{const b=$(sel);if(b)b.disabled=!canRedo;});
-      $$('button[data-action="undo"]').forEach(b=>b.disabled=!canUndo);
-      $$('button[data-action="redo"]').forEach(b=>b.disabled=!canRedo);
-    }
+    const canUndo=historyCanUndo(),canRedo=historyCanRedo();
+    ['#topUndoButton','#scriptUndoButton'].forEach(sel=>{const b=$(sel);if(b)b.disabled=!canUndo;});
+    ['#topRedoButton','#scriptRedoButton'].forEach(sel=>{const b=$(sel);if(b)b.disabled=!canRedo;});
+    $$('button[data-action="undo"]').forEach(b=>b.disabled=!canUndo);
+    $$('button[data-action="redo"]').forEach(b=>b.disabled=!canRedo);
+  }
   function formatHistoryTime(ts){try{return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}}
+  function historyTimelineNodes(){
+    const h=state.history;
+    if(!h.root||!h.nodes[h.root])return [];
+    const out=[];
+    const currentLineage=new Set();
+    let cursor=h.currentId;
+    while(cursor&&h.nodes[cursor]){currentLineage.add(cursor);cursor=h.nodes[cursor].parentId;}
+    const visit=(id,branchLabel='Main',depth=0,parentAction='')=>{
+      const node=h.nodes[id];if(!node)return;
+      const parent=h.nodes[node.parentId];
+      const childIndex=parent?.children?.indexOf(id)??0;
+      const branchCount=parent?.children?.length||0;
+      let label=branchLabel;
+      if(branchCount>1)label=`Branch ${childIndex+1}`;
+      out.push({node,depth,branchLabel:label,parentAction,current: id===h.currentId,lineage:currentLineage.has(id)});
+      (node.children||[]).forEach(child=>visit(child,label,depth+1,node.action||'Edit'));
+    };
+    visit(h.root,'Main',0,'');
+    return out.sort((a,b)=>{
+      const at=Number(a.node.timestamp)||0,bt=Number(b.node.timestamp)||0;
+      if(at!==bt)return at-bt;
+      return (Number(a.node.createdOrder)||0)-(Number(b.node.createdOrder)||0);
+    });
+  }
   function renderHistory(){
-      const host=$('#historyList');if(!host)return;host.innerHTML='';const h=state.history;
-      if(!h.entries.length){const empty=document.createElement('div');empty.className='history-empty';empty.textContent='No edits yet.';host.append(empty);return;}
-      const initial=document.createElement('button');initial.type='button';initial.className=`history-entry history-initial${h.index<0?' current':''}`;initial.innerHTML='<span class="history-time">Initial State</span><span class="history-action">Before first edit</span>';initial.onclick=()=>jumpToHistory(-1);host.append(initial);
-      h.entries.forEach((entry,i)=>{const b=document.createElement('button');b.type='button';b.className=`history-entry${i===h.index?' current':''}`;b.innerHTML=`<span class="history-time">${esc(formatHistoryTime(entry.timestamp))}</span><span class="history-action">${esc(entry.action)}</span>`;b.onclick=()=>jumpToHistory(i);host.append(b);});
-    }
-  function jumpToHistory(index){const h=state.history;if(index<-1||index>=h.entries.length)return;h.busy=true;if(index===-1){const first=h.entries[0];if(first)restoreHistorySnapshot(first.before);}else restoreHistorySnapshot(h.entries[index].snapshot);h.index=index;h.busy=false;syncHistoryUi();renderHistory();status(index===-1?'History - Initial State':`History - ${h.entries[index].action}`);}
+    const host=$('#historyList');if(!host)return;host.innerHTML='';const h=state.history;
+    if(!h.root||!h.nodes[h.root]){const empty=document.createElement('div');empty.className='history-empty';empty.textContent='No edits yet.';host.append(empty);return;}
+    const current=h.nodes[h.currentId];
+    const summary=document.createElement('div');summary.className='history-current-summary';
+    summary.innerHTML=`<span class="history-current-dot"></span><div><strong>Current History</strong><span>${esc(current?.action||'Initial State')}</span></div><time>${esc(formatHistoryTime(current?.timestamp))}</time>`;
+    host.append(summary);
+    const timeline=document.createElement('div');timeline.className='history-timeline';host.append(timeline);
+    historyTimelineNodes().forEach(item=>{
+      const node=item.node;
+      const row=document.createElement('div');
+      row.className=`history-timeline-row${item.current?' current':''}${item.lineage?' lineage':''}`;
+      row.dataset.historyId=node.id;
+      const track=document.createElement('div');track.className='history-timeline-track';
+      const dot=document.createElement('span');dot.className='history-timeline-dot';track.append(dot);
+      const button=document.createElement('button');button.type='button';button.className='history-entry';button.setAttribute('aria-current',item.current?'true':'false');
+      const top=document.createElement('div');top.className='history-entry-top';
+      const branch=document.createElement('span');branch.className='history-branch';branch.textContent=item.branchLabel;
+      const time=document.createElement('time');time.className='history-time';time.textContent=formatHistoryTime(node.timestamp);
+      const currentBadge=document.createElement('span');currentBadge.className='history-current-badge';currentBadge.textContent='CURRENT';currentBadge.hidden=!item.current;
+      top.append(branch,time,currentBadge);
+      const action=document.createElement('div');action.className='history-action';action.textContent=node.action||'Edit';
+      const meta=document.createElement('div');meta.className='history-meta';
+      if(node.parentId&&h.nodes[node.parentId])meta.textContent=`From: ${h.nodes[node.parentId].action||'Edit'}`;
+      else meta.textContent='Project starting state';
+      if(node.children?.length>0){const branches=document.createElement('span');branches.className='history-child-count';branches.textContent=node.children.length===1?'1 next state':`${node.children.length} branches`;meta.append(' · ',branches);}
+      button.append(top,action,meta);
+      button.onclick=()=>jumpToHistory(node.id);
+      row.append(track,button);timeline.append(row);
+    });
+    requestAnimationFrame(()=>{
+      const active=host.querySelector('.history-timeline-row.current');
+      active?.scrollIntoView({block:'nearest'});
+    });
+  }
+  function jumpToHistory(id){
+    flushPendingValueEditors();
+    flushPendingHistory();
+    const h=state.history,node=h.nodes[id];if(!node)return;
+    h.pending=null;h.pendingSeq++;h.busy=true;restoreHistorySnapshot(node.snapshot);h.busy=false;h.currentId=id;
+    if(node.parentId&&h.nodes[node.parentId])h.nodes[node.parentId].preferredChildId=id;
+    syncHistoryUi();renderHistory();status(node.action==='Initial State'?'History - Initial State':`History - ${node.action}`);
+  }
   function openHistory(){renderHistory();showModal($('#historyModal'));}
   function copyNode(node=null){
     const items=selectedMainItemsForCommand().filter(isNodeItem);
@@ -563,7 +799,7 @@
       copy.children=(Array.isArray(item.children)?item.children:[]).map(child=>cloneTreeItem(child,{siblingItems:copy.children}));
     }else{
       normalizeNode(copy);
-      const copiedScripts=clone(state.script.nodesByNode[sourceId]||[]);
+      const copiedScripts=restoreScriptNodeDefinitions({[sourceId]:state.script.nodesByNode[sourceId]||[]})[sourceId]||[];
       const copiedConnections=clone(state.script.connectionsByNode[sourceId]||[]);
       const map=new Map();
       copiedScripts.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;map.set(old,sn.id);});
@@ -575,8 +811,50 @@
   function cloneFolder(folder){
     if(folder?.type!=='folder')return status('Select a Folder to clone');
     const scene=currentScene(); if(!scene)return;
-    const container=findContainer(folder.id)||scene.nodes; const copy=cloneTreeItem(folder,{siblingItems:container});
-    pushHistory(); const at=Math.max(0,container.findIndex(x=>x.id===folder.id)+1); container.splice(at,0,copy); clearNodeSelection(copy.id); renderAll(); status(`${copy.name} cloned`);
+    const container=findContainer(folder.id)||scene.nodes;
+    pushHistory('Duplicate Folder');
+    const copy=cloneTreeItem(folder,{siblingItems:container});
+    const at=Math.max(0,container.findIndex(x=>x.id===folder.id)+1);
+    container.splice(at,0,copy);
+    clearNodeSelection(copy.id); renderAll(); status(`${copy.name} duplicated`);
+  }
+
+  function duplicateNodes(items=topLevelSelectedItems()){
+    const targets=(items||[]).filter(isNodeItem);
+    if(!targets.length)return status('Nothing selected to duplicate');
+    const scene=currentScene();if(!scene)return;
+    pushHistory(targets.length===1?`Duplicate ${targets[0].name}`:`Duplicate ${targets.length} Nodes`);
+    const grouped=new Map();
+    targets.forEach(item=>{
+      const container=findContainer(item.id)||scene.nodes;
+      if(!grouped.has(container))grouped.set(container,[]);
+      grouped.get(container).push(item);
+    });
+    const created=[];
+    for(const [container,group] of grouped){
+      group.sort((a,b)=>container.indexOf(a.id)-container.indexOf(b.id));
+      let insertOffset=0;
+      group.forEach(item=>{
+        const sourceIndex=container.findIndex(x=>x.id===item.id);
+        if(sourceIndex<0)return;
+        const copy=cloneTreeItem(item,{siblingItems:container});
+        const at=sourceIndex+1+insertOffset;
+        if(copy.type==='node'){
+          const transform=component(copy,'transform');
+          if(transform&&Array.isArray(transform.position)){
+            transform.position=[Number(transform.position[0]||0)+24,Number(transform.position[1]||0)+24];
+          }
+        }
+        container.splice(Math.min(at,container.length),0,copy);
+        insertOffset++;
+        created.push(copy);
+      });
+    }
+    state.selectedIds=created.map(x=>x.id);
+    state.selectionAnchorId=created.at(-1)?.id||null;
+    state.selectedId=created.at(-1)?.id||state.selectedId;
+    renderAll();
+    status(created.length===1?`${created[0].name} duplicated`:`${created.length} Nodes duplicated`);
   }
   function pasteNode(){
     const clips=Array.isArray(state.nodeClipboard?.items)?state.nodeClipboard.items:state.nodeClipboard?.node?[{sourceId:state.nodeClipboard.sourceId,item:state.nodeClipboard.node,scripts:{[state.nodeClipboard.sourceId]:{nodes:clone(state.script.nodesByNode[state.nodeClipboard.sourceId]||[]),connections:clone(state.script.connectionsByNode[state.nodeClipboard.sourceId]||[])}}}]:[];
@@ -651,7 +929,7 @@
     state.uiComponentsByScene = Object.create(null);
     state.pan = { x: 0, y: 0 }; state.zoom = 1;
     state.script = { nodeId: null, selectedNodeId: null, pan: { x: 0, y: 0 }, zoom: 1, nodesByNode: Object.create(null), connectionsByNode: Object.create(null), editingInput: null };
-    state.history={entries:[],index:-1,busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
+    state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     hideAllModals(); renderAll(); rememberCurrentProjectSession(); resetAutoSaveTimer(); status('New Node2D project created');
   }
 
@@ -713,7 +991,7 @@
   function renderWorkplace(){ resizeWorkplaceCanvas(); drawWorkplace(); }
 
   function renderAll() {
-    ensureProject(); ensureNodeIndices(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace();
+    ensureProject(); ensureNodeIndices(); applyTopbarAnchors(); renderScenes(); renderSelectionTree(); renderComponentPanel(); renderWorkplace(); updateMultiSelectionActionUI();
     $('#stageSceneName').textContent = currentScene().name; $('#activeModeLabel').textContent = modeLabel(state.mode);
     applyPanelState(); updateZoomLabel(); resizeWorkplaceCanvas(); drawWorkplace();
   }
@@ -777,7 +1055,7 @@
         if(!state.selectedIds.includes(node.id)) clearNodeSelection(node.id); else state.selectedId=node.id;
         renderSelectionTree(); renderComponentPanel(); drawWorkplace();
         const count=topLevelSelectedItems().length;
-        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'↑',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'↓',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>{copyNode(node);pasteNode();}},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
+        const items=folder ? [{label:'Clone Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'↑',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'↓',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>duplicateNodes([node])},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
         if(count>1)items.unshift({label:`${count} selected`,icon:'☷',disabled:true});
         showContextMenu(items,e.clientX??0,e.clientY??0);
       };
@@ -804,32 +1082,292 @@
     if(skipConfirm)perform();else askConfirm(`Delete ${node.type==='folder'?'Folder':'Node'}`,`Delete “${node.name}”${node.type==='folder'?' and everything inside it':''}?`,perform);
   }
 
-  function renderComponentPanel() {
-    const host = $('#componentContent');
-    const keepScroll = host?.scrollTop || 0;
-    host.innerHTML = ''; const selection = currentSelection(); $('#componentTarget').textContent = selection?.name || 'Nothing';
-    const idEl = $('#selectionId'); if (idEl) idEl.textContent = selection && !selection.special ? String(selection.numericId ?? '—') : '—';
-    if (!selection) return host.append(empty('Nothing selected.'));
-    if (selection.special === 'camera') return renderCameraInspector(host);
-    if (selection.special === 'global') return renderVariables(host, true);
-    if (selection.special === 'ui') return renderUIComponents(host);
-    if (selection.special === 'joystick') {
-      const wrap=document.createElement('div');
-      renderUIComponents(wrap);
-      host.append(...Array.from(wrap.children));
-      return;
-    }
-    if (selection.type === 'folder') return host.append(componentCard('Folder', [field('Name', selection.name, 'text', v => { selection.name = v; renderSelectionTree(); $('#componentTarget').textContent = v || 'Folder'; })], false, null, `folder:${selection.id}`));
-    normalizeNode(selection);
-    host.append(renderNodeCard(selection));
-    const comps=nodeComponents(selection);
-    const scriptComp=comps.find(c=>c.type==='script');
-    if(scriptComp) host.append(renderComponentCard(selection,scriptComp));
-    const transformComp=comps.find(c=>c.type==='transform');
-    if(transformComp) host.append(renderComponentCard(selection,transformComp));
-    comps.forEach(comp=>{ if(!['node','script','transform'].includes(comp.type)) host.append(renderComponentCard(selection,comp)); });
-    requestAnimationFrame(() => { if (host) host.scrollTop = keepScroll; });
+  function orderedMultiNodes(){
+    const ids=Array.isArray(state.selectedIds)?state.selectedIds:[];
+    const out=[];
+    ids.forEach(id=>{const node=findNode(id);if(node&&node.type==='node'&&!out.includes(node))out.push(node);});
+    return out;
   }
+
+  let renderingComponentPanel=false;
+  function renderComponentPanel(){
+    if(!renderingComponentPanel&&!flushingValueEditors)flushPendingValueEditors();
+    const host=$('#componentContent');
+    const keepScroll=host?.scrollTop||0;
+    renderingComponentPanel=true;
+    try{
+      host.innerHTML='';
+      const selection=currentSelection();
+      $('#componentTarget').textContent=selection?.name||'Nothing';
+      const idEl=$('#selectionId');
+      if(idEl)idEl.textContent=selection&&!selection.special?String(selection.numericId??'—'):'—';
+      if(!selection){host.append(empty('Nothing selected.'));return;}
+      const multiNodes=orderedMultiNodes();
+      if(multiNodes.length>1){
+        $('#componentTarget').textContent=`${multiNodes.length} Nodes`;
+        if(idEl)idEl.textContent='—';
+        renderMultiNodeInspector(host,multiNodes);
+        requestAnimationFrame(()=>{if(host)host.scrollTop=keepScroll;});
+        return;
+      }
+      if(selection.special==='camera')return renderCameraInspector(host);
+      if(selection.special==='global')return renderVariables(host,true);
+      if(selection.special==='ui')return renderUIComponents(host);
+      if(selection.special==='joystick'){
+        const wrap=document.createElement('div');
+        renderUIComponents(wrap);
+        host.append(...Array.from(wrap.children));
+        return;
+      }
+      if(selection.type==='folder')return host.append(componentCard('Folder',[field('Name',selection.name,'text',v=>{selection.name=v;renderSelectionTree();$('#componentTarget').textContent=v||'Folder';})],false,null,`folder:${selection.id}`));
+      normalizeNode(selection);
+      host.append(renderNodeCard(selection));
+      const comps=nodeComponents(selection);
+      const scriptComp=comps.find(c=>c.type==='script');
+      if(scriptComp)host.append(renderComponentCard(selection,scriptComp));
+      const transformComp=comps.find(c=>c.type==='transform');
+      if(transformComp)host.append(renderComponentCard(selection,transformComp));
+      comps.forEach(comp=>{if(!['node','script','transform'].includes(comp.type))host.append(renderComponentCard(selection,comp));});
+      requestAnimationFrame(()=>{if(host)host.scrollTop=keepScroll;});
+    }finally{renderingComponentPanel=false;}
+  }
+
+  let activeMultiComponentContext=null;
+  const pendingValueEditors=new Set();
+  let flushingValueEditors=false;
+  const MULTI_MISSING=Symbol('multiMissing');
+  function multiValueEqual(a,b){return sameHistoryState(a,b);}
+  function multiComponentForNode(node,type,create=false){
+    let c=component(node,type);
+    if(!c&&create){c=createComponent(type);node.components=Array.isArray(node.components)?node.components:[];node.components.push(c);normalizeNode(node);}
+    return c;
+  }
+  function multiPathParts(path){
+    const out=[];String(path||'').split('.').forEach(part=>{
+      const m=part.match(/^([^\[]+)(.*)$/);if(!m)return;
+      out.push(m[1]);let tail=m[2];while(tail){const q=tail.match(/^\[(\d+)\](.*)$/);if(!q)break;out.push(Number(q[1]));tail=q[2];}
+    });return out;
+  }
+  function multiSetPath(target,path,value){
+    const parts=Array.isArray(path)?path:multiPathParts(path);if(!parts.length)return;
+    let obj=target;
+    for(let i=0;i<parts.length-1;i++){
+      const k=parts[i];if(obj[k]==null||typeof obj[k]!=='object')obj[k]=typeof parts[i+1]==='number'?[]:{};obj=obj[k];if(obj==null)return;
+    }
+    obj[parts.at(-1)]=clone(value);
+  }
+  function multiDeletePath(target,path){
+    const parts=Array.isArray(path)?path:multiPathParts(path);if(!parts.length)return;
+    let obj=target;for(let i=0;i<parts.length-1;i++){obj=obj?.[parts[i]];if(obj==null)return;}delete obj[parts.at(-1)];
+  }
+  function multiGetPath(target,path){
+    const parts=Array.isArray(path)?path:multiPathParts(path);
+    let value=target;
+    for(const part of parts){
+      if(value==null)return undefined;
+      value=value[part];
+    }
+    return value;
+  }
+  function multiPropagatedSet(ctx,path,value){
+    const ids=Array.isArray(ctx?.nodeIds)?ctx.nodeIds.slice():(Array.isArray(ctx?.nodes)?ctx.nodes.map(n=>n?.id).filter(Boolean):[]);
+    const nodes=ids.map(id=>findNode(id)).filter(Boolean);
+    const type=ctx?.type;
+    if(!nodes.length||!type||!Array.isArray(path)||!path.length)return false;
+    if(state.history.busy||ctx.rendering)return false;
+    const createMissing=!!getEditorSettings().createNewMissingComponent;
+    let changed=false;
+    const current=nodes.map(node=>{const comp=component(node,type);return comp?multiGetPath(comp,path):MULTI_MISSING;});
+    if(current.every(v=>v!==MULTI_MISSING&&multiValueEqual(v,value)))return false;
+    if(!ctx.suppressHistory)pushHistory(`Edit ${ctx.label||COMPONENT_LABELS[type]||type}`);
+    nodes.forEach(node=>{
+      const comp=multiComponentForNode(node,type,createMissing);
+      if(!comp)return;
+      const before=multiGetPath(comp,path);
+      if(!multiValueEqual(before,value)){multiSetPath(comp,path,value);changed=true;}
+    });
+    if(changed)scheduleMultiInspectorRefresh(ctx);
+    return changed;
+  }
+  function multiPropagatedDelete(ctx,path){
+    if(!ctx||state.history.busy)return false;
+    const ids=Array.isArray(ctx?.nodeIds)?ctx.nodeIds.slice():(Array.isArray(ctx?.nodes)?ctx.nodes.map(n=>n?.id).filter(Boolean):[]);
+    const nodes=ids.map(id=>findNode(id)).filter(Boolean);
+    let changed=false;
+    nodes.forEach(node=>{const comp=multiComponentForNode(node,ctx.type,false);if(comp&&multiGetPath(comp,path)!==undefined){changed=true;}});
+    if(!changed)return false;
+    pushHistory(`Edit ${ctx.label||COMPONENT_LABELS[ctx.type]||ctx.type}`);
+    nodes.forEach(node=>{const comp=multiComponentForNode(node,ctx.type,false);if(comp)multiDeletePath(comp,path);});
+    scheduleMultiInspectorRefresh(ctx);
+    return true;
+  }
+  function createMultiComponentProxy(representative,ctx){
+    const cache=new WeakMap();
+    ctx.lastReadPath=null;
+    ctx.lastReadValue=undefined;
+    const wrap=(target,path=[])=>{
+      if(target==null||typeof target!=='object')return target;
+      if(cache.has(target))return cache.get(target);
+      const proxy=new Proxy(target,{
+        get(obj,prop,receiver){
+          if(typeof prop==='symbol')return Reflect.get(obj,prop,receiver);
+          if(prop==='__uixMultiProxy')return true;
+          const full=[...path,String(prop)];
+          const value=Reflect.get(obj,prop,receiver);
+          if(ctx.tracking){
+            ctx.lastReadPath=full.slice();
+            ctx.lastReadValue=value;
+            ctx.reads.push({path:full.slice(),value});
+          }
+          return (value&&typeof value==='object')?wrap(value,full):value;
+        },
+        set(obj,prop,value,receiver){
+          const full=[...path,String(prop)];
+          if(!ctx.rendering && !ctx.suppressPropagation){
+            const current=Reflect.get(obj,prop,receiver);
+            if(!multiValueEqual(current,value)){
+              multiPropagatedSet(ctx,full,value);
+              return true;
+            }
+            return true;
+          }
+          return Reflect.set(obj,prop,value,receiver);
+        },
+        deleteProperty(obj,prop){
+          const full=[...path,String(prop)];
+          if(!ctx.rendering&&!ctx.suppressPropagation){
+            multiPropagatedDelete(ctx,full);
+            return true;
+          }
+          return delete obj[prop];
+        }
+      });
+      cache.set(target,proxy);return proxy;
+    };
+    return wrap(representative,[]);
+  }
+  function multiReadPathFromValue(value){
+    const ctx=activeMultiComponentContext;
+    if(!ctx?.tracking)return null;
+    if(Array.isArray(ctx.lastReadPath)&&ctx.lastReadPath.length&&multiValueEqual(ctx.lastReadValue,value))return [...ctx.lastReadPath];
+    if(Array.isArray(ctx.lastReadPath)&&ctx.lastReadPath.length)return [...ctx.lastReadPath];
+    for(let i=(ctx.reads?.length||0)-1;i>=0;i--){
+      const r=ctx.reads[i];
+      if(multiValueEqual(r.value,value))return [...r.path];
+    }
+    return null;
+  }
+  function scheduleMultiInspectorRefresh(ctx){
+    if(!ctx||ctx.refreshQueued)return;
+    ctx.refreshQueued=true;
+    queueMicrotask(()=>{
+      ctx.refreshQueued=false;
+      if(state.history.busy)return;
+      renderSelectionTree();
+      renderComponentPanel();
+      drawWorkplace();
+    });
+  }
+  function multiMixedForPath(ctx,path){
+    if(!ctx||!path||ctx.kind!=='component')return {mixed:false,values:[]};
+    const values=(ctx.nodes||[]).map(n=>{const c=component(n,ctx.type);return c?multiGetPath(c,path):MULTI_MISSING;});
+    const first=values.length?values[0]:undefined;
+    const mixed=values.length>1&&values.some(v=>v===MULTI_MISSING||!multiValueEqual(v,first));
+    return {mixed,values,first};
+  }
+  function multiMarkerFor(control,container,path){
+    const ctx=activeMultiComponentContext,info=multiMixedForPath(ctx,path);if(!ctx||!path||!info.mixed)return false;
+    control.hidden=true;
+    const marker=document.createElement('button');marker.type='button';marker.className='multi-mixed-button';marker.textContent='<>';marker.title='Click to use the value from the first selected Node';
+    marker.dataset.multiPath=JSON.stringify(path);
+    marker.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenus?.();
+      marker.remove();
+      control.hidden=false;
+      requestAnimationFrame(()=>{
+        const focusTarget=control.querySelector('input,textarea,select,button');
+        const liveValue=info.first;
+        if(focusTarget&&focusTarget.matches('input,textarea')){
+          if(focusTarget.type==='number')focusTarget.value=Number(liveValue??0);
+          else focusTarget.value=String(liveValue??'');
+          focusTarget.__uixSetCommitBaseline?.(focusTarget.type==='number'?Number(liveValue??0):String(liveValue??''));
+          focusTarget.focus();
+          if(typeof focusTarget.select==='function')focusTarget.select();
+        }
+      });
+    });
+    container.append(marker);return true;
+  }
+  function multiNodePropertyField(label,nodes,getValue,setValue,type='text'){
+    const firstNode=nodes[0];
+    const firstValue=getValue(firstNode);
+    const wrap=labeledInput(label,firstValue,value=>{
+      nodes.forEach(node=>setValue(node,value));
+      renderSelectionTree();
+      renderComponentPanel();
+      drawWorkplace();
+    },type);
+    const values=nodes.map(getValue);
+    const mixed=values.length>1&&values.some(value=>!multiValueEqual(value,firstValue));
+    if(mixed){
+      const input=wrap.querySelector('input,textarea,select');
+      if(input){
+        input.hidden=true;
+        const marker=document.createElement('button');
+        marker.type='button';
+        marker.className='multi-mixed-button';
+        marker.textContent='<>';
+        marker.title='Click to edit the first selected Node value for all selected Nodes';
+        marker.addEventListener('click',event=>{
+          event.preventDefault();
+          event.stopPropagation();
+          input.hidden=false;
+          const liveFirst=nodes[0]?getValue(nodes[0]):firstValue;
+          if(input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement){
+            const normalized=input.type==='number'?Number(liveFirst??0):String(liveFirst??'');
+            input.value=String(normalized);
+            input.__uixSetCommitBaseline?.(normalized);
+            input.focus();
+            if(typeof input.select==='function')input.select();
+          }
+          marker.remove();
+        });
+        wrap.append(marker);
+      }
+    }
+    return wrap;
+  }
+  function renderMultiNodeInspector(host,nodes){
+    const firstNode=nodes[0];
+    const body=document.createDocumentFragment();
+    const nameRow=document.createElement('div');nameRow.className='property-row property-row-stack';
+    nameRow.append(multiNodePropertyField('Name',nodes,node=>node.name,(node,value)=>{node.name=String(value??'');}));
+    const idWrap=document.createElement('div');idWrap.className='labeled-control';const idLabel=document.createElement('div');idLabel.className='property-label';idLabel.textContent='Id';const idVal=document.createElement('div');idVal.className='readonly-value multi-readonly-marker';idVal.textContent='</>';idWrap.append(idLabel,idVal);nameRow.append(idWrap);
+    nameRow.append(multiNodePropertyField('Index',nodes,node=>nodeIndex(node),(node,value)=>setNodeIndex(node,Number(value)||0),'number'));
+    body.append(nameRow);
+    host.append(componentCard(`${nodes.length} Nodes`,body,false,null,'multi:nodes'));
+
+    const typeSet=[];const typeSeen=new Set();
+    nodes.forEach(n=>nodeComponents(n).forEach(c=>{if(c?.type&&!typeSeen.has(c.type)){typeSeen.add(c.type);typeSet.push(c.type);}}));
+    typeSet.forEach(type=>{
+      // Always render from the FIRST selected Node so mixed-value controls use that Node's value
+      // when the <> marker is opened. If that Node is missing the component, use a temporary default
+      // component only as the editor template; the setting controls whether the component is created.
+      const repNode=nodes[0];
+      const existingRepComp=repNode?component(repNode,type):null;
+      const repComp=existingRepComp||createComponent(type);
+      const ctx={kind:'component',type,nodes,nodeIds:nodes.map(n=>n.id),representativeNode:repNode,representativeMissing:!existingRepComp,reads:[],tracking:true,rendering:true,suppressPropagation:false,label:COMPONENT_LABELS[type]||type};
+      activeMultiComponentContext=ctx;
+      const proxy=createMultiComponentProxy(repComp,ctx);
+      let card;
+      try{card=renderComponentCard(repNode||nodes.find(n=>component(n,type)),proxy);}finally{ctx.rendering=false;ctx.tracking=false;activeMultiComponentContext=null;}
+      if(card)host.append(card);
+    });
+    requestAnimationFrame(()=>drawWorkplace());
+  }
+  function multiEnsureNodeComponent(node){ return multiEnsureComponent(node,'node'); }
 
   function cameraFollowOptions(){
     const options=['This'];
@@ -1009,21 +1547,130 @@
 
   function empty(text) { const el=document.createElement('div'); el.className='component-empty'; el.textContent=text; return el; }
   function readOnlyField(label,value){ return field(label,value,'readonly'); }
+  function flushPendingValueEditors(){
+    if(flushingValueEditors)return;
+    flushingValueEditors=true;
+    try{[...pendingValueEditors].forEach(commit=>{try{commit('flush');}catch(err){console.error(err);}});}
+    finally{flushingValueEditors=false;}
+  }
+  function bindValueCommit(input,readValue,onChange,label='Edit'){
+    let committing=false;
+    let lastCommittedSignature;
+    const signature=value=>{try{return JSON.stringify(value);}catch{return String(value);}};
+    const safeRead=()=>{try{return readValue();}catch{return undefined;}};
+    const multiCtx=activeMultiComponentContext||null;
+    const arm=()=>{pendingValueEditors.add(commit);};
+    const commit=(reason='event')=>{
+      if(committing)return false;
+      committing=true;
+      const previousFlushing=flushingValueEditors;
+      flushingValueEditors=true;
+      try{
+        const value=safeRead();
+        const sig=signature(value);
+        if(sig===lastCommittedSignature){
+          pendingValueEditors.delete(commit);
+          return false;
+        }
+        pendingValueEditors.delete(commit);
+
+        // Finalize any older transaction before this edit starts. The actual value
+        // mutation is then recorded against the exact state immediately before it.
+        flushPendingHistory();
+        const before=historySnapshot();
+
+        // A multi-selection proxy must not create a second nested history transaction.
+        // This commit owns the transaction and records it after all selected Nodes have
+        // actually received the new value.
+        if(multiCtx)multiCtx.suppressHistory=true;
+        try{onChange(value);}finally{if(multiCtx)multiCtx.suppressHistory=false;}
+
+        const after=historySnapshot();
+        if(state.history.pending){
+          // A component-specific callback may have opened its own history transaction.
+          // Let that transaction own the state instead of creating a duplicate entry.
+          flushPendingHistory();
+        }else if(!sameHistoryState(before,after)){
+          commitHistoryPendingSnapshot({before,action:`Edit ${label}`},after);
+        }
+
+        // Refreshing or propagating may have replaced the control, so the baseline is
+        // always taken from the live data after the mutation, not from stale DOM state.
+        lastCommittedSignature=signature(safeRead());
+        return !sameHistoryState(before,after);
+      }finally{
+        flushingValueEditors=previousFlushing;
+        committing=false;
+      }
+    };
+    const setBaseline=value=>{lastCommittedSignature=signature(value);};
+    lastCommittedSignature=signature(safeRead());
+    // Keep the editor armed even before an input event. This makes selection changes,
+    // mobile Enter, and programmatic/native control changes flush reliably.
+    pendingValueEditors.add(commit);
+    input.__uixCommit=commit;
+    input.__uixCommitLabel=label;
+    input.__uixSetCommitBaseline=setBaseline;
+    input.addEventListener('focus',arm);
+    input.addEventListener('input',arm);
+    input.addEventListener('change',()=>commit('change'));
+    input.addEventListener('focusout',()=>commit('focusout'),true);
+    input.addEventListener('blur',()=>commit('blur'));
+    input.addEventListener('keydown',e=>{
+      if(e.key==='Escape')return;
+      if(e.key!=='Enter')return;
+      e.preventDefault();
+      e.stopPropagation();
+      commit('enter');
+      requestAnimationFrame(()=>input.blur());
+    });
+    return commit;
+  }
+  if(!window.__UIXValueCommitGlobalHooks){
+    window.__UIXValueCommitGlobalHooks=true;
+    document.addEventListener('pointerdown',e=>{
+      const active=document.activeElement;
+      if(active&&typeof active.__uixCommit==='function'&&!active.contains(e.target)&&!active.closest('.modal-backdrop')){
+        try{active.__uixCommit('outside');}catch(err){console.error(err);}
+      }
+    },true);
+    document.addEventListener('keydown',e=>{
+      if(e.key!=='Enter')return;
+      const active=document.activeElement;
+      if(active&&typeof active.__uixCommit==='function'){
+        try{active.__uixCommit('enter-capture');}catch(err){console.error(err);}
+      }
+    },true);
+  }
   function labeledInput(label,value,onChange,type='text'){
-    const wrap=document.createElement('div');wrap.className='labeled-control';const l=document.createElement('div');l.className='property-label';l.textContent=label;const input=document.createElement('input');input.type=type;input.value=value??'';input.addEventListener('change',()=>{pushHistory();onChange(type==='number'?Number(input.value):input.value);});wrap.append(l,input);return wrap;
+    const path=multiReadPathFromValue(value);const wrap=document.createElement('div');wrap.className='labeled-control';const l=document.createElement('div');l.className='property-label';l.textContent=label;const input=document.createElement('input');input.type=type;input.value=value??'';
+    bindValueCommit(input,()=>type==='number'?Number(input.value):input.value,onChange,label);
+    wrap.append(l,input);
+    if(path)multiMarkerFor(input,wrap,path);return wrap;
   }
   function field(label,value,type='text',onChange=()=>{},options=[]){
+    const path=multiReadPathFromValue(value);
     const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';
     if(type==='readonly'){c.append(Object.assign(document.createElement('div'),{className:'readonly-value',textContent:value??''}));}
-    else if(type==='textarea'){const i=document.createElement('textarea');i.value=value??'';i.addEventListener('change',()=>{pushHistory(`Edit ${label}`);onChange(i.value);});c.append(i);}
+    else if(type==='textarea'){
+      const i=document.createElement('textarea');i.value=value??'';
+      bindValueCommit(i,()=>i.value,onChange,label);
+      c.append(i);
+    }
     else if(type==='button'){const b=document.createElement('button');b.className='script-button';b.textContent=value;b.addEventListener('click',onChange);c.append(b);}
     else if(type==='custom-select') c.append(customSelect(value,options,onChange));
-    else {const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';i.addEventListener('change',()=>{pushHistory(`Edit ${label}`);onChange(type==='number'?Number(i.value):i.value);});c.append(i);}
-    row.append(l,c);return row;
+    else {
+      const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';
+      bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label);
+      c.append(i);
+    }
+    row.append(l,c);
+    if(path&&type!=='readonly'&&type!=='button')multiMarkerFor(c,row,path);
+    return row;
   }
   function axisVectorField(label, value, onChange){
-    const wrap=document.createElement('div');
-    wrap.className='property-vector';
+    const path=multiReadPathFromValue(value);
+    const wrap=document.createElement('div');wrap.className='property-vector';
     const title=document.createElement('div'); title.className='property-label'; title.textContent=label; wrap.append(title);
     const axis=document.createElement('div'); axis.className='axis-stack';
     const inputs=[];
@@ -1032,16 +1679,11 @@
       const l=document.createElement('span'); l.className='axis-name'; l.textContent=name+':';
       const input=document.createElement('input'); input.type='number'; input.step='any'; input.value=Number(value?.[index]??0);
       inputs[index]=input;
-      input.addEventListener('change',()=>{
-        const next=[Number(inputs[0]?.value??0),Number(inputs[1]?.value??0)];
-        if(!Number.isFinite(next[index])) next[index]=0;
-        pushHistory(); onChange(next[0],next[1]);
-      });
+      bindValueCommit(input,()=>Number(input.value)||0,()=>{const next=[Number(inputs[0]?.value??0),Number(inputs[1]?.value??0)];if(!Number.isFinite(next[index]))next[index]=0;onChange(next[0],next[1]);},`${label} ${name}`);
       row.append(l,input); axis.append(row);
     });
-    wrap.append(axis); return wrap;
+    wrap.append(axis); if(path)multiMarkerFor(axis,wrap,path); return wrap;
   }
-
   function pairField(label,value,onChange){
     value = Array.isArray(value) ? value : [0,0];
     const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent=label;wrap.append(title);
@@ -1052,27 +1694,18 @@
     const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent='Corner Radius';wrap.append(title);const grid=document.createElement('div');grid.className='corner-stack';['TL','TR','BR','BL'].forEach((name,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${name}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(radius[index]||0);i.addEventListener('change',()=>{pushHistory();radius[index]=Math.max(0,Number(i.value)||0);onChange([...radius]);});cell.append(i);grid.append(cell);});wrap.append(grid);return wrap;
   }
   function checkboxField(label,value,onChange){
-    const row=document.createElement('div');row.className='property-row checkbox-row';
-    const l=document.createElement('span');l.className='property-label';l.textContent=label;
-    const c=document.createElement('div');c.className='property-control checkbox-control';
+    const path=multiReadPathFromValue(value);const row=document.createElement('div');row.className='property-row checkbox-row';
+    const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control checkbox-control';
     const input=document.createElement('input');input.type='checkbox';input.checked=!!value;input.className='ui-checkbox';
-    input.addEventListener('change',()=>{
-      const componentScroll=$('#componentContent');
-      const selectionTree=$('#selectionTree');
-      const scriptLibrary=$('#scriptNodeLibrary');
-      const scrolls=[[componentScroll,componentScroll?.scrollTop],[selectionTree,selectionTree?.scrollTop],[scriptLibrary,scriptLibrary?.scrollTop]];
-      pushHistory(); onChange(input.checked);
-      requestAnimationFrame(()=>scrolls.forEach(([el,top])=>{if(el && Number.isFinite(top))el.scrollTop=top;}));
-    });
-    c.append(input);row.append(l,c);return row;
+    input.addEventListener('change',()=>{const componentScroll=$('#componentContent');const selectionTree=$('#selectionTree');const scriptLibrary=$('#scriptNodeLibrary');const scrolls=[[componentScroll,componentScroll?.scrollTop],[selectionTree,selectionTree?.scrollTop],[scriptLibrary,scriptLibrary?.scrollTop]];pushHistory();onChange(input.checked);requestAnimationFrame(()=>scrolls.forEach(([el,top])=>{if(el&&Number.isFinite(top))el.scrollTop=top;}));});
+    c.append(input);row.append(l,c);if(path)multiMarkerFor(c,row,path);return row;
   }
   function colorField(label,value,onChange){
-    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='color-button';const sw=document.createElement('span');sw.className='color-swatch';sw.style.background=colorCss(value,'transparent');const t=document.createElement('span');t.className='color-value';t.textContent=value||'transparent';b.append(sw,t);b.addEventListener('click',()=>openColorModal(value,v=>{pushHistory();onChange(v);},label));c.append(b);row.append(l,c);return row;
+    const path=multiReadPathFromValue(value);const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='color-button';const sw=document.createElement('span');sw.className='color-swatch';sw.style.background=colorCss(value,'transparent');const t=document.createElement('span');t.className='color-value';t.textContent=value||'transparent';b.append(sw,t);b.addEventListener('click',()=>openColorModal(value,v=>{pushHistory();onChange(v);},label));c.append(b);row.append(l,c);if(path)multiMarkerFor(c,row,path);return row;
   }
   function assetField(label,src,type,onSelect){
-    const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='asset-select-button';const found=(state.assets[type]||[]).find(a=>a.value===src);b.textContent=found?.name||`Select ${type}`;b.addEventListener('click',()=>openAssetSelector(type,v=>{pushHistory();onSelect(v);}));c.append(b);row.append(l,c);return row;
+    const path=multiReadPathFromValue(src);const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';const b=document.createElement('button');b.className='asset-select-button';const found=(state.assets[type]||[]).find(a=>a.value===src);b.textContent=found?.name||`Select ${type}`;b.addEventListener('click',()=>openAssetSelector(type,v=>{pushHistory();onSelect(v);}));c.append(b);row.append(l,c);if(path)multiMarkerFor(c,row,path);return row;
   }
-
   let activeSelectMenu=null;
   let activeNativeSelect=null;
   function positionFloatingElement(el, anchor, preferred='below'){
@@ -1364,7 +1997,7 @@
     return {x:Number(p[0])||0,y:Number(p[1])||0,w:Number(size[0])>0?Number(size[0]):base.w,h:Number(size[1])>0?Number(size[1]):base.h};
   }
   function hasAnimatedVisuals(){
-    return allNodes().some(({node})=>node.type==='node' && !!getAnimationForNode(node)?.sprites?.filter(f=>f?.src).length);
+    return allNodes().some(({node})=>{if(node.type!=='node')return false;const visual=nodeVisualSource(node);return !!visual?.animated;});
   }
   function ensureEditorAnimationLoop(){
     if(state.runtime.running || !hasAnimatedVisuals() || editorAnimationRAF)return;
@@ -1538,7 +2171,7 @@
       {label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),disabled:!topLevelSelectedItems().length,action:()=>cutNode()},
       {label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),disabled:!topLevelSelectedItems().length,action:()=>copyNode()},
       {label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},
-      {label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:!topLevelSelectedItems().length,action:()=>{copyNode();pasteNode();}},
+      {label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:!topLevelSelectedItems().length,action:()=>duplicateNodes()},
       {label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),disabled:!topLevelSelectedItems().length,action:()=>deleteSelectedNodes()},
       {label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),disabled:!selectedNode(),action:()=>snapSelectedMainNode()},
       {label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('selectAll',{scope:'editor'})},
@@ -1562,12 +2195,23 @@
         const cam=cameraEditorFrame(),offsetLocal=inverseRotatePoint(world.x-joystickHit.r.x,world.y-joystickHit.r.y,cam.angle);workspace.joystickDrag={joystick:joystickHit.j,offsetX:offsetLocal.x,offsetY:offsetLocal.y,historyPushed:false};
         canvas.setPointerCapture(e.pointerId);renderSelectionTree();renderComponentPanel();drawWorkplace();return;
       }
-      const worldPoint=screenToWorld(e.clientX,e.clientY),selectedNodes=editableSelectedNodes();
-      if(selectedNodes.length>1){const giz=getSelectionGizmoHit(selectedNodes,worldPoint);if(giz){workspace.gizmoDrag={multi:true,nodes:selectedNodes.slice(),type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransforms:Object.fromEntries(selectedNodes.map(n=>[n.id,clone(component(n,'transform')||{})])),startBounds:selectionBounds(selectedNodes),historyPushed:false};canvas.setPointerCapture(e.pointerId);return;}}
-      const selected=selectedNode();
-      if(selected){const giz=getGizmoHit(selected,worldPoint);if(giz){{const target=gizmoTarget(selected);workspace.gizmoDrag={node:selected,type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransform:clone(target.transform)};}canvas.setPointerCapture(e.pointerId);return;}}
-      const node=nodeAt(worldPoint);if(node){setNodeSelection(node,e);renderSelectionTree();renderComponentPanel();drawWorkplace();return;}
-      if(state.selectedId!==null){state.selectedId=null;renderSelectionTree();renderComponentPanel();}
+      const worldPoint=screenToWorld(e.clientX,e.clientY),selectionMods=resolvedEditorModifiers(e),selectionIntent=selectionMods.shiftKey||selectionMods.ctrlKey||selectionMods.metaKey||state.multiSelectionMode,selectedNodes=editableSelectedNodes();
+      const nodeUnderPointer=nodeAt(worldPoint);
+      // A modifier selection gesture must win over the gizmo. This is important in Chrome/WebView,
+      // where a Ctrl/Shift click can otherwise enter a drag path before the canvas selection runs.
+      if(!selectionIntent){
+        if(selectedNodes.length>1){const giz=getSelectionGizmoHit(selectedNodes,worldPoint);if(giz){workspace.gizmoDrag={multi:true,nodes:selectedNodes.slice(),type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransforms:Object.fromEntries(selectedNodes.map(n=>[n.id,clone(component(n,'transform')||{})])),startBounds:selectionBounds(selectedNodes),historyPushed:false};canvas.setPointerCapture(e.pointerId);return;}}
+        const selected=selectedNode();
+        if(selected){const giz=getGizmoHit(selected,worldPoint);if(giz){{const target=gizmoTarget(selected);workspace.gizmoDrag={node:selected,type:giz.type,axis:giz.axis,corner:giz.corner,startWorld:world,startPointerX:e.clientX,startPointerY:e.clientY,startTransform:clone(target.transform)};}canvas.setPointerCapture(e.pointerId);return;}}
+      }
+      if(nodeUnderPointer){setNodeSelection(nodeUnderPointer,selectionMods);renderSelectionTree();renderComponentPanel();drawWorkplace();status(state.selectedIds.length>1?`${state.selectedIds.length} items selected`:`Selected ${nodeUnderPointer.name}`);return;}
+      if(state.multiSelectionMode){
+        clearTimeout(longPressTimer);startPan(e);return;
+      }
+      if(selectionMods.shiftKey||selectionMods.ctrlKey||selectionMods.metaKey){
+        clearTimeout(longPressTimer);return;
+      }
+      clearNodeSelection('scene-camera');renderSelectionTree();renderComponentPanel();
       clearTimeout(longPressTimer);startPan(e);
     });
     canvas.addEventListener('pointermove',e=>{
@@ -1635,7 +2279,31 @@
     drawWorkplace();
   }
 
-  function applyAssetImage(src){if(!src)return null;if(assetImageCache.has(src))return assetImageCache.get(src);const img=new Image();img.src=src;assetImageCache.set(src,img);img.onload=()=>drawWorkplace();return img;}
+  let assetImageHost=null;
+  function ensureAssetImageHost(){
+    if(assetImageHost&&document.contains(assetImageHost))return assetImageHost;
+    assetImageHost=document.createElement('div');
+    assetImageHost.id='uixAssetImageHost';
+    assetImageHost.setAttribute('aria-hidden','true');
+    Object.assign(assetImageHost.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',overflow:'hidden',pointerEvents:'none',opacity:'0.001',zIndex:'2147483647'});
+    document.body.append(assetImageHost);
+    return assetImageHost;
+  }
+  function applyAssetImage(src){
+    if(!src)return null;
+    if(assetImageCache.has(src))return assetImageCache.get(src);
+    const img=new Image();
+    img.decoding='async';
+    img.loading='eager';
+    img.setAttribute('aria-hidden','true');
+    Object.assign(img.style,{width:'1px',height:'1px',display:'block',pointerEvents:'none'});
+    try{ensureAssetImageHost().append(img);}catch{}
+    img.onload=()=>{drawWorkplace();};
+    img.onerror=()=>{try{img.remove();}catch{};};
+    assetImageCache.set(src,img);
+    img.src=src;
+    return img;
+  }
   const getAssetImage=applyAssetImage;
 
   // ---------------- Modals / menus ----------------
@@ -1665,7 +2333,7 @@
     state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
     state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing',requirements:{'Use Mic':false},mic:{speechLanguage:'en-US',continuous:true,interimResults:true}};
     state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),viewsByNode:Object.create(null),editingInput:null,clipboard:null};
-    state.history={entries:[],index:-1,busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
+    state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
     clearCurrentProjectSession();
     showModal($('#projectModal'));
@@ -1681,6 +2349,7 @@
     makeRow('Move / Scale Snap',settings.moveScaleSnap);
     makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
     const multiRow=document.createElement('div');multiRow.className='editor-snap-row';const multiLabel=document.createElement('label');multiLabel.className='game-setting-check';const multiCheck=document.createElement('input');multiCheck.type='checkbox';multiCheck.checked=settings.multiSelectionUnifiedEditing!==false;const multiText=document.createElement('span');multiText.textContent='Multiselection Unified Editing';multiLabel.append(multiCheck,multiText);multiRow.append(multiLabel);settingsWrap.append(multiRow);
+    const missingRow=document.createElement('div');missingRow.className='editor-snap-row';const missingLabel=document.createElement('label');missingLabel.className='game-setting-check';const missingCheck=document.createElement('input');missingCheck.type='checkbox';missingCheck.checked=!!settings.createNewMissingComponent;const missingText=document.createElement('span');missingText.textContent='Create New Missing Component';missingLabel.append(missingCheck,missingText);missingRow.append(missingLabel);settingsWrap.append(missingRow);missingCheck.addEventListener('change',()=>{const next=getEditorSettings();next.createNewMissingComponent=missingCheck.checked;saveEditorSettings(next);});
     multiCheck.addEventListener('change',()=>{const next=getEditorSettings();next.multiSelectionUnifiedEditing=multiCheck.checked;saveEditorSettings(next);drawWorkplace();});
     const saveHeading=document.createElement('div');saveHeading.className='editor-snap-heading';saveHeading.textContent='Saving';settingsWrap.append(saveHeading);
     const autoRow=document.createElement('div');autoRow.className='editor-snap-row';const autoLabel=document.createElement('label');autoLabel.className='game-setting-check';const autoCheck=document.createElement('input');autoCheck.type='checkbox';autoCheck.checked=!!settings.autoSave;const autoText=document.createElement('span');autoText.textContent='Auto Save';autoLabel.append(autoCheck,autoText);autoRow.append(autoLabel);settingsWrap.append(autoRow);
@@ -1706,7 +2375,12 @@
   }
   function renderKeybindHints(){
     const defs=window.UIXKeyBinds?.getAll?.()||[];const map=new Map(defs.map(d=>[d.command,d.keys]));
-    $$('[data-action]').forEach(b=>{const cmdMap={'save':'save','new-project':'new','load-local':'open','import-project':'open','undo':'undo','redo':'redo','cut-node':'cut','copy-node':'copy','paste-node':'paste','delete-selection':'delete','toggle-fullscreen':'fullscreen'};const cmd=cmdMap[b.dataset.action];if(!cmd)return;let h=b.querySelector('.shortcut-hint');if(!h){h=document.createElement('span');h.className='shortcut-hint';b.append(h);}h.textContent=window.UIXKeyBinds?.display?.(map.get(cmd)||'')||'';h.hidden=!h.textContent;});
+    $$('[data-action]').forEach(b=>{
+      if(b.id==='scriptUndoButton'||b.id==='scriptRedoButton'){
+        b.querySelector('.shortcut-hint')?.remove();
+        return;
+      }
+      const cmdMap={'save':'save','new-project':'new','load-local':'open','import-project':'open','undo':'undo','redo':'redo','cut-node':'cut','copy-node':'copy','paste-node':'paste','delete-selection':'delete','toggle-fullscreen':'fullscreen'};const cmd=cmdMap[b.dataset.action];if(!cmd)return;let h=b.querySelector('.shortcut-hint');if(!h){h=document.createElement('span');h.className='shortcut-hint';b.append(h);}h.textContent=window.UIXKeyBinds?.display?.(map.get(cmd)||'')||'';h.hidden=!h.textContent;});
   }
   function importEditorPreferences(){
     let input=$('#editorPreferencesImportInput');
@@ -1782,9 +2456,11 @@
       case 'new-project': askConfirm('Create New Project','Create a new Node2D project? The current editor state will be reset.',openProjectNameModal,'Create'); break;
       case 'load-project': openLoadChoice(); break;
       case 'load-local': openLocalNDCModal(); break;
+      case 'load-flappybird-sample': loadFlappyBirdSample(); break;
       case 'import-project': openProjectImport(); break;
       case 'save-project': saveProjectToProjectStorage(); break;
       case 'export-project': openExportProjectModal(); break;
+      case 'open-history': openHistory(); break;
       case 'help': {
         const frame=$('#helpFrame');
         if(frame && !frame.getAttribute('src')) frame.src='help/index.html';
@@ -1816,6 +2492,7 @@
       case 'cut-node': cutNode(selectedNode()); break;
       case 'copy-node': copyNode(selectedNode()); break;
       case 'paste-node': pasteNode(); break;
+      case 'toggle-multi-selection': setMultiSelectionMode(!state.multiSelectionMode); break;
       case 'delete-selection': deleteSelectedNodes(); break;
       case 'snap-node': snapSelectedMainNode(); break;
       case 'add-local-variable': addVariable(false); break;
@@ -1894,7 +2571,7 @@
     Object.keys(state.assets).forEach(k=>{state.assets[k].length=0;});
     const savedAssets=data.assets||{};
     ['Sprite','Audio','MIDI'].forEach(k=>{if(Array.isArray(savedAssets[k])) state.assets[k].push(...clone(savedAssets[k]));});
-    state.history={entries:[],index:-1,busy:false,pending:null,pendingSeq:0};
+    state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0};
     state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     if(!window.__UIX_STANDALONE__){
       $('#appShell')?.classList.remove('exited');
@@ -1947,13 +2624,48 @@
     }catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}
   }
 
+  function hasFlappyBirdSample(){try{return localStorage.getItem(FLAPPY_BIRD_SAMPLE_FLAG)==='true';}catch{return false;}}
+  function setFlappyBirdSampleUsed(){try{localStorage.setItem(FLAPPY_BIRD_SAMPLE_FLAG,'true');}catch{}}
+  async function fetchFlappyBirdSampleBytes(){
+    const urls=[FLAPPY_BIRD_SAMPLE_ROOT,new URL(FLAPPY_BIRD_SAMPLE_RELATIVE,location.href).href];
+    let lastError=null;
+    for(const url of urls){
+      try{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);return new Uint8Array(await response.arrayBuffer());}
+      catch(err){lastError=err;}
+    }
+    throw lastError||new Error('Could not fetch Flappy Bird sample');
+  }
+  async function loadFlappyBirdSample(){
+    if(hasFlappyBirdSample()){status('Flappy Bird sample is already in Local NDC');openLocalNDCModal();return;}
+    const host=$('#localNdcList');
+    try{
+      const btn=host?.querySelector('[data-action="load-flappybird-sample"]');
+      if(btn){btn.disabled=true;btn.textContent='Loading…';}
+      const bytes=await fetchFlappyBirdSampleBytes();
+      const saved=await window.UIXNDCCodec.saveCurrent(bytes,'Flappy Bird Sample',null);
+      setFlappyBirdSampleUsed();
+      loadProjectBytes(bytes,'Flappy Bird Sample',{localNdcId:saved?.id||null});
+      closeModal($('#localNdcModal'));
+      status('Flappy Bird sample added to Local NDC');
+    }catch(err){console.error(err);status(`Could not load Flappy Bird sample: ${err.message||err}`);openLocalNDCModal();}
+  }
+
   async function openLocalNDCModal(){
     const host=$('#localNdcList');if(!host)return;
     host.innerHTML='<div class="local-ndc-empty">Loading local projects…</div>';showModal($('#localNdcModal'));
     try{
       const list=await window.UIXNDCCodec.listLocal();
       host.innerHTML='';
-      if(!list.length){host.innerHTML='<div class="local-ndc-empty">No Local NDC projects saved yet.</div>';return;}
+      if(!hasFlappyBirdSample()){
+        const sample=document.createElement('div');sample.className='local-ndc-sample';
+        const info=document.createElement('div');info.className='local-ndc-sample-info';
+        const title=document.createElement('strong');title.textContent='Load Sample Flappy Bird';
+        const note=document.createElement('small');note.textContent='Fetches samples/flappybird.ndc once and saves it to Local NDC.';
+        info.append(title,note);
+        const btn=document.createElement('button');btn.type='button';btn.className='btn primary';btn.dataset.action='load-flappybird-sample';btn.textContent='Load Sample';btn.addEventListener('click',()=>loadFlappyBirdSample());
+        sample.append(info,btn);host.append(sample);
+      }
+      if(!list.length){const empty=document.createElement('div');empty.className='local-ndc-empty';empty.textContent='No Local NDC projects saved yet.';host.append(empty);return;}
       list.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
       for(const record of list){
         const row=document.createElement('div');row.className='local-ndc-row';
@@ -2229,12 +2941,27 @@
   function importAssets(files){
     const accepted=[],rejected=[];
     [...files].forEach(file=>{
-      const name=String(file?.name||''),typeName=String(file?.type||'').toLowerCase(),isMIDI=/\.(mid|midi)$/i.test(name)||typeName.includes('midi'),isAudio=typeName.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name),isImage=typeName.startsWith('image/')||/\.svg$/i.test(name);
+      const name=String(file?.name||''),typeName=String(file?.type||'').toLowerCase();
+      const isGif=/\.gif$/i.test(name)||typeName==='image/gif';
+      const isMIDI=/\.(mid|midi)$/i.test(name)||typeName.includes('midi');
+      const isAudio=typeName.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name);
+      const isImage=(typeName.startsWith('image/')||/\.svg$/i.test(name))&&!isGif;
+      if(isGif){rejected.push(`${name||'Unnamed file'} (GIF is not supported; use the Animation Sprite component)`);return;}
       if(isImage||isAudio||isMIDI)accepted.push(file);else rejected.push(name||'Unnamed file');
     });
-    if(rejected.length)status(`Rejected: ${rejected.join(', ')}. Only image or audio files are allowed.`);
+    if(rejected.length)status(`Rejected: ${rejected.join(', ')}. GIF assets are not supported; use Animation Sprite for animated images.`);
     if(!accepted.length)return;
-    Promise.all(accepted.map(fileToDataUrl)).then(results=>{results.forEach(({file,value})=>{const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);const type=isMIDI?'MIDI':(file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(file.name))?'Audio':'Sprite';let stem=file.name.replace(/\.[^.]+$/,'');let name=stem;let i=2;while(state.assets[type].some(a=>a.name===name))name=`${stem} ${i++}`;state.assets[type].push({name,value,type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename:file.name,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml' ? 'SVG' : 'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name)});});renderAssetManager();status(`${accepted.length} asset${accepted.length===1?'':'s'} imported`);}).catch(()=>status('Could not import assets'));
+    Promise.all(accepted.map(fileToDataUrl)).then(results=>{
+      results.forEach(({file,value})=>{
+        const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);
+        const type=isMIDI?'MIDI':(file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(file.name))?'Audio':'Sprite';
+        let stem=file.name.replace(/\.[^.]+$/,'');let name=stem;let i=2;
+        while(state.assets[type].some(a=>a.name===name))name=`${stem} ${i++}`;
+        state.assets[type].push({name,value,type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename:file.name,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml' ? 'SVG' : 'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name)});
+      });
+      renderAssetManager();
+      status(`${accepted.length} asset${accepted.length===1?'':'s'} imported`);
+    }).catch(()=>status('Could not import assets'));
   }
   function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve({file,value:r.result});r.onerror=reject;r.readAsDataURL(file);});}
 
@@ -2422,12 +3149,27 @@
   }
   function openScriptInlineEdit(sn,item){
     const entry=item.entry,type=scriptEntryTypeForSetVariable(sn,item),wrap=document.createElement('div');wrap.className='script-inline-editor';
-    const finish=(value,cancel=false)=>{if(cancel)return renderScriptCanvas();entry.value=value;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);renderScriptCanvas();};
+    const finish=(value,cancel=false)=>{
+      if(cancel)return renderScriptCanvas();
+      const oldValue=scriptEditorValue(sn,item),nextValue=value;
+      if(String(oldValue??'')===String(nextValue??''))return renderScriptCanvas();
+      pushHistory(`Edit ${item.name||'ScriptNode input'}`);
+      entry.value=nextValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);renderScriptCanvas();
+    };
     if(type==='col'){
-      openColorModal(String(entry.value||'#FFFFFFFF'),v=>{pushHistory('Edit ScriptNode Color');entry.value=v;delete sn.expressions[item.path];renderScriptCanvas();},entry.name);return;
+      openColorModal(String(entry.value||'#FFFFFFFF'),v=>{
+        if(String(scriptEditorValue(sn,item)??'')===String(v??''))return;
+        pushHistory('Edit ScriptNode Color');entry.value=v;delete sn.expressions[item.path];renderScriptCanvas();
+      },entry.name);return;
     }
     if(type==='selector'){
-      const options=evaluateSelector(entry.value);const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{entry.selected=v;delete sn.expressions[item.path];renderScriptCanvas();});return select;
+      const options=evaluateSelector(entry.value);const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{
+        if(String(scriptEditorValue(sn,item)??'')===String(v??''))return;
+        pushHistory(`Edit ${item.name||'ScriptNode input'}`);
+        entry.selected=v;delete sn.expressions[item.path];
+        if(sn.defName==='setVariable'&&(entry.name==='Type'||entry.name==='Name'))syncSetVariableValueEditor(sn);
+        renderScriptCanvas();
+      });return select;
     }
     if(type==='bool'){
       const current=entry.value===null||entry.value===undefined?'':(entry.value?'true':'false');
@@ -2450,6 +3192,9 @@
       if(value!=='' && !options.includes(String(value))) { entry.selected=''; value=''; }
       const wrap=document.createElement('div');wrap.className='script-selector-wrap';
       const select=customSelect(String(value??''),options,choice=>{
+        const oldChoice=scriptEditorValue(sn,item);
+        if(String(oldChoice??'')===String(choice??''))return;
+        pushHistory(`Edit ${item.name||'ScriptNode input'}`);
         entry.selected=choice;delete sn.expressions[item.path];
         if(sn.defName==='setVariable'&&entry.name==='Type'){
           const nameItem=flattenEditor(sn.values).find(x=>x.entry.name==='Name');if(nameItem)nameItem.entry.selected='';
@@ -2480,7 +3225,7 @@
       const type=document.createElement('span');type.className='script-input-type';type.textContent=effectiveType;b.append(label,type);
       b.addEventListener('click',e=>{e.stopPropagation();const editor=openScriptInlineEdit(sn,item);if(editor){b.replaceWith(editor);}});
     }
-    const showContext=(x,y)=>{showContextMenu([{label:'Expression',action:()=>openExpressionEditor(sn,item.path,entry)},{label:'Clear',action:()=>{delete sn.expressions[item.path];entry.value=null;if(Object.prototype.hasOwnProperty.call(entry,'selected'))entry.selected=null;renderScriptCanvas();}}],x,y);};
+    const showContext=(x,y)=>{showContextMenu([{label:'Expression',action:()=>openExpressionEditor(sn,item.path,entry)},{label:'Clear',action:()=>{pushHistory(`Clear ${item.name||'ScriptNode input'}`);delete sn.expressions[item.path];entry.value=null;if(Object.prototype.hasOwnProperty.call(entry,'selected'))entry.selected=null;renderScriptCanvas();}}],x,y);};
     b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showContext(e.clientX,e.clientY);});
     setupLongPress(b,e=>showContext(e.clientX,e.clientY));
     return b;
@@ -2536,12 +3281,13 @@
   function selectedScriptNodes(){const set=new Set(state.script.selectedNodeIds||[]);return scriptList().filter(x=>set.has(x.id));}
   function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
   function cutScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to cut');copyScriptNodes();requestDeleteScriptNodes(nodes.map(n=>n.id),'Cut');}
-  function pasteScriptNodes(){const clip=state.script.clipboard;if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory('Paste ScriptNodes');const pasted=clone(clip.nodes);pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
+  function pasteScriptNodes(){const clip=state.script.clipboard;if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory('Paste ScriptNodes');const pasted=restoreScriptNodeDefinitions({clipboardNodes:clone(clip.nodes)}).clipboardNodes||[];pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
+  function duplicateScriptNodes(){const source=selectedScriptNodes();if(!source.length)return status('Nothing selected to duplicate');const list=scriptList(),map=new Map();pushHistory(source.length===1?`Duplicate ${source[0].defName}`:`Duplicate ${source.length} ScriptNodes`);const duplicated=restoreScriptNodeDefinitions({duplicateNodes:clone(source)}).duplicateNodes||[];duplicated.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const set=new Set(source.map(x=>x.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to)).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=duplicated.map(x=>x.id);state.script.selectedNodeId=duplicated.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();renderScriptConnections();status(`${duplicated.length} ScriptNodes duplicated`);}
   function deleteScriptNodesNow(ids){const set=new Set(ids||[]);if(!set.size)return;const list=scriptList();pushHistory('Delete ScriptNodes');state.script.nodesByNode[state.script.nodeId]=list.filter(sn=>!set.has(sn.id));state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>!set.has(c.from)&&!set.has(c.to));state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(id=>!set.has(id));state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();status(`${set.size} ScriptNode${set.size===1?'':'s'} deleted`);}
   function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
   function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];if(!con.some(c=>c.from===id||c.to===id))return;pushHistory('Disconnect ScriptNode');state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
   function defForScriptDoc(sn){return scriptNodeDefinition(sn?.defName)?.name||sn?.defName||'ScriptNode';}
-  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>{copyScriptNodes();pasteScriptNodes();}},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Documentation',icon:'?',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
+  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>duplicateScriptNodes()},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Documentation',icon:'?',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
   function applyScriptPanelState(){
     const layout=$('#scriptModal .script-layout'),left=$('#scriptModal .script-left'),right=$('#scriptInspector');
     if(!layout||!left||!right)return;
@@ -2743,6 +3489,10 @@
   function expressionContext(){
     const node=selectedNode(),sceneVars=sceneVariableList(),body=runtimeBodyForNode(node);
     const keybinds=keybindOptions();
+    const expressionColorHelpers={
+      rgb:(r,g,b)=>rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,1]),
+      rgba:(r,g,b,a)=>{const alpha=Number(a);return rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,alpha>1?alpha/255:alpha]);}
+    };
     const velocity={velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,x:Number(body?.vx)||0,y:Number(body?.vy)||0,vx:Number(body?.vx)||0,vy:Number(body?.vy)||0,omega:Number(body?.omega)||0,angularX:Number(body?.omega||0)*180/Math.PI};
     return {
       local:Object.fromEntries((state.localVarsByNode[state.script.nodeId]||[]).map(v=>[v.name,v.value])),
@@ -2752,6 +3502,7 @@
       sceneVariableNames:sceneVars.map(v=>v.name),
       localVariableNames:(state.localVarsByNode[state.script.nodeId]||[]).map(v=>v.name),
       transform:node?component(node,'transform')||{}:{},
+      col:expressionColorHelpers,
       velocity,
       velocityX:velocity.velocityX,velocityY:velocity.velocityY,angularVelocity:velocity.angularVelocity,
       text:node?component(node,'text')||{}:{},
@@ -2803,6 +3554,10 @@
       Mic:[{label:'decibel',value:'ctx.mic.decibel',title:'Current microphone level in decibels'},{label:'speech',value:'ctx.mic.speech',title:'Live speech-recognition text'},{label:'active',value:'ctx.mic.active',title:'Whether the microphone is active'},{label:'speechActive',value:'ctx.mic.speechActive',title:'Whether speech recognition is running'}],
       transforms:[{label:'Position X',value:'ctx.transform.position[0]'},{label:'Position Y',value:'ctx.transform.position[1]'},{label:'Scale X',value:'ctx.transform.scale[0]'},{label:'Scale Y',value:'ctx.transform.scale[1]'},{label:'Angle',value:'ctx.transform.angle[0]'}],
       Velocity:[{label:'VelocityX',value:'ctx.velocity.velocityX'},{label:'VelocityY',value:'ctx.velocity.velocityY'},{label:'AngularVelocity',value:'ctx.velocity.angularVelocity'}],
+      Misc:[
+        {label:'ctx.col.rgb(r, g, b)',value:'ctx.col.rgb(r, g, b)',title:'Returns a #RRGGBB hex color. r, g, b are 0–255.'},
+        {label:'ctx.col.rgba(r, g, b, a)',value:'ctx.col.rgba(r, g, b, a)',title:'Returns a #RRGGBBAA hex color. r, g, b are 0–255 and a is 0–1.'}
+      ],
       Math:customMath,
       Vectors:[
         {label:'vec2(x, y)',value:'[x, y]',title:'Parameters: x, y'},
@@ -2842,7 +3597,7 @@
     });
   }
 
-  function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0)list.splice(i,1);renderScriptConnections();});svg.append(line);});}
+  function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0){pushHistory('Disconnect ScriptNode');list.splice(i,1);}renderScriptConnections();});svg.append(line);});}
   function enableScriptCanvas(){
     enableScriptPanelControls();
     const canvas=$('#scriptCanvas'); let pan=null;const pointers=new Map();let pinch=null;
@@ -2955,9 +3710,19 @@
   function setRuntimeOutputOpen(open){
     const panel=$('#runtimeOutputPanel');if(!panel)return;panel.hidden=!open;state.runtime.outputOpen=!!open;if(open)renderRuntimeOutput();
   }
+  function updateRuntimeFps(now){
+    const rt=state.runtime;if(!rt||!rt.running)return;
+    rt.fpsFrames=Number(rt.fpsFrames||0)+1;
+    const start=Number(rt.fpsWindowStart||now);
+    if(now-start>=500){
+      rt.fps=Math.max(0,Math.round(rt.fpsFrames*1000/(now-start)));
+      rt.fpsFrames=0;rt.fpsWindowStart=now;
+    }
+    const label=$('#runtimeFpsLabel');if(label)label.textContent=`FPS: ${Math.max(0,Number(rt.fps)||0)}`;
+  }
   function installRuntimeOutputCapture(){
     if(runtimeOutputRestore)runtimeOutputRestore();
-    if(!state.runtime?.debug)return;
+    if(!state.runtime?.running)return;
     const originals={log:console.log,warn:console.warn,error:console.error};
     const wrap=(level,fn)=>(...args)=>{fn.apply(console,args);runtimeOutput(level,args.map(runtimeOutputValue).join(' '));};
     console.log=wrap('log',originals.log);console.warn=wrap('warn',originals.warn);console.error=wrap('error',originals.error);
@@ -3018,10 +3783,10 @@
     for(const sn of scripts||[]){rt.scriptById.set(sn.id,sn);rt.scriptOwnerById.set(sn.id,ownerNode.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=rt.eventScriptsByName.get(name)||[];list.push({node:ownerNode,sn});rt.eventScriptsByName.set(name,list);}}rt.eventScriptsByNode.set(ownerNode.id,byDef);
     for(const c of connections||[]){const byOut=rt.routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);rt.routesByScriptOutput.set(c.from,byOut);}
   }
-  function runtimeAddObject(sourceId,x,y,angle,vx,vy,angularVelocity){
+  function runtimeAddObject(sourceId,x,y,angle,scaleX,scaleY,vx,vy,angularVelocity){
     const rt=state.runtime,source=runtimeFindNode(sourceId);if(!source)return null;const copy=runtimeClone(source),oldId=copy.id;copy.id=`node-runtime-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     let n=Math.max(1,Number(rt.nextNumericId)||1);while(rt.numericIds.has(n))n++;copy.numericId=n;rt.numericIds.add(n);rt.nextNumericId=n+1;
-    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];}
+    const t=component(copy,'transform');if(t){t.position=[Number(x)||0,Number(y)||0];if(angle!==null&&angle!==undefined)t.angle=[Number(angle)||0];t.scale=[Number.isFinite(Number(scaleX))?Number(scaleX):1,Number.isFinite(Number(scaleY))?Number(scaleY):1];}
     const originalScripts=rt.dynamicScriptsByNode[oldId]||[],sourceScripts=cloneRuntimeScripts(originalScripts),scriptMap=new Map();sourceScripts.forEach((sn,i)=>{const old=originalScripts[i]?.id;if(old)scriptMap.set(old,sn.id);});
     const sourceConnections=runtimeClone(rt.dynamicConnectionsByNode[oldId]||[]).map(c=>({...c,from:scriptMap.get(c.from)||c.from,to:scriptMap.get(c.to)||c.to}));
     const parent=rt.parentById.get(oldId)||null,container=parent?.children||rt.scene.nodes;if(!Array.isArray(container))return null;container.push(copy);
@@ -3414,6 +4179,10 @@
     const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
     const locals=runtimeVariableArray('Local',node),globals=runtimeVariableArray('Global',node),sceneVars=runtimeVariableArray('Scene',node);
     const joy=state.runtime.shared?.joystickObject||Object.create(null);
+    const expressionColorHelpers={
+      rgb:(r,g,b)=>rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,1]),
+      rgba:(r,g,b,a)=>{const alpha=Number(a);return rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,alpha>1?alpha/255:alpha]);}
+    };
     const velocity={};
     const setVX=v=>{if(body&&v!==null&&v!==undefined)body.vx=Number(v)||0;};
     const setVY=v=>{if(body&&v!==null&&v!==undefined)body.vy=Number(v)||0;};
@@ -3432,7 +4201,7 @@
     });
     const ctx={
       local:Object.fromEntries(locals.map(v=>[v.name,v.value])),global:Object.fromEntries(globals.map(v=>[v.name,v.value])),scene:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      transform:body?.t||component(node,'transform')||{},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
+      transform:body?.t||component(node,'transform')||{},col:expressionColorHelpers,velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       ScreenUpX:Number(state.runtime.inputs?.ScreenUpX)||0,ScreenUpY:Number(state.runtime.inputs?.ScreenUpY)||0,ScreenDownX:Number(state.runtime.inputs?.ScreenDownX)||0,ScreenDownY:Number(state.runtime.inputs?.ScreenDownY)||0,ScreenMoveX:Number(state.runtime.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime.inputs?.ScreenMoveY)||0,
@@ -3450,7 +4219,7 @@
       chase:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t){const old=state.runtime.aiTargets[node.id];const next={...(old||{}),kind:'chase',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};if(old&& (old.map!==next.map||old.targetId!==next.targetId||old.speed!==next.speed)){next.path=null;next.pathIndex=0;}state.runtime.aiTargets[node.id]=next;}},
       avoid:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.aiTargets[node.id]={kind:'avoid',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
       destroyObject:()=>runtimeDestroyNode(node),
-      createObject:(label,x,y,angle,vx,vy,angular)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)runtimeAddObject(t.node.id,x,y,angle,vx,vy,angular);},
+      createObject:(label,x,y,angle,scaleX,scaleY,vx,vy,angular)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)runtimeAddObject(t.node.id,x,y,angle,scaleX,scaleY,vx,vy,angular);},
       playAudio:(v)=>runtimePlayAudio(v),stopAudio:()=>runtimeStopAudio(),clearAudio:()=>runtimeClearAudio(),
       isCollidedWith:(label)=>runtimeIsCollided(node,label),
       saveState:(name)=>runtimeSaveState(name),loadState:(name)=>runtimeLoadState(name),removeState:(name)=>runtimeRemoveState(name),clearState:()=>runtimeClearState(),
@@ -3856,7 +4625,7 @@
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,debugLastDraw:0,lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
@@ -3866,7 +4635,7 @@
       if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111;display:grid;place-items:center;';
       applyRuntimeScreenType(root,canvas,state.game.screenType);
       canvas.style.touchAction='none';
-      if(debug)installRuntimeOutputCapture();
+      installRuntimeOutputCapture();
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();runtimeWarmAudioAssets();
       runtimeLast=performance.now();
@@ -3875,7 +4644,7 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-actions">${debug?'<button id="runtimeOutputButton" type="button">Output</button>':''}<button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>':''}`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;if(debug){$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();}const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function stopRuntime(){const rt=state.runtime;rt.running=false;runtimeOutputRestore?.();runtimeOutputRestore=null;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.renderCtx=null;rt.renderCanvas=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
@@ -3883,7 +4652,7 @@
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
     const fixedDt=1/60;let steps=0;
     while(runtimeAccumulator>=fixedDt&&steps<8){stepRuntime(fixedDt);runtimeAccumulator-=fixedDt;steps++;}
-    drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
+    updateRuntimeFps(now);drawRuntime();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function renderRuntimeDebug(){const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
@@ -3991,6 +4760,7 @@
     });
     document.addEventListener('keydown',e=>{
       if(!state.runtime?.running&&state.project?.created&&(e.key==='F5'||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))&&!e.shiftKey){e.preventDefault();e.stopPropagation();status('Reload blocked. Use the project controls to reload.');return;}
+      editorModifierState.shiftKey=!!e.shiftKey;editorModifierState.ctrlKey=!!e.ctrlKey;editorModifierState.altKey=!!e.altKey;editorModifierState.metaKey=!!e.metaKey;
       if(state.runtime?.running){
         const key=normalizeRuntimeKey(e);
         if(key && !e.repeat){setRuntimeKeyEvent(key);dispatchRuntimeEvent('onKeybind','down',{key,code:e.code,repeat:false,shiftKey:!!e.shiftKey,ctrlKey:!!e.ctrlKey,altKey:!!e.altKey,metaKey:!!e.metaKey});}
@@ -4001,7 +4771,10 @@
         if($('.context-menu.open')){closeMenus();return;}
         const topId=modalStack.at(-1),top=topId?$('#'+topId):null;if(top){closeModal(top);return;}
       }
-    });  window.UIXKeyBinds?.registerHandler('editor',(command,data)=>{
+    });
+    document.addEventListener('keyup',e=>{editorModifierState.shiftKey=!!e.shiftKey;editorModifierState.ctrlKey=!!e.ctrlKey;editorModifierState.altKey=!!e.altKey;editorModifierState.metaKey=!!e.metaKey;});
+    window.addEventListener('blur',()=>{editorModifierState.shiftKey=false;editorModifierState.ctrlKey=false;editorModifierState.altKey=false;editorModifierState.metaKey=false;});
+    window.UIXKeyBinds?.registerHandler('editor',(command,data)=>{
     switch(command){
       case 'save': saveProjectToProjectStorage(); return;
       case 'new': action('new-project'); return;
@@ -4009,7 +4782,7 @@
       case 'copy': copyNode(); return;
       case 'cut': cutNode(); return;
       case 'paste': pasteNode(); return;
-      case 'duplicate': pasteNode(); return;
+      case 'duplicate': duplicateNodes(); return;
       case 'export': action('export-project'); return;
       case 'rename': { const n=selectedNode(); if(n) promptModal('Rename Node','Node name',n.name||'Node',v=>{const next=String(v||'').trim();if(!next)return;pushHistory();n.name=next;renderAll();}); return; }
       case 'settings': openEditorSettings(); return;
@@ -4034,7 +4807,7 @@
   });
   window.UIXKeyBinds?.registerHandler('script',(command,data)=>{
     switch(command){
-      case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':pasteScriptNodes();break;case 'duplicate':pasteScriptNodes();break;
+      case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':pasteScriptNodes();break;case 'duplicate':duplicateScriptNodes();break;
       case 'delete':requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id));break;case 'selectAll':state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();break;
       case 'deselectAll':state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();break;case 'contextMenu':{const sn=selectedScriptNodes().at(-1);if(sn){const el=document.querySelector(`.script-node-card[data-script-id="${sn.id}"]`);const r=el?.getBoundingClientRect();scriptContextMenu(sn,r?r.left+r.width/2:20,r?r.top+r.height/2:20);}break;}case 'undo':undo();break;case 'redo':redo();break;case 'snap':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn) snapScriptToNode(sn);}break;
       case 'frame':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn)snapScriptToNode(sn);}break;case 'next':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)+1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'previous':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)-1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'escape':closeModal($('#scriptModal'));break;
@@ -4101,16 +4874,7 @@
     }
     return notice;
   }
-  function installViewportLock(){
-    if(window.__UIXViewportLockInstalled)return;
-    window.__UIXViewportLockInstalled=true;
-    const stop=e=>{
-      if(!document.documentElement.classList.contains('uix-narrow-edit-lock'))return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    };
-    ['keydown','keyup','keypress','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','touchstart','touchmove','touchend','click','dblclick','contextmenu','wheel','dragstart','drop'].forEach(type=>document.addEventListener(type,stop,true));
-  }
+  function installViewportLock(){ window.__UIXViewportLockInstalled=true; }
   function setViewportEditLock(blocked){
     const root=document.documentElement;
     root.classList.toggle('uix-narrow-edit-lock',blocked);
