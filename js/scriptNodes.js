@@ -10,6 +10,8 @@
     { name:'onScreenInput', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onJoystick', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Variable',type:'selector',value:ctx=>(ctx?.joysticksList||[]).map(j=>j.variable),selected:''}], func:()=>({out:true}) },
     { name:'onAudioPickup', require:'Use Mic', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onInputFocus', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onInputBlur', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
     { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
@@ -81,6 +83,8 @@
       func:(ctx,v)=>{ctx.followObject?.(v.Target,v.Speed);return {out:true};}
     },
     {name:'Destroy Object',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.destroyObject?.();return {out:true};}},
+    {name:'focusInput',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.focusInput?.();return {out:true};}},
+    {name:'blurInput',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.blurInput?.();return {out:true};}},
     {
       name:'Chase', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[{name:'Map',type:'selector',selectFolder:true,value:ctx=>(ctx?.folderOptions||[]),selected:''},{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'Speed',type:'int',value:100}],
@@ -126,7 +130,7 @@
     {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,!!(v.applyByName??v['Apply By Name']));return {next:true,truth:yes,falsy:!yes};}}
   ];
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onCollideWith','onUnload','saveState','loadState','removeState','clearState','setVariable','setTransform','setText','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputBlur','onConnectionChange','onCollideWith','onUnload','saveState','loadState','removeState','clearState','setVariable','setTransform','setText','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();
