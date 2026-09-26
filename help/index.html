@@ -57,19 +57,26 @@
     main.innerHTML=item?item.contents:'<div class="help-empty">Select a topic from the navigation.</div>';
   }
   function selectTopic(topic){
-    const wanted=String(topic||'');
+    const wanted=String(topic||'').trim();
     if(!wanted)return false;
     for(let si=0;si<sections.length;si++){
       const ii=sections[si].items.findIndex(item=>item.id===wanted);
       if(ii>=0){selected={si,ii};openState[si]=false;return true;}
     }
+    const lower=wanted.toLowerCase();
+    for(let si=0;si<sections.length;si++){
+      const ii=sections[si].items.findIndex(item=>item.id.toLowerCase()===lower);
+      if(ii>=0){selected={si,ii};openState[si]=false;return true;}
+    }
     return false;
   }
   main.addEventListener('click',e=>{
-    const link=e.target.closest('a.help-ref[data-help-topic]');
+    const link=e.target.closest('a.help-ref');
     if(!link)return;
+    const raw=link.dataset.helpTopic||link.getAttribute('href')||'';
+    const topic=raw.startsWith('#help:')?raw.slice(6):raw;
+    if(!topic)return;
     e.preventDefault();
-    const topic=link.dataset.helpTopic||'';
     if(!selectTopic(topic))return;
     const url=new URL(location.href);url.searchParams.set('topic',topic);history.replaceState(null,'',url);
     render();
