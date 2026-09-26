@@ -74,6 +74,12 @@
   const CURRENT_PROJECT_SESSION_NAME='uix.currentProject.name';
   const CURRENT_PROJECT_SESSION_ID='uix.currentProject.localNdcId';
   const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,autoSave:false,autoSaveIntervalSec:30};
+  function openUpdates(){
+    const frame=$('#updatesFrame');
+    if(frame && !frame.getAttribute('src')) frame.src='updates/index.html';
+    showModal($('#updatesModal'));
+    requestAnimationFrame(()=>{if(frame && !frame.getAttribute('src'))frame.src='updates/index.html';});
+  }
   async function loadNode2DVersion(){
     const label=$('#node2dVersion');
     if(!label)return;
@@ -2770,10 +2776,50 @@
   }
 
   // ---------------- Runtime preview ----------------
+  let runtimeOutputRestore=null;
+  function runtimeOutputValue(v){
+    if(v instanceof Error)return v.stack||v.message||String(v);
+    if(typeof v==='string')return v;
+    try{return JSON.stringify(v);}catch{return String(v);}
+  }
+  function runtimeOutput(level,message){
+    const rt=state.runtime;if(!rt)return;
+    rt.output ||= [];
+    rt.output.push({level:String(level||'log'),message:String(message??''),time:new Date().toLocaleTimeString()});
+    if(rt.output.length>500)rt.output.splice(0,rt.output.length-500);
+    renderRuntimeOutput();
+  }
+  function renderRuntimeOutput(){
+    const host=$('#runtimeOutputList');if(!host)return;
+    const items=state.runtime?.output||[];
+    host.innerHTML='';
+    for(const item of items){
+      const row=document.createElement('div');row.className=`runtime-output-item ${item.level==='error'?'error':item.level==='warn'?'warn':'log'}`;
+      const meta=document.createElement('span');meta.className='runtime-output-meta';meta.textContent=`${String(item.level||'log').toUpperCase()} · ${item.time||''}`;
+      const msg=document.createElement('pre');msg.className='runtime-output-message';msg.textContent=String(item.message??'');
+      row.append(meta,msg);host.append(row);
+    }
+    host.scrollTop=host.scrollHeight;
+    const button=$('#runtimeOutputButton');if(button){const errors=items.filter(x=>x.level==='error').length,warns=items.filter(x=>x.level==='warn').length;button.textContent=(errors||warns)?`Output · ${errors||0}${warns?` / ${warns}`:''}`:'Output';}
+  }
+  function setRuntimeOutputOpen(open){
+    const panel=$('#runtimeOutputPanel');if(!panel)return;panel.hidden=!open;state.runtime.outputOpen=!!open;if(open)renderRuntimeOutput();
+  }
+  function installRuntimeOutputCapture(){
+    if(runtimeOutputRestore)runtimeOutputRestore();
+    if(!state.runtime?.debug)return;
+    const originals={log:console.log,warn:console.warn,error:console.error};
+    const wrap=(level,fn)=>(...args)=>{fn.apply(console,args);runtimeOutput(level,args.map(runtimeOutputValue).join(' '));};
+    console.log=wrap('log',originals.log);console.warn=wrap('warn',originals.warn);console.error=wrap('error',originals.error);
+    const onError=e=>runtimeOutput('error',e?.error?.stack||e?.message||String(e));
+    const onRejection=e=>runtimeOutput('error',e?.reason?.stack||e?.reason?.message||String(e?.reason??'Unhandled promise rejection'));
+    window.addEventListener('error',onError);window.addEventListener('unhandledrejection',onRejection);
+    runtimeOutputRestore=()=>{console.log=originals.log;console.warn=originals.warn;console.error=originals.error;window.removeEventListener('error',onError);window.removeEventListener('unhandledrejection',onRejection);runtimeOutputRestore=null;};
+  }
   function runtimeScene(){ return state.runtime.scene || null; }
   function runtimeAllNodes(scene=runtimeScene()){
     const rt=state.runtime;
-    if(scene===rt.scene && Array.isArray(rt.nodeEntries))return rt.nodeEntries;
+    if(scene===rt.scene && Array.isArray(rt.nodeEntries) && rt.nodeEntries.length)return rt.nodeEntries;
     const out=[];const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{out.push({node,parent});if(node.type==='folder')walk(node.children,node);});walk(scene?.nodes);return out;
   }
   function runtimeFindNode(id){
@@ -3411,7 +3457,7 @@
     if(def.receiver && !isEvent && def.name==='Timeout'){const key=sn.id,now=performance.now(),v=runtimeValuesForScript(sn,node);state.runtime.timers.push({kind:'timeout',key,nodeId:node.id,at:now+Math.max(0,Number(v.Milliseconds)||0)});return null;}
     const ctx=runtimeContext(node);const values=runtimeValuesForScript(sn,node);
     let result={};
-    try{result=def.func(ctx,values)||{};}catch(err){state.runtime.lastError=String(err?.message||err);return null;}
+    try{result=def.func(ctx,values)||{};}catch(err){const msg=String(err?.message||err);state.runtime.lastError=msg;runtimeOutput('error',`ScriptNode ${def.name} on ${node.name}: ${msg}`);return null;}
     Object.entries(result||{}).forEach(([out,val])=>{if(val)routeRuntimeOutput(sn,out);});
     return result;
   }
@@ -3456,6 +3502,186 @@
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
     if(!state.runtime.running)return;state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);for(const item of state.runtime.eventScriptsByName?.get(defName)||[]){const node=item.node,sn=item.sn;if(targetNodeId&&node.id!==targetNodeId)continue;const def=scriptNodeDefinition(sn.defName);if(!def||def.receiver)continue;const first=flattenEditor(sn.values)[0]?.entry;if(first?.type==='selector'){const selected=first.selected??'';if(defName==='onKeybind'&&selected!==values.key)continue;if(['onTouch','onMouse','onScreenInput'].includes(defName)&&selected!==eventType)continue;if(defName==='onJoystick'&&selected!==values.Variable)continue;if(defName==='onConnectionChange'&&selected!==values.connection)continue;}executeRuntimeScriptNode(sn,def,node,true);}}
 
+  function runtimeJoystickLayout(j,W=1280,H=720){const size=Array.isArray(j.size)?j.size:[110,110],w=Math.max(1,Number(size[0])||110),h=Math.max(1,Number(size[1])||110),p=j.position||{};const x=p.left!=null?Number(p.left)+w/2:p.right!=null?W-Number(p.right)-w/2:W/2;const y=p.top!=null?Number(p.top)+h/2:p.bottom!=null?H-Number(p.bottom)-h/2:H/2;return{x,y,w,h,radius:Math.min(w,h)/2};}
+  function runtimeJoystickAt(x,y){
+    for(const j of sceneJoysticks(state.runtime.scene).slice().reverse()){
+      const r=runtimeJoystickLayout(j),hitRadius=Math.max(r.w,r.h)*0.52;
+      if(Math.hypot(x-r.x,y-r.y)<=hitRadius)return{j,r};
+    }
+    return null;
+  }
+  function runtimeProjection(canvas){
+    const rect=canvas?.getBoundingClientRect?.()||{width:1,height:1};
+    const width=Math.max(1,rect.width),height=Math.max(1,rect.height);
+    const type=normalizeScreenType(state.game.screenType);
+    const baseW=1280,baseH=720;
+    let viewW=baseW,viewH=baseH,scaleX=width/baseW,scaleY=height/baseH,offsetX=0,offsetY=0;
+    if(type==='Windowboxing'){
+      const s=Math.min(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
+    }else if(type==='Stretch'){
+      scaleX=width/baseW;scaleY=height/baseH;
+    }else if(type==='Crop'){
+      const s=Math.max(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
+    }else{
+      const s=height/baseH;scaleX=scaleY=s;viewW=width/s;viewH=baseH;
+    }
+    return {width,height,type,baseW,baseH,viewW,viewH,scaleX,scaleY,offsetX,offsetY,dpr:Math.max(1,Number(window.devicePixelRatio)||1)};
+  }
+  function runtimePointerPosition(e){
+    const canvas=$('#runtimeCanvas');
+    if(!canvas)return null;
+    const r=runtimeProjection(canvas);
+    const px=e.clientX-canvas.getBoundingClientRect().left,py=e.clientY-canvas.getBoundingClientRect().top;
+    return {x:(px-r.offsetX)/r.scaleX+((r.viewW-r.baseW)/2),y:(py-r.offsetY)/r.scaleY};
+  }
+  function updateRuntimeJoystick(e,type){
+    const p=runtimePointerPosition(e); if(!p)return false;
+    const active=state.runtime.activeJoystickPointers ||= Object.create(null);
+    let stateEntry=active[e.pointerId];
+    if(type==='down'){
+      const hit=runtimeJoystickAt(p.x,p.y);
+      if(!hit)return false;
+      const dx=p.x-hit.r.x,dy=p.y-hit.r.y;
+      const d=Math.hypot(dx,dy);
+      const knobRadius=Math.min(hit.r.w,hit.r.h)*0.22;
+      const grabbedKnob=d<=hit.r.radius*0.7;
+      stateEntry={variable:hit.j.variable,offsetX:grabbedKnob?dx:0,offsetY:grabbedKnob?dy:0};
+      active[e.pointerId]=stateEntry;
+      canvasPointerCapture(e);
+    }
+    if(!stateEntry)return false;
+    const j=sceneJoysticks(state.runtime.scene).find(v=>v.variable===stateEntry.variable);
+    if(!j)return false;
+    const r=runtimeJoystickLayout(j);
+    if(type==='up'||type==='cancel'){
+      const st=(state.runtime.joysticks||[]).find(v=>v.variable===stateEntry.variable);
+      if(st){st.distance=0;st.angle=0;st.value_x=0;st.value_y=0;}
+      delete active[e.pointerId];
+      dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
+      return true;
+    }
+    let dx=p.x-r.x-stateEntry.offsetX,dy=p.y-r.y-stateEntry.offsetY;
+    const rad=Math.max(1,r.radius);
+    const d=Math.hypot(dx,dy);
+    if(d>rad){const k=rad/d;dx*=k;dy*=k;}
+    const st=(state.runtime.joysticks||[]).find(v=>v.variable===stateEntry.variable);
+    if(!st)return false;
+    const normalized=Math.min(1,Math.hypot(dx,dy)/rad);
+    st.distance=normalized;
+    st.angle=normalized===0?0:(Math.atan2(dy,dx)*180/Math.PI+360)%360;
+    st.value_x=clamp(dx/rad,-1,1);
+    st.value_y=clamp(dy/rad,-1,1);
+    dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
+    return true;
+  }
+  function canvasPointerCapture(e){try{$('#runtimeCanvas')?.setPointerCapture?.(e.pointerId);}catch{}}
+  function drawRuntimeUIComponents(ctx,W=1280,H=720){for(const st of state.runtime.joysticks||[]){const j=sceneJoysticks(state.runtime.scene).find(v=>v.variable===st.variable);if(!j)continue;const r=runtimeJoystickLayout(j,W,H),travel=Math.min(r.w,r.h)*.28,dx=(Number(st.value_x)||0)*travel,dy=(Number(st.value_y)||0)*travel;ctx.save();ctx.fillStyle=colorCss(j.bgColor,'rgba(51,51,51,.8)');ctx.beginPath();ctx.ellipse(r.x,r.y,r.w/2,r.h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=colorCss(j.knobColor,'#fff');ctx.beginPath();ctx.arc(r.x+dx,r.y+dy,Math.min(r.w,r.h)*.22,0,Math.PI*2);ctx.fill();ctx.restore();}}
+  function runtimeNodeAtPoint(x,y){
+    const ctx=$('#runtimeCanvas')?.getContext?.('2d');
+    for(const {node} of runtimeAllNodes().slice().reverse()){
+      if(node.type!=='node')continue;
+      const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
+      const nx=Number(t.position?.[0]||0),ny=Number(t.position?.[1]||0);
+      let dx=x-nx,dy=y-ny;
+      const a=Number(t.angle?.[0]||0)*Math.PI/180;
+      ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
+      const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
+      dx/=sx;dy/=sy;
+      const geo=spriteLocalGeometry(node);
+      if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}
+      let size={w:90,h:54};
+      const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}
+      if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;
+    }
+    return null;
+  }
+  function nodeInputValues(node,x,y,type){
+    const t=component(node,'transform')||{};
+    let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);
+    const angle=Number(t.angle?.[0]||0)*Math.PI/180;
+    ({x:dx,y:dy}=rotatePoint(dx,dy,-angle));
+    const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
+    return {
+      [`${type}X`]:dx/sx,
+      [`${type}Y`]:dy/sy
+    };
+  }
+  function installRuntimeInputHandlers(overlay){
+    const canvas=$('#runtimeCanvas',overlay);if(!canvas)return;
+    canvas.style.touchAction='none';
+    overlay.tabIndex=0;overlay.focus?.();
+    const screenPoint=(e)=>{
+      const m=runtimeProjection(canvas),r=canvas.getBoundingClientRect();
+      const px=e.clientX-r.left,py=e.clientY-r.top;
+      return {x:(px-m.offsetX)/m.scaleX-m.viewW/2,y:(py-m.offsetY)/m.scaleY-m.viewH/2};
+    };
+    const worldPoint=(e)=>{
+      const p=screenPoint(e),cam=state.runtime.camera||{};
+      const zoom=Math.max(.0001,Number(cam.scale)||1);
+      const a=Number(cam.angle||0)*Math.PI/180;
+      const q=rotatePoint(p.x/zoom,p.y/zoom,-a);
+      return {x:q.x+Number(cam.x||0),y:q.y+Number(cam.y||0)};
+    };
+    const activeTouchNodes=Object.create(null),activeMouseNodes=Object.create(null);
+    const sendScreen=(type,e)=>{const p=screenPoint(e),prev=state.runtime.inputs||{},values={
+      ScreenUpX:type==='up'?p.x:prev.ScreenUpX??p.x,ScreenUpY:type==='up'?p.y:prev.ScreenUpY??p.y,
+      ScreenDownX:type==='down'?p.x:prev.ScreenDownX??p.x,ScreenDownY:type==='down'?p.y:prev.ScreenDownY??p.y,
+      ScreenMoveX:type==='move'?p.x:prev.ScreenMoveX??p.x,ScreenMoveY:type==='move'?p.y:prev.ScreenMoveY??p.y
+    };
+    dispatchRuntimeEvent('onScreenInput',type,values);};
+    const handlePointerDown=e=>{
+      e.preventDefault();
+      canvas.setPointerCapture?.(e.pointerId);
+      const screen=screenPoint(e), world=worldPoint(e);
+      updateRuntimeJoystick(e,'down');
+      if(e.pointerType==='touch'){
+        const node=runtimeNodeAtPoint(world.x,world.y);
+        if(node){
+          activeTouchNodes[e.pointerId]=node.id;
+          dispatchRuntimeEvent('onTouch','down',nodeInputValues(node,world.x,world.y,'TouchDown'),node.id);
+        }
+      }else if(e.pointerType==='mouse' || !e.pointerType){
+        const node=runtimeNodeAtPoint(world.x,world.y);
+        if(node){
+          activeMouseNodes[e.pointerId]=node.id;
+          dispatchRuntimeEvent('onMouse','down',nodeInputValues(node,world.x,world.y,'MouseDown'),node.id);
+        }
+      }
+      state.runtime.inputs.PointerType=e.pointerType||'mouse';
+      state.runtime.inputs.PointerId=Number(e.pointerId)||0;
+      sendScreen('down',e);
+    };
+    const handlePointerMove=e=>{
+      e.preventDefault();
+      updateRuntimeJoystick(e,'move');
+      const world=worldPoint(e);
+      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','move',nodeInputValues(node,world.x,world.y,'TouchMove'),node.id);}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','move',nodeInputValues(node,world.x,world.y,'MouseMove'),node.id);}
+      sendScreen('move',e);
+    };
+    const handlePointerUp=e=>{
+      e.preventDefault();
+      const world=worldPoint(e);
+      updateRuntimeJoystick(e,'up');
+      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
+      sendScreen('up',e);
+    };
+    const handlePointerCancel=e=>{
+      e.preventDefault();
+      const world=worldPoint(e);updateRuntimeJoystick(e,'cancel');
+      const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId];
+      if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
+      if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
+      sendScreen('up',e);
+    };
+    canvas.addEventListener('pointerdown',handlePointerDown,{passive:false});
+    canvas.addEventListener('pointermove',handlePointerMove,{passive:false});
+    canvas.addEventListener('pointerup',handlePointerUp,{passive:false});
+    canvas.addEventListener('pointercancel',handlePointerCancel,{passive:false});
+  }
   function normalizeRuntimeKey(e){
     if(!e) return '';
     if(e.key===' ') return 'Space';
@@ -3479,7 +3705,7 @@
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
+    state.runtime={running:true,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,debugLastDraw:0,lastError:'',globalVariables:clone(state.globalVariables||[]),sceneVariablesByScene:clone(state.sceneVariablesByScene||{}),localVarsByNode:clone(state.localVarsByNode||{}),inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),activeJoystickPointers:{}};
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
@@ -3489,6 +3715,7 @@
       if(root!==document.body)root.style.cssText=root.style.cssText||'position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#111;display:grid;place-items:center;';
       applyRuntimeScreenType(root,canvas,state.game.screenType);
       canvas.style.touchAction='none';
+      if(debug)installRuntimeOutputCapture();
       installRuntimeInputHandlers(root);
       runRuntimeSceneScripts();runtimeWarmAudioAssets();
       runtimeLast=performance.now();
@@ -3497,9 +3724,9 @@
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><button type="button">■ Stop</button></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div>':''}`;document.body.append(overlay);$('button',overlay).onclick=stopRuntime;const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-actions">${debug?'<button id="runtimeOutputButton" type="button">Output</button>':''}<button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div>${debug?'<div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>':''}`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;if(debug){$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();}const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){const rt=state.runtime;rt.running=false;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.renderCtx=null;rt.renderCanvas=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){const rt=state.runtime;rt.running=false;runtimeOutputRestore?.();runtimeOutputRestore=null;cancelAnimationFrame(runtimeFrame);runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.renderCtx=null;rt.renderCanvas=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running)return;
     let frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.25);
@@ -3531,7 +3758,7 @@
   }
   function drawRuntime(){
     const c=$('#runtimeCanvas');if(!c)return;
-    const ctx=runtimeRenderContext(c);if(!ctx)return;
+    const ctx=c.getContext('2d');if(!ctx)return;
     const m=runtimeViewportMetrics(c);
     const W=m.width,H=m.height,cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1,bgColor:'#202020'};
     const zoom=Math.max(.01,Number(cam.scale)||1);
@@ -3553,7 +3780,7 @@
     }
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
-    runtimeSortRenderBodies();const renderBodies=state.runtime.renderBodies||[];const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
+    runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
     for(const b of renderBodies){const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     drawRuntimeColliders(ctx);
     ctx.restore();
@@ -3813,7 +4040,7 @@
     document.documentElement.classList.add('uix-standalone');
   }else{
     state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;ensureGameSettings();
-    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();renderAll();applyTopbarAnchors();loadNode2DVersion();
+    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();$('#node2dVersion')?.addEventListener('click',openUpdates);renderAll();applyTopbarAnchors();loadNode2DVersion();
     const bootURL=new URLSearchParams(location.search).get('load');
     if(bootURL)bootstrapURLLoad();
     else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
