@@ -31,6 +31,11 @@
         "subtitle": "Build a game from start to finish",
         "contents": "<h2>Build a game from start to finish</h2><p>A practical Node2D workflow is to build one small playable idea first, then grow it. Start with a Scene, add a player Node, give it a Sprite and Collider, then add the Nodes it needs to interact with.</p><ol><li><strong>Create a project.</strong> Give the project a name you can recognize later.</li><li><strong>Set up the starting Scene.</strong> Add or rename the first Scene and choose it as the Preferred Scene in Game Settings.</li><li><strong>Create the player.</strong> Add a Node, choose a Sprite asset for it, and position it in the Scene.</li><li><strong>Add game objects.</strong> Create ground, enemies, collectibles, buttons, UI elements, or other Nodes.</li><li><strong>Add Components.</strong> Use Collider for collision shapes, Physics for physical motion, Text for labels, Progress Bar for meters, and Joystick for touch controls.</li><li><strong>Add behavior.</strong> Open the Node's Script and connect an Event to the Actions and Controls that should happen.</li><li><strong>Test early.</strong> Press Play often. It is easier to find a wrong position, collision, input, or script connection before the Scene becomes large.</li><li><strong>Save and export.</strong> Save the project so it can be restored, then use Export Project when you have a playable web build.</li></ol><p>You can build a simple game without putting every object into one giant script. Keep each Node responsible for the behavior that belongs to that object.</p>",
         "id": "node2d-basics--build-a-game-from-start-to-finish"
+      },
+      {
+        "subtitle": "Version",
+        "contents": "<h2>Node2D version</h2><p>The project creation screen shows the Node2D version at the right side of the title row. The editor reads it from <code>manifest.json</code>, so the PWA manifest is the single version source used by the UI.</p>",
+        "id": "basics-version"
       }
     ]
   },
@@ -161,6 +166,11 @@
         "subtitle": "Deleting Nodes",
         "contents": "<h2>Deleting Nodes</h2><p>Delete or Backspace removes selected editor objects after the editor's confirmation rules are applied.</p>",
         "id": "nodes--deleting-nodes"
+      },
+      {
+        "subtitle": "Node ordering and Index",
+        "contents": "<h2>Node ordering and Index</h2><p>Every Node has an <code>Index</code> that controls its visual draw order. Lower indexes are drawn first; higher indexes appear above them.</p><p>The Node context menu contains <strong>Move Up</strong> and <strong>Move Down</strong>. These actions change the Index values so the selected Node moves one position in the render order.</p><p>References: <a class=\"help-ref\" href=\"?topic=components-node\" data-help-topic=\"components-node\">Node Component</a></p>",
+        "id": "nodes-index"
       }
     ]
   },
@@ -169,8 +179,8 @@
     "items": [
       {
         "subtitle": "Node",
-        "contents": "<h2>Node Component</h2><p>The Node component represents the Node itself.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Name</td><td>Name shown in the Scene tree and selectors.</td></tr><tr><td>ID</td><td>Numeric identifier for the Node.</td></tr></tbody></table><p>This component is built into every Node.</p>",
-        "id": "components--node"
+        "contents": "<h2>Node Component</h2><p>The Node component represents the Node itself.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Name</td><td>Name shown in the Scene tree and selectors.</td></tr><tr><td>ID</td><td>Numeric identifier for the Node.</td></tr><tr><td>Index</td><td>Controls draw order. Nodes with a higher Index are drawn above Nodes with a lower Index.</td></tr></tbody></table><p>Use the Node context menu to <strong>Move Up</strong> or <strong>Move Down</strong> and change the Index ordering without manually editing each value.</p><p>References: <a class=\"help-ref\" href=\"?topic=nodes-node\" data-help-topic=\"nodes-node\">Node</a> · <a class=\"help-ref\" href=\"?topic=play-debug-output\" data-help-topic=\"play-debug-output\">Debug Output</a></p>",
+        "id": "components-node"
       },
       {
         "subtitle": "Script",
@@ -311,6 +321,11 @@
         "subtitle": "onAudioPickup",
         "contents": "<h2>onAudioPickup</h2><p>Runs when the microphone audio level is detected as a pickup event while microphone use is enabled.</p><p>Output: <code>out</code>.</p><p>Read the current microphone loudness with <code>ctx.mic.decibel</code>. A simple use is to react when someone claps, speaks loudly, or creates another sound above the pickup threshold.</p><p>Microphone use must first be enabled in Game Settings. The browser may also ask the user for microphone permission.</p>",
         "id": "scriptnodes-events--onaudiopickup"
+      },
+      {
+        "subtitle": "onCollideWith",
+        "contents": "<h2>onCollideWith</h2><p>An event-style collision trigger for simple collision reactions.</p><p>Input: <code>Target</code>. Outputs: <code>next</code> and <code>truth</code>. There is intentionally no <code>falsy</code> output.</p><p>Use this when you want a flow to start when the selected target begins colliding with the current Node. It is optimized for event use instead of checking collision state repeatedly with <code>isCollidedWith</code>.</p><p>References: <a class=\"help-ref\" href=\"?topic=controls-iscollidedwith\" data-help-topic=\"controls-iscollidedwith\">isCollidedWith</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a></p>",
+        "id": "events-oncollidewith"
       }
     ]
   },
@@ -384,17 +399,17 @@
       },
       {
         "subtitle": "Follow Object",
-        "contents": "<h2>Follow Object</h2><p>Moves the current Node directly toward the selected Target using its Physics velocity and Speed. It requires a <a class=\"help-ref\" href=\"#help:components-physics\" data-help-topic=\"components-physics\">Physics</a> component. Without Physics it does not move.</p><p>The Node faces its movement direction unless Physics has Fixed Rotation enabled. With Fixed Rotation, the Node does not rotate, but it still follows.</p><p>Related: <a class=\"help-ref\" href=\"#help:components-transform\" data-help-topic=\"components-transform\">Transform</a> and <a class=\"help-ref\" href=\"#help:actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a>.</p>",
+        "contents": "<h2>Follow Object</h2><p>Makes the current Node move directly toward a selected target using the Node’s Physics velocity.</p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node needs a <strong>Physics</strong> component. Without Physics, it does not move.</p><p>The Node faces the movement direction unless Physics <code>Fixed Rotation</code> is enabled. A fixed rotation still allows the Node to move.</p><p>References: <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=actions-setvelocity\" data-help-topic=\"actions-setvelocity\">setVelocity</a></p>",
         "id": "actions-follow-object"
       },
       {
         "subtitle": "Destroy Object",
-        "contents": "<h2>Destroy Object</h2><p>Removes the current runtime object from the game.</p><p>Inputs: none. Output: <code>out</code>.</p>",
-        "id": "scriptnodes-actions--destroy-object"
+        "contents": "<h2>Destroy Object</h2><p>Removes the current runtime object from the running Scene.</p><p>Its runtime Node, Physics body, ScriptNode state, connections, timers, follow/AI targets, collision references, render entry, and lookup references are removed so it can become eligible for JavaScript garbage collection when no outside reference remains.</p><p>References: <a class=\"help-ref\" href=\"?topic=actions-create-object\" data-help-topic=\"actions-create-object\">Create Object</a> · <a class=\"help-ref\" href=\"?topic=play-runtime-memory\" data-help-topic=\"play-runtime-memory\">Runtime object lifecycle</a></p>",
+        "id": "actions-destroy-object"
       },
       {
         "subtitle": "Create Object",
-        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of the selected source Node. The inputs are Object, PosX, PosY, <strong>Angle</strong>, VelocityX, VelocityY, and AngularVelocity.</p><p><strong>Angle</strong> is applied when the new Object spawns, so it starts with that rotation. See <a class=\"help-ref\" href=\"#help:components-transform\" data-help-topic=\"components-transform\">Transform</a> for the Node rotation value.</p>",
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.</p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, and <code>AngularVelocity</code>.</p><p><code>Angle</code> is applied when the copy spawns, so the new object starts at that rotation before its velocity is applied.</p><p>The copy retains the source Node’s Components and ScriptNode graph. Runtime ScriptNode IDs and internal connections are remapped so the copy executes its own graph instead of accidentally routing to the original.</p><p>References: <a class=\"help-ref\" href=\"?topic=components-node\" data-help-topic=\"components-node\">Node</a> · <a class=\"help-ref\" href=\"?topic=components-transform\" data-help-topic=\"components-transform\">Transform</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=play-runtime-memory\" data-help-topic=\"play-runtime-memory\">Runtime object lifecycle</a></p>",
         "id": "actions-create-object"
       },
       {
@@ -409,8 +424,8 @@
       },
       {
         "subtitle": "playAudio",
-        "contents": "<h2>playAudio</h2><p>Plays an Audio or MIDI asset at runtime. Audio uses low-latency Web Audio when possible and caches decoded sounds for reuse.</p><table><thead><tr><th>Input</th><th>What it controls</th></tr></thead><tbody><tr><td><code>src</code></td><td>The Audio or MIDI asset to play.</td></tr><tr><td><code>volume</code></td><td>Playback volume from <code>0</code> to <code>100</code> percent. Default is <code>100</code>.</td></tr><tr><td><code>start</code></td><td>Starting position in milliseconds.</td></tr><tr><td><code>duration</code></td><td>How long to play in milliseconds. <code>0</code> means until the source finishes.</td></tr><tr><td><code>loop</code></td><td>Repeat playback while enabled.</td></tr><tr><td><code>fadein</code></td><td>Fade in time in milliseconds.</td></tr><tr><td><code>fadeout</code></td><td>Fade out time in milliseconds.</td></tr></tbody></table><p>Example: <code>volume = 50</code> is half volume.</p>",
-        "id": "scriptnodes-actions--playaudio"
+        "contents": "<h2>playAudio</h2><p>Plays an Audio or MIDI asset during runtime.</p><table><thead><tr><th>Input</th><th>Meaning</th></tr></thead><tbody><tr><td><code>src</code></td><td>Asset to play.</td></tr><tr><td><code>volume</code></td><td>0–100 percent. Default 100.</td></tr><tr><td><code>start</code></td><td>Starting position in milliseconds.</td></tr><tr><td><code>duration</code></td><td>Playback duration in milliseconds. 0 means the asset determines the ending.</td></tr><tr><td><code>loop</code></td><td>Repeat playback.</td></tr><tr><td><code>fadein</code></td><td>Fade-in time in milliseconds.</td></tr><tr><td><code>fadeout</code></td><td>Fade-out time in milliseconds.</td></tr></tbody></table><p>Short/repeated Audio sounds are decoded and cached when possible so later plays can start with less loading work. The first play may still need decoding, loading, or browser media startup time.</p><p>References: <a class=\"help-ref\" href=\"?topic=audio-playback-inputs\" data-help-topic=\"audio-playback-inputs\">Audio playback inputs</a> · <a class=\"help-ref\" href=\"?topic=audio-playing-audio\" data-help-topic=\"audio-playing-audio\">Playing audio</a></p>",
+        "id": "actions-playaudio"
       },
       {
         "subtitle": "stopAudio",
@@ -434,12 +449,12 @@
       },
       {
         "subtitle": "Chase",
-        "contents": "<h2>Chase</h2><p>Finds a route from the current Node to the Target through the selected Map folder. Child folders are searched recursively; child Nodes with <a class=\"help-ref\" href=\"#help:components-collider\" data-help-topic=\"components-collider\">Collider</a> components are used as obstacles.</p><p>The runtime uses lightweight grid-based A* pathfinding and follows the route with Physics velocity. It replans when the target or route changes.</p><p>Chase requires <a class=\"help-ref\" href=\"#help:components-physics\" data-help-topic=\"components-physics\">Physics</a>. Without Physics it does not move. It faces movement unless Fixed Rotation is enabled.</p><p>Related: <a class=\"help-ref\" href=\"#help:scriptnodes-avoid\" data-help-topic=\"scriptnodes-avoid\">Avoid</a> and <a class=\"help-ref\" href=\"#help:scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a>.</p>",
+        "contents": "<h2>Chase</h2><p>Makes the current Node find a route to a moving target through the selected obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. <code>Map</code> selects a Folder; child folders are searched recursively and child Nodes with Colliders become obstacles.</p><p>When the direct route is blocked, Chase uses a lightweight grid-based <strong>A*</strong> path search with diagonal corner-cut prevention and path smoothing. The path is kept and replanned only when needed, such as when the target moves enough or the obstacle map changes.</p><p>The current Node needs Physics. Its velocity follows the route, and its right-facing direction is updated to face movement unless Physics <code>Fixed Rotation</code> is enabled.</p><p>References: <a class=\"help-ref\" href=\"?topic=scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a> · <a class=\"help-ref\" href=\"?topic=actions-follow-object\" data-help-topic=\"actions-follow-object\">Follow Object</a></p>",
         "id": "actions-chase"
       },
       {
         "subtitle": "Avoid",
-        "contents": "<h2>Avoid</h2><p>Uses the selected Map folder as an obstacle map and moves the current Node away from the Target. Child folders are searched recursively for Nodes with <a class=\"help-ref\" href=\"#help:components-collider\" data-help-topic=\"components-collider\">Collider</a> components.</p><p>Avoid uses the same lightweight obstacle/path system as Chase but reverses the target direction.</p><p>Avoid requires <a class=\"help-ref\" href=\"#help:components-physics\" data-help-topic=\"components-physics\">Physics</a>. Without Physics it does not move. It faces movement unless Fixed Rotation is enabled.</p><p>Related: <a class=\"help-ref\" href=\"#help:scriptnodes-chase\" data-help-topic=\"scriptnodes-chase\">Chase</a> and <a class=\"help-ref\" href=\"#help:scenes-folders\" data-help-topic=\"scenes-folders\">Folders</a>.</p>",
+        "contents": "<h2>Avoid</h2><p>Makes the current Node move away from a selected target while using a selected Folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Child Nodes with Colliders are treated as obstacles.</p><p>Avoid reverses the target direction used by Chase while keeping obstacle handling separate, so walls remain obstacles instead of becoming the target to flee from.</p><p>The current Node needs Physics and faces movement unless <code>Fixed Rotation</code> is enabled.</p><p>References: <a class=\"help-ref\" href=\"?topic=actions-chase\" data-help-topic=\"actions-chase\">Chase</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a></p>",
         "id": "actions-avoid"
       }
     ]
@@ -449,23 +464,23 @@
     "items": [
       {
         "subtitle": "Boolean",
-        "contents": "<h2>Boolean</h2><p>Checks a Boolean Value and exposes <strong>next</strong> plus <strong>truth</strong> and <strong>falsy</strong> outputs. <strong>next</strong> continues the flow; the other outputs describe the result.</p>",
-        "id": "scriptnodes-controls--boolean"
+        "contents": "<h2>Boolean</h2><p>Checks a true/false value.</p><p>Inputs: <code>Value</code>. Outputs: <code>next</code>, <code>truth</code>, <code>falsy</code>.</p><p><code>next</code> continues the flow regardless of the Boolean result. Use <code>truth</code> and <code>falsy</code> when you need branches.</p>",
+        "id": "controls-boolean"
       },
       {
         "subtitle": "Interval",
-        "contents": "<h2>Interval</h2><p>Starts a repeating timer. Each time it fires it triggers both <strong>next</strong> and <strong>out</strong>.</p>",
-        "id": "scriptnodes-controls--interval"
+        "contents": "<h2>Interval</h2><p>Repeatedly continues a flow after a time interval.</p><p>Input: <code>Milliseconds</code>. Outputs: <code>next</code> and <code>out</code>. Both outputs fire each time the interval elapses.</p>",
+        "id": "controls-interval"
       },
       {
         "subtitle": "Timeout",
-        "contents": "<h2>Timeout</h2><p>Waits for the specified milliseconds. When it fires it triggers both <strong>next</strong> and <strong>out</strong>.</p>",
-        "id": "scriptnodes-controls--timeout"
+        "contents": "<h2>Timeout</h2><p>Delays a flow once by the selected time.</p><p>Input: <code>Milliseconds</code>. Outputs: <code>next</code> and <code>out</code>. Both outputs fire when the timeout expires.</p>",
+        "id": "controls-timeout"
       },
       {
         "subtitle": "isCollidedWith",
-        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with the selected Target. It exposes <strong>next</strong> plus <strong>truth</strong> and <strong>falsy</strong>. <strong>next</strong> continues every check while truth/falsy describe the result.</p>",
-        "id": "scriptnodes-controls--iscollidedwith"
+        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with a selected target.</p><p>Input: <code>Target</code>. Outputs: <code>next</code>, <code>truth</code>, and <code>falsy</code>. <code>next</code> continues the flow whether the collision result is true or false.</p><p>References: <a class=\"help-ref\" href=\"?topic=events-oncollidewith\" data-help-topic=\"events-oncollidewith\">onCollideWith</a> · <a class=\"help-ref\" href=\"?topic=components-collider\" data-help-topic=\"components-collider\">Collider</a> · <a class=\"help-ref\" href=\"?topic=components-physics\" data-help-topic=\"components-physics\">Physics</a></p>",
+        "id": "controls-iscollidedwith"
       }
     ]
   },
@@ -794,8 +809,8 @@
       },
       {
         "subtitle": "Audio options",
-        "contents": "<h2>Audio options</h2><p>Playback can use duration, looping, fade-in, and fade-out settings where supported by the selected playback control.</p>",
-        "id": "audio-and-playback--audio-options"
+        "contents": "<h2>Audio options</h2><p><code>playAudio</code> supports volume (0–100), start position, duration, looping, fade-in, and fade-out. Decoded Audio data can be cached for lower-latency repeated playback.</p><p><a class=\"help-ref\" href=\"?topic=actions-playaudio\" data-help-topic=\"actions-playaudio\">Open playAudio</a></p>",
+        "id": "audio-audio-options"
       },
       {
         "subtitle": "Stopping audio",
@@ -859,18 +874,43 @@
       },
       {
         "subtitle": "Debug",
-        "contents": "<h2>Debug</h2><p>Debug runs the game while exposing additional information intended to help you inspect what is happening during runtime.</p>",
-        "id": "play-debug-and-runtime--debug"
+        "contents": "<h2>Debug</h2><p>Debug runs the game while exposing additional inspection information.</p><p>When Debug is running, the runtime top bar includes an <strong>Output</strong> button. Open it to see runtime logs, warnings, JavaScript errors, unhandled promise rejections, and ScriptNode execution errors. Output is limited to the most recent 500 entries.</p><p>References: <a class=\"help-ref\" href=\"?topic=play-debug-output\" data-help-topic=\"play-debug-output\">Debug Output</a> · <a class=\"help-ref\" href=\"?topic=play-runtime-performance\" data-help-topic=\"play-runtime-performance\">Runtime performance and memory</a></p>",
+        "id": "play-debug"
       },
       {
         "subtitle": "Runtime changes",
-        "contents": "<h2>Runtime changes</h2><p>Changes made while the game is running affect the running game state. They are separate from changing the saved project in the editor.</p>",
-        "id": "play-debug-and-runtime--runtime-changes"
+        "contents": "<h2>Runtime changes</h2><p>Changes made while the game is running affect the running game state. They are separate from changing the saved project in the editor. <a class=\"help-ref\" href=\"?topic=play-runtime-performance\" data-help-topic=\"play-runtime-performance\">Runtime performance</a></p>",
+        "id": "play-runtime-changes"
       },
       {
         "subtitle": "Scene changes during runtime",
         "contents": "<h2>Scene changes</h2><p>A ScriptNode can change the current runtime Scene using <code>loadScene</code>.</p>",
         "id": "play-debug-and-runtime--scene-changes-during-runtime"
+      },
+      {
+        "subtitle": "Runtime performance and memory",
+        "id": "play-runtime-performance",
+        "contents": "<h2>Runtime performance and memory</h2><p>Node2D keeps runtime lookup tables for Nodes, Physics bodies, ScriptNodes, connections, event lists, render order, timers, and AI state so common runtime operations do not repeatedly walk the full Scene.</p><p>Rendering keeps a cached draw order and skips Nodes outside the camera area. Physics uses a broadphase before detailed collision tests and adapts substeps for larger Physics populations.</p><p>Create Object queues new-object <code>onLoad</code> work instead of executing a large spawn burst synchronously. Destroy Object removes the runtime references needed by the engine so destroyed objects can become garbage-collectable.</p><p>References: <a class=\"help-ref\" href=\"?topic=play-runtime-memory\" data-help-topic=\"play-runtime-memory\">Runtime object lifecycle</a> · <a class=\"help-ref\" href=\"?topic=play-runtime-cpugpu\" data-help-topic=\"play-runtime-cpugpu\">CPU and GPU</a> · <a class=\"help-ref\" href=\"?topic=play-runtime-largescenes\" data-help-topic=\"play-runtime-largescenes\">Large scenes</a></p>"
+      },
+      {
+        "subtitle": "Runtime object lifecycle",
+        "id": "play-runtime-memory",
+        "contents": "<h2>Runtime object lifecycle</h2><p>Created runtime copies receive their own Node ID, numeric ID, ScriptNode IDs, ScriptNode connections, local variables, bodies, render entries, and event registrations.</p><p>Destroy Object removes those runtime registrations, removes pending timers and collision pairs, clears target references, and removes the object from its runtime Scene container.</p><p>Memory is actually reclaimed by the browser’s JavaScript garbage collector after no reachable references remain.</p><p>References: <a class=\"help-ref\" href=\"?topic=actions-create-object\" data-help-topic=\"actions-create-object\">Create Object</a> · <a class=\"help-ref\" href=\"?topic=actions-destroy-object\" data-help-topic=\"actions-destroy-object\">Destroy Object</a></p>"
+      },
+      {
+        "subtitle": "CPU and GPU",
+        "id": "play-runtime-cpugpu",
+        "contents": "<h2>CPU and GPU</h2><p>JavaScript, ScriptNodes, and Physics execute on the CPU. Runtime Canvas 2D rendering is requested with browser-friendly low-latency settings, and the browser may hardware-accelerate Canvas rendering using the available GPU.</p><p>Node2D does not force a particular GPU; browser, operating system, and device drivers decide the actual rendering path.</p>"
+      },
+      {
+        "subtitle": "Large scenes",
+        "id": "play-runtime-largescenes",
+        "contents": "<h2>Large scenes</h2><p>For scenes with many objects, avoid doing expensive work on every <code>onTick</code> when an event can do it instead. Give Physics/Collider components only to objects that need them, destroy temporary objects when finished, and avoid unnecessary DOM/UI work during runtime.</p><p>Debug adds Output and variable inspection work, so normal Play mode is lighter when debugging is not needed.</p>"
+      },
+      {
+        "subtitle": "Debug Output",
+        "contents": "<h2>Debug Output</h2><p>Click <strong>Output</strong> in the Debug runtime top bar to open the Output panel.</p><p>Messages are grouped as <strong>LOG</strong>, <strong>WARN</strong>, or <strong>ERROR</strong>. ScriptNode exceptions identify the ScriptNode and Node where possible. Use <strong>Clear</strong> to remove the current Output entries.</p><p>Debug captures console log/warn/error calls and browser error/unhandled-rejection events while the Debug runtime is active.</p>",
+        "id": "play-debug-output"
       }
     ]
   },
@@ -894,8 +934,7 @@
       },
       {
         "subtitle": "Move / Scale Snap",
-        "contents": "<h2>Move / Scale Snap</h2><p>This is the snap interval used by Move and Scale editing. It also applies to group selection editing. See <a class=\"help-ref\" href=\"#help:editor-settings--multiselection-unified-editing\" data-help-topic=\"editor-settings--multiselection-unified-editing\">Multiselection Unified Editing</a> for group behavior.</p>",
-        "id": "editor-settings--move-scale-snap"
+        "contents": "<h2>Move / Scale Snap</h2><p>Sets the fixed editing interval used by Node movement and scaling.</p><p>Default: <code>1</code>.</p><p>Examples:</p><ul><li><code>1</code> → values move/scale in whole-unit steps.</li><li><code>0.5</code> → values use half-unit steps.</li><li><code>0.1</code> → values use one-tenth-unit steps.</li><li><code>0</code> → no movement/scale snapping.</li></ul><p>The setting is saved with your editor preferences.</p>"
       },
       {
         "subtitle": "Rotate Snap",
@@ -1039,8 +1078,8 @@
       },
       {
         "subtitle": "Events",
-        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onConnectionChange</code>, <code>onUnload</code>.</p>",
-        "id": "quick-reference--events"
+        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, <code>onUnload</code>.</p><p><a class=\"help-ref\" href=\"?topic=events-oncollidewith\" data-help-topic=\"events-oncollidewith\">Open onCollideWith</a></p>",
+        "id": "quickref-events"
       },
       {
         "subtitle": "Actions",
@@ -1049,8 +1088,8 @@
       },
       {
         "subtitle": "Controls",
-        "contents": "<h2>Controls</h2><p><code>Boolean</code>, <code>Interval</code>, <code>Timeout</code>, <code>isCollidedWith</code>. Control nodes provide a <code>next</code> flow where supported so execution can continue without needing a special timer or collision node.",
-        "id": "quick-reference--controls"
+        "contents": "<h2>Controls</h2><p><a class=\"help-ref\" href=\"?topic=controls-boolean\" data-help-topic=\"controls-boolean\">Boolean</a> · <a class=\"help-ref\" href=\"?topic=controls-interval\" data-help-topic=\"controls-interval\">Interval</a> · <a class=\"help-ref\" href=\"?topic=controls-timeout\" data-help-topic=\"controls-timeout\">Timeout</a> · <a class=\"help-ref\" href=\"?topic=controls-iscollidedwith\" data-help-topic=\"controls-iscollidedwith\">isCollidedWith</a></p><p>Control nodes use <code>next</code> to continue a flow where applicable.</p>",
+        "id": "quickref-controls"
       },
       {
         "subtitle": "New Event: onConnectionChange",
@@ -1091,6 +1130,11 @@
         "id": "quick-reference--scene-state-scriptnodes",
         "subtitle": "Scene State ScriptNodes",
         "contents": "<h2>Scene State ScriptNodes</h2><p><a class=\"help-ref\" href=\"#help:scriptnodes-actions--savestate\" data-help-topic=\"scriptnodes-actions--savestate\">saveState</a>, <a class=\"help-ref\" href=\"#help:scriptnodes-actions--loadstate\" data-help-topic=\"scriptnodes-actions--loadstate\">loadState</a>, and <a class=\"help-ref\" href=\"#help:scriptnodes-actions--removestate\" data-help-topic=\"scriptnodes-actions--removestate\">removeState</a> take a String Name. Names are case insensitive. <a class=\"help-ref\" href=\"#help:scriptnodes-actions--clearstate\" data-help-topic=\"scriptnodes-actions--clearstate\">clearState</a> removes all saved states for the current Scene.</p>"
+      },
+      {
+        "subtitle": "Node ordering",
+        "contents": "<h2>Node ordering</h2><p><a class=\"help-ref\" href=\"?topic=nodes-index\" data-help-topic=\"nodes-index\">Index and Move Up/Down</a></p>",
+        "id": "quickref-node-ordering"
       }
     ]
   },
