@@ -121,7 +121,7 @@
   <div id="modalBackdrop" class="modal-backdrop" hidden></div>
 
   <section id="projectModal" class="modal project-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="modal-header project-modal-header"><div><h3>Node2D</h3><p>Create a project to enter the editor.</p></div><span id="node2dVersion" class="node2d-version" aria-label="Node2D version">v—</span></div>
+    <div class="modal-header project-modal-header"><div><h3>Node2D</h3><p>Create a project to enter the editor.</p></div><button id="node2dVersion" class="node2d-version" type="button" aria-label="Node2D version; open updates">v—</button></div>
     <div class="project-choice-grid">
       <button class="project-choice" data-project-action="create"><span class="choice-icon">＋</span><strong>Create New</strong><small>Create a new unsaved Node2D project.</small></button>
       <button class="project-choice" data-project-action="load"><span class="choice-icon">▱</span><strong>Load</strong><small>Load a local project or import an .ndc file.</small></button>
@@ -250,6 +250,11 @@
       </section>
       <aside id="scriptInspector" class="script-right"></aside>
     </div>
+  </section>
+
+  <section id="updatesModal" class="modal updates-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Updates</h3><p>Node2D changes and version history.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="updates-frame-wrap"><iframe id="updatesFrame" title="Node2D Updates"></iframe></div>
   </section>
 
   <section id="helpModal" class="modal help-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
