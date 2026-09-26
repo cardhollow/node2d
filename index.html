@@ -56,11 +56,10 @@
       </div>
 
       <div class="top-part part-actions" anchor="center">
-        <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon">↶</span><span class="label">Actions</span><span class="chevron">⌄</span></button>
+        <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon">☷</span><span class="label">Actions</span><span class="chevron">⌄</span></button>
+        <button id="topUndoButton" class="top-button history-top-button" data-action="undo" title="Undo"><span class="icon">↶</span><span class="label">Undo</span></button>
+        <button id="topRedoButton" class="top-button history-top-button" data-action="redo" title="Redo"><span class="icon">↷</span><span class="label">Redo</span></button>
         <div id="actionsMenu" class="context-menu" data-close-outside="true">
-          <button id="topUndoButton" data-action="undo"><span>↶</span>Undo</button>
-          <button id="topRedoButton" data-action="redo"><span>↷</span>Redo</button>
-          <div class="menu-separator"></div>
           <button data-action="cut-node"><span>✂</span>Cut Node</button>
           <button data-action="copy-node"><span>⧉</span>Copy Node</button>
           <button data-action="paste-node"><span>▣</span>Paste Node</button>
@@ -99,19 +98,14 @@
         </div>
       </section>
 
-      <aside id="inspectorDock" class="inspector-dock">
-        <div id="panelRestoreRail" class="panel-restore-rail" aria-label="Restore hidden panels">
-          <button type="button" data-restore-panel="selection" title="Show Selection panel">S</button>
-          <button type="button" data-restore-panel="component" title="Show Components panel">C</button>
-        </div>
+      <aside id="inspectorDock" class="inspector-dock" aria-label="Editor inspector panels">
         <section id="selectionPanel" class="panel selection-panel">
-          <div class="dock-edge dock-edge-left" data-resize-dock="right"></div>
           <div class="panel-edge panel-edge-right" data-resize-split="selection"></div>
           <div class="panel-header"><div><strong>Selection</strong><span class="panel-subtitle">Scene structure</span></div><span id="selectionId" class="selection-id">—</span><button class="panel-icon" data-action="collapse-selection" title="Collapse">‹</button></div>
           <div id="selectionTree" class="selection-tree"></div>
         </section>
         <section id="componentPanel" class="panel component-panel">
-          <div class="dock-edge dock-edge-right" data-resize-dock="component"></div>
+          <div class="panel-edge panel-edge-left" data-resize-split="component"></div>
           <div class="panel-header"><div><strong>Components</strong><span id="componentTarget" class="panel-subtitle">Scene Camera</span></div><button class="panel-icon" data-action="collapse-components" title="Collapse">›</button></div>
           <div id="componentContent" class="component-scroll"></div>
           <div class="component-footer"><button class="add-component-button" data-action="open-add-component"><span>＋</span>Add Component</button></div>
@@ -299,12 +293,13 @@
   </section>
 
   <div id="floatingContextMenu" class="context-menu floating-context" data-close-outside="true" hidden></div>
-  <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi" multiple hidden>
+  <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.gif,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi" multiple hidden>
   <input id="projectFileInput" type="file" accept=".ndc,application/x-ndc" hidden>
   <script src="js/node.js"></script>
   <script src="js/assets.js"></script>
   <script src="js/scriptNodes.js"></script>
   <script src="js/uiComponents.js"></script>
+  <script src="js/gifConvert.js"></script>
   <script src="js/spriteEditor.js"></script>
   <script src="js/midiParser.js"></script>
   <script src="js/midiEditor.js"></script>

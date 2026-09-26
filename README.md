@@ -17,7 +17,7 @@ Node2D is installable on supported browsers and devices. Some mobile browsers ca
 Load Local includes a Flappy Bird sample loader. The sample is fetched once, saved in Local NDC storage, and marked with the `flappybirdsample` local-storage flag so it is not offered again on that device.
 
 ## Assets
-GIF files are not supported as imported assets. For animation, import individual image frames and use the Animation Sprite component.
+GIF files are imported and converted into individual PNG Sprite assets. For example, Apple.gif becomes Apple1.png, Apple2.png, and so on. Each resulting PNG is static; use them with Animation Sprite for playback.
 
 
 ##
