@@ -2,10 +2,12 @@
   {
     "version": "31.0.0",
     "title": "Feature Merge",
-    "changes": [
-      "Merged v26 editor History, multi-selection and Scene State features with the v28 runtime, rendering, collision events and Node Index features.",
-      "Merged v26 and v28 ScriptNode definitions, including saveState/loadState/removeState/clearState and onCollideWith.",
-      "Merged Help documentation for both branches."
+    "items": [
+      {
+        "id": "v31--feature-merge",
+        "subtitle": "Merged v26 editor features with v28 runtime features",
+        "contents": "<h2>Feature Merge</h2><p>Merged the v26 editor History, multi-selection and Scene State features with the v28 runtime, rendering, collision events and Node Index features.</p><p>Merged the v26 and v28 ScriptNode definitions, including <code>saveState</code>, <code>loadState</code>, <code>removeState</code>, <code>clearState</code> and <code>onCollideWith</code>.</p><p>Merged the Help documentation from both branches.</p>"
+      }
     ]
   },
   {
