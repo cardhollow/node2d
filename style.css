@@ -334,7 +334,7 @@ html.resizing-panels,html.resizing-panels *{cursor:ew-resize!important;user-sele
 
 
 /* v23 runtime + interaction corrections */
-.runtime-viewport{position:absolute;inset:44px 0 0;display:grid;place-items:center;overflow:hidden;background:#111;padding:0}.runtime-viewport canvas{display:block;image-rendering:auto;background:#202020}
+.runtime-viewport{position:absolute;inset:44px 0 0;display:grid;place-items:center;overflow:hidden;background:#111;padding:0;contain:layout paint}.runtime-viewport canvas{display:block;image-rendering:auto;background:#202020;contain:strict}
 .runtime-viewport.screen-windowboxing{display:grid;place-items:center;background:#111}
 .runtime-viewport.screen-windowboxing canvas{width:min(100%,calc((100vh - 44px)*16/9));height:min(100%,calc(100vw*9/16));max-width:100%;max-height:100%;aspect-ratio:16/9}
 .runtime-viewport.screen-stretch{display:block;background:#202020}
