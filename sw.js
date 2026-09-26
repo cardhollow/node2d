@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-vfix54';
+const CACHE_NAME='uix-node2d-vfix61-merged-runtime';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 
