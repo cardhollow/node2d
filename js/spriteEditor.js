@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const MAX_SIZE = 512;
+  const MAX_SIZE = 4096;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const transparent = () => [0, 0, 0, 0];
@@ -72,7 +72,7 @@
       <div class="modal-header"><div><h3>New Sprite</h3><p>Create a sprite with one or more animation frames.</p></div><button class="modal-close" type="button" data-close-sprite>×</button></div>
       <div class="sprite-create-form">
         <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input data-create-name type="text" value="Sprite" autocomplete="off"></div></div>
-        <div class="sprite-create-pixel"><label><span class="property-label">Width</span><input data-create-width type="number" min="1" max="512" value="32"></label><label><span class="property-label">Height</span><input data-create-height type="number" min="1" max="512" value="32"></label></div>
+        <div class="sprite-create-pixel"><label><span class="property-label">Width</span><input data-create-width type="number" min="1" max="4096" value="32"></label><label><span class="property-label">Height</span><input data-create-height type="number" min="1" max="4096" value="32"></label></div>
         <div class="sprite-create-note">A new Sprite starts with 1 frame. Use <b>+ Add</b> in the editor to create more frames.</div>
         <div class="modal-actions"><button class="btn" data-close-sprite type="button">Cancel</button><button class="btn primary" data-create-sprite type="button">Create</button></div>
       </div>`);
@@ -97,8 +97,8 @@
     img.decoding = 'async';
     img.src = src;
     await new Promise((resolve,reject) => { img.onload=resolve; img.onerror=reject; });
-    const width = clamp(img.naturalWidth || 32, 1, MAX_SIZE);
-    const height = clamp(img.naturalHeight || 32, 1, MAX_SIZE);
+    const width = Math.max(1, Math.min(MAX_SIZE, Math.floor(img.naturalWidth || img.width || 32)));
+    const height = Math.max(1, Math.min(MAX_SIZE, Math.floor(img.naturalHeight || img.height || 32)));
     const c=document.createElement('canvas'); c.width=width; c.height=height;
     const ctx=c.getContext('2d',{willReadFrequently:true}); ctx.imageSmoothingEnabled=false; ctx.clearRect(0,0,width,height); ctx.drawImage(img,0,0,width,height);
     const raw=ctx.getImageData(0,0,width,height).data, px=makePixels(width,height);
@@ -129,13 +129,15 @@
     }
     const normalized=normalizeFrameSizes(frames);
     const parsed=frameSuffix(assetStem(group[0]));
-    openEditor({name:parsed.number==null?assetStem(group[0]):parsed.base,sourceAssets:group,frames:normalized,fps:8,width:normalized[0]?.width||32,height:normalized[0]?.height||32});
+    const pixelWidth=Math.max(1,Math.floor(normalized[0]?.width||32));
+    const pixelHeight=Math.max(1,Math.floor(normalized[0]?.height||32));
+    openEditor({name:parsed.number==null?assetStem(group[0]):parsed.base,sourceAssets:group,frames:normalized,fps:8,width:pixelWidth,height:pixelHeight,pixelWidth,pixelHeight});
   }
 
   function openEditor(config) {
     const modal=makeModal('sprite-paint-modal',`
       <div class="sprite-editor-header">
-        <div class="sprite-editor-heading"><strong>Sprite Editor</strong><span data-editor-subtitle></span></div>
+        <div class="sprite-editor-heading"><strong>Sprite Editor</strong><span data-editor-subtitle>Width and Height are pixel dimensions.</span></div>
         <div class="sprite-editor-header-actions"><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
       </div>
       <div class="sprite-editor-layout">
@@ -202,7 +204,7 @@
           <section class="sprite-inspector-section">
             <div class="sprite-section-title">Sprite</div>
             <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input data-sprite-name type="text"></div></div>
-            <div class="sprite-size-pair"><label><span class="property-label">Width</span><input data-sprite-width type="number" min="1" max="512"></label><label><span class="property-label">Height</span><input data-sprite-height type="number" min="1" max="512"></label></div>
+            <div class="sprite-size-pair"><label><span class="property-label">Width</span><input data-sprite-width type="number" min="1" max="4096"></label><label><span class="property-label">Height</span><input data-sprite-height type="number" min="1" max="4096"></label></div>
           </section>
           <section class="sprite-inspector-section">
             <div class="sprite-frames-heading"><strong>Frames</strong><span data-frame-count>1</span></div>

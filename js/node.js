@@ -15,7 +15,15 @@
       fontSize: 32, fontFamily: 'sans-serif',
       border: { enabled: false, color: '#FFFFFFFF', width: 1, radius: [0, 0, 0, 0] }
     },
-    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', animation: '', position: [0, 0], size: [0, 0] },
+    input: {
+      default: false, removable: true,
+      txt: '', placeholder: 'Input', width: 260, height: 48,
+      position: [0, 0], scale: [1, 1], multiline: false,
+      fgCol: '#FFFFFFFF', bgCol: '#202020FF', outlineCol: '#FFFFFFFF',
+      fontSize: 24, fontFamily: 'sans-serif', padding: 10,
+      outlineWidth: 1, borderRadius: 6, maxLength: 0
+    },
+    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', animation: '', opacity: 1, position: [0, 0], size: [0, 0] },
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
@@ -36,7 +44,7 @@
   };
 
   const COMPONENT_LABELS = {
-    node: 'Node', script: 'Script', transform: 'Transform', text: 'Text',
+    node: 'Node', script: 'Script', transform: 'Transform', text: 'Text', input: 'Input Component',
     sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', progressbar: 'Progress Bar'
   };
 
@@ -83,6 +91,7 @@
       if (component.type === 'sprite') {
         component.sourceType = component.sourceType || 'Sprite';
         component.animation = component.animation || '';
+        component.opacity = Number.isFinite(Number(component.opacity)) ? Math.max(0, Math.min(1, Number(component.opacity))) : 1;
         component.pixelated = component.pixelated !== false;
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
         component.size = Array.isArray(component.size) ? component.size : [0, 0];
@@ -111,6 +120,26 @@
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
         component.border = component.border || { enabled: false, color: component.fgcol || '#FFFFFFFF', width: 1, radius: [0,0,0,0] };
         component.border.radius = Array.isArray(component.border.radius) ? component.border.radius : [0,0,0,0];
+      }
+      if (component.type === 'input') {
+        component.txt = String(component.txt ?? '');
+        component.placeholder = String(component.placeholder ?? 'Input');
+        component.width = Math.max(1, Number(component.width) || 260);
+        component.height = Math.max(1, Number(component.height) || 48);
+        component.position = Array.isArray(component.position) ? component.position : [0, 0];
+        component.scale = Array.isArray(component.scale) ? component.scale : [1, 1];
+        component.scale[0] = Number.isFinite(Number(component.scale[0])) ? Number(component.scale[0]) : 1;
+        component.scale[1] = Number.isFinite(Number(component.scale[1])) ? Number(component.scale[1]) : 1;
+        component.multiline = !!component.multiline;
+        component.fgCol = component.fgCol || '#FFFFFFFF';
+        component.bgCol = component.bgCol || '#202020FF';
+        component.outlineCol = component.outlineCol || '#FFFFFFFF';
+        component.fontSize = Math.max(1, Number(component.fontSize) || 24);
+        component.fontFamily = component.fontFamily || 'sans-serif';
+        component.padding = Math.max(0, Number(component.padding) || 0);
+        component.outlineWidth = Math.max(0, Number(component.outlineWidth) || 0);
+        component.borderRadius = Math.max(0, Number(component.borderRadius) || 0);
+        component.maxLength = Math.max(0, Math.floor(Number(component.maxLength) || 0));
       }
       if (component.type === 'physics') {
         component.body = ['Static', 'Kinematic', 'Dynamic'].includes(component.body) ? component.body : 'Static';

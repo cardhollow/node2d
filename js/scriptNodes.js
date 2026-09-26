@@ -11,7 +11,7 @@
     { name:'onJoystick', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Variable',type:'selector',value:ctx=>(ctx?.joysticksList||[]).map(j=>j.variable),selected:''}], func:()=>({out:true}) },
     { name:'onAudioPickup', require:'Use Mic', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
-    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}], func:()=>({next:true,truth:true}) },
+    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     {
       name:'loadScene', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -52,8 +52,13 @@
     },
     {
       name:'setSprite', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Type',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Pixelated',type:'bool',value:null}],
+      editor:[{name:'Type',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
       func:(ctx,v)=>{ctx.setSprite?.(v);return {out:true};}
+    },
+    {
+      name:'setInputComponent', receiver:true, group:'Actions', output:[{id:'out'}],
+      editor:[{name:'Text',type:'str',value:null},{name:'Placeholder',type:'str',value:null},[{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null}],[{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null}],{name:'Width',type:'int',value:null},{name:'Height',type:'int',value:null},{name:'Multiline',type:'bool',value:null},{name:'FG Color',type:'col',value:null},{name:'BG Color',type:'col',value:null},{name:'Outline Color',type:'col',value:null},{name:'Font Size',type:'int',value:null},{name:'Font Family',type:'str',value:null},{name:'Padding',type:'int',value:null},{name:'Outline Width',type:'int',value:null},{name:'Border Radius',type:'int',value:null},{name:'Max Length',type:'int',value:null}],
+      func:(ctx,v)=>{ctx.setInputComponent?.(v);return {out:true};}
     },
     {
       name:'setPhysics', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -116,12 +121,12 @@
     {name:'stopAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.stopAudio?.();return {out:true};}},
     {name:'clearAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.clearAudio?.();return {out:true};}},
     {name:'Boolean',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Value',type:'bool',value:true}],func:(ctx,v)=>({next:true,truth:!!v.Value,falsy:!v.Value})},
-    {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
-    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000}],func:()=>({out:true})},
-    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target);return {next:true,truth:yes,falsy:!yes};}}
+    {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
+    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
+    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,!!(v.applyByName??v['Apply By Name']));return {next:true,truth:yes,falsy:!yes};}}
   ];
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onCollideWith','onUnload','saveState','loadState','removeState','clearState','setVariable','setTransform','setText','setSprite','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onConnectionChange','onCollideWith','onUnload','saveState','loadState','removeState','clearState','setVariable','setTransform','setText','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();
