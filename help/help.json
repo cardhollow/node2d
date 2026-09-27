@@ -1,0 +1,1878 @@
+[
+  {
+    "title": "Node2D Overview",
+    "items": [
+      {
+        "subtitle": "What is Node2D?",
+        "contents": "<h2>What is Node2D?</h2><p>Node2D is a 2D game engine and visual editor for making games for the web. You build a game by creating Scenes, placing Nodes, adding Components, creating visual scripts with ScriptNodes, importing assets, and testing with Play or Debug.</p><p>You can save projects, export them as a project file, and export a playable web package. The editor can also work as an installable/offline-capable web app.</p>",
+        "id": "node2d-basics--what-is-node2d"
+      },
+      {
+        "subtitle": "How the editor works",
+        "contents": "<h2>How the editor works</h2><p>The main parts you work with are the Scene tree, viewport, Node Components, ScriptNode editor, Asset Manager, Camera, Game Settings, and project controls.</p><ol><li>Create or load a project.</li><li>Create a Scene.</li><li>Add Nodes.</li><li>Add Components to make Nodes visible, physical, or interactive.</li><li>Build ScriptNode logic.</li><li>Add assets such as images and audio.</li><li>Test with Play or Debug.</li><li>Save or export the project.</li></ol>",
+        "id": "node2d-basics--how-the-editor-works"
+      },
+      {
+        "subtitle": "Important editor idea",
+        "contents": "<h2>Project → Scene → Node</h2><p>A <strong>Project</strong> contains your game. A <strong>Scene</strong> is one game screen, level, menu, or area. A <strong>Node</strong> is an object inside a Scene. <strong>Components</strong> give a Node features, and <strong>ScriptNodes</strong> give it visual logic.</p>",
+        "id": "node2d-basics--important-editor-idea"
+      },
+      {
+        "subtitle": "Viewport navigation",
+        "contents": "<h2>Viewport navigation</h2><p>Use the viewport to look around your Scene. You can pan, zoom, center the view, and use Select, Move, Rotate, Scale, or All tools to edit Nodes.</p><p>When a new ScriptNode is placed, it is placed around the part of the ScriptNode workspace you are currently looking at, so you do not have to search for it elsewhere.</p>",
+        "id": "node2d-basics--viewport-navigation"
+      },
+      {
+        "subtitle": "Small screen warning",
+        "contents": "<h2>Small screen warning</h2><p>When the editor is too narrow for comfortable editing, it shows a full-screen warning and temporarily blocks editing. Widen the window or rotate your device to continue.</p>",
+        "id": "node2d-basics--small-screen-warning"
+      },
+      {
+        "subtitle": "Build a game from start to finish",
+        "contents": "<h2>Build a game from start to finish</h2><p>A practical Node2D workflow is to build one small playable idea first, then grow it. Start with a Scene, add a player Node, give it a Sprite and Collider, then add the Nodes it needs to interact with.</p><ol><li><strong>Create a project.</strong> Give the project a name you can recognize later.</li><li><strong>Set up the starting Scene.</strong> Add or rename the first Scene and choose it as the Preferred Scene in Game Settings.</li><li><strong>Create the player.</strong> Add a Node, choose a Sprite asset for it, and position it in the Scene.</li><li><strong>Add game objects.</strong> Create ground, enemies, collectibles, buttons, UI elements, or other Nodes.</li><li><strong>Add Components.</strong> Use Collider for collision shapes, Physics for physical motion, Text for labels, Progress Bar for meters, and Joystick for touch controls.</li><li><strong>Add behavior.</strong> Open the Node's Script and connect an Event to the Actions and Controls that should happen.</li><li><strong>Test early.</strong> Press Play often. It is easier to find a wrong position, collision, input, or script connection before the Scene becomes large.</li><li><strong>Save and export.</strong> Save the project so it can be restored, then use Export Project when you have a playable web build.</li></ol><p>You can build a simple game without putting every object into one giant script. Keep each Node responsible for the behavior that belongs to that object.</p>",
+        "id": "node2d-basics--build-a-game-from-start-to-finish"
+      },
+      {
+        "subtitle": "Version",
+        "contents": "<h2>Node2D version</h2><p>This build reports <code>v31.0.6</code> from <code>manifest.json</code>. The version shown by the editor is read from that manifest at startup, so the manifest is the authoritative UI version source for this package.</p>",
+        "id": "basics-version"
+      },
+      {
+        "subtitle": "Multi Selection and locked Nodes",
+        "contents": "<h2>Multi Selection and locked Nodes</h2><p>Use <strong>Actions → Multi Selection</strong> to turn on keyboard-free multi-selection. With it enabled, ordinary clicks add or remove Nodes from the selection, so Ctrl/Shift are not required.</p><p>Use the Node component's <strong>Locked</strong> option to prevent a Node from being selected in the workspace. A locked Node is skipped by workspace hit testing, so clicking it selects an unlocked Node behind it when one exists. In the Selection Panel, a locked Node can still be selected by itself, but it is never included in a multiple selection.</p><p><strong>Closed folders are unselectable in Multi Selection.</strong> They may still be opened first and then their child Nodes can be selected.</p><p><strong>Duplicate</strong> creates a new independent Node or ScriptNode directly; it does not use or replace the clipboard.</p><p>When several tree items are selected, dragging any selected item drags the whole top-level selection together. This also works for selected Folders, so a Folder and other selected Nodes can be moved together into another Folder or back to the Scene root.</p>",
+        "id": "node2d-basics--multi-selection-and-locked-nodes"
+      },
+      {
+        "subtitle": "Node2D source, copyright, and app link",
+        "contents": "<h2>Node2D source, copyright, and app link</h2><p>Node2D is developed by CardHollow. The project source is available on <a href=\"https://github.com/cardhollow/node2d\" target=\"_blank\" rel=\"noopener\">GitHub</a>.</p><p>More information: <a href=\"https://cardhollow.github.io/node2d/help\" target=\"_blank\" rel=\"noopener\">cardhollow.github.io/node2d/help</a>.</p><p>Try App: <a href=\"https://cardhollow.github.io/node2d/help\" target=\"_blank\" rel=\"noopener\">cardhollow.github.io/node2d/help</a>.</p><p>The editor can be installed on supported browsers and devices, including some mobile devices.</p>",
+        "id": "node2d-basics--node2d-source-copyright-and-app-link"
+      },
+      {
+        "subtitle": "Game-building features to know",
+        "contents": "<h2>Game-building features to know</h2><p>Node2D has several features that are easy to miss when building a game:</p><ul><li><strong>Preferred Scene</strong> chooses the Scene that starts when the game runs.</li><li><strong>Camera</strong> controls the game view and background color; Screen Type controls how that view fits the device.</li><li><strong>Physics + Collider</strong> separate physical motion from the shape used for collision, so you can tune them independently.</li><li><strong>ScriptNode Events / Actions / Controls</strong> let you build behavior without putting every game rule into one graph.</li><li><strong>Global, Scene, and Local Variables</strong> let you keep state at different scopes.</li><li><strong>saveState / loadState</strong> can save and restore complete runtime Scene snapshots even across Scene changes.</li><li><strong>Animation Sprite</strong> is for explicit frame-based animation, including frames produced from imported GIFs.</li><li><strong>Windowboxing, Stretch, Crop, and Smart Camera</strong> give different ways to adapt the game view to different screens.</li><li><strong>Play Current Scene / Debug Current Scene</strong> runs the Scene currently open in the editor instead of the Preferred Scene.</li></ul>",
+        "id": "node2d-basics--game-building-features-to-know"
+      },
+      {
+        "subtitle": "Collider and Physics collision semantics",
+        "contents": "<h2>Collider and Physics collision semantics</h2><p><strong>Collider</strong> controls whether the configured shape is detectable. It can detect overlaps and may pass through another object instead of pushing it when Physics → isCollider is false. Collider-only Nodes do not need a Physics component just to be detected.</p><p><strong>Physics → isCollider</strong> makes the body physically collidable and detectable. When true, it can push/respond to other physical bodies. If a Collider component exists, its configured Rect/Circle/Triangle shape is preserved even when the Collider checkbox is turned off; isCollider does not replace the configured shape with a default rectangle.</p><p>Transform-driven movement is re-evaluated by collision detection, so changing a Node's Transform from a ScriptNode updates where its Collider is detected even when the Node has no Physics component.</p>",
+        "id": "node2d-basics--physics-collider-semantics"
+      }
+    ]
+  },
+  {
+    "title": "Editor Layout and Controls",
+    "items": [
+      {
+        "subtitle": "Top bar",
+        "contents": "<h2>Top bar</h2><p>The top bar contains the main project, editing, view, help, and runtime controls. As the window becomes narrower, labels can hide so the controls remain usable.</p><p>At very small widths, the editing mode controls move into a vertical group on the right side instead of overlapping other controls.</p>",
+        "id": "editor-layout-and-controls--top-bar"
+      },
+      {
+        "subtitle": "Select, Move, Rotate, Scale, All",
+        "contents": "<h2>Editing tools</h2><table><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody><tr><td>Select</td><td>Select Nodes or objects.</td></tr><tr><td>Move</td><td>Move selected objects.</td></tr><tr><td>Rotate</td><td>Rotate selected objects.</td></tr><tr><td>Scale</td><td>Resize selected objects.</td></tr><tr><td>All</td><td>Use the combined editing mode.</td></tr></tbody></table>",
+        "id": "editor-layout-and-controls--select-move-rotate-scale-all"
+      },
+      {
+        "subtitle": "Multi-selection",
+        "contents": "<h2>Multi-selection</h2><p>Select several Nodes with Shift or Ctrl/Command when the browser delivers modifier keys to the viewport. The selected Nodes can be transformed together with the gizmo.</p><p>If keyboard modifiers are inconvenient, open <strong>Actions</strong> and turn on <strong>Multi Selection</strong>. While it is on, clicking a Node adds it to the current selection or removes it when it is already selected. This works directly in the workspace without needing Ctrl, Shift, or Command. Click <strong>Multi Selection</strong> again to turn the mode off.</p><p><strong>Closed folders are unselectable while Multi Selection is active.</strong></p><p>Use <strong>Select All - &lt;Name&gt;</strong> from a Node context menu to select every Node in the current Scene with the same name.</p><p>The <a class=\"help-ref\" href=\"#help:editor-settings--multiselection-unified-editing\" data-help-topic=\"editor-settings--multiselection-unified-editing\">Multiselection Unified Editing</a> setting controls group behavior. When True, the selected Nodes are transformed as one group and keep their relative positions and sizes. The selection uses one large yellow outline. When False, each Node has its own yellow outline; Scale and Rotate affect each Node individually instead of transforming the group as one object.</p><p>Editing a Component property while multiple Nodes are selected follows the normal Component value pipeline and keeps the <code>&lt;&gt;</code> mixed-value presentation. For vector properties such as Position, Scale, Size, or other X/Y pairs, each axis is evaluated independently: X can show <code>&lt;&gt;</code> while Y shows its actual shared value, or vice versa. Each axis can therefore be edited independently without treating the entire vector as one mixed value. It does not open a per-Node picker, and the Component edit remains an individual value edit even when Multi Unified Editing is enabled or disabled.</p><p>Selected Nodes also show their <a class=\"help-ref\" href=\"#help:components-collider\" data-help-topic=\"components-collider\">Collider</a> outlines when they have a Collider.</p><p><strong>When a Component value is committed while multiple Nodes are selected, the edited value is applied to all selected Nodes first, even when their previous values were different.</strong></p><p>In the Components header, a multiple selection is shown as <code>&lt;Name&gt; &lt;amount&gt;</code>; the amount is only shown when more than one Node is selected.</p>",
+        "id": "editor-layout-and-controls--multi-selection"
+      },
+      {
+        "subtitle": "Context menus",
+        "contents": "<h2>Context menus</h2><p>Node, Component, and ScriptNode context menus expose operations relevant to the item under the pointer.</p><p>Node menus include selection, clipboard, duplication, deletion, snapping, adding Nodes, and <strong>? Documentation</strong>. Component menus include copy/paste, optional Apply to all behavior, deletion when allowed, and <strong>? Documentation</strong>. ScriptNode menus also expose <strong>? Documentation</strong>.</p><p>The Documentation command is intended to open the Help page with a query for the selected Node, Component, or ScriptNode name so users can jump directly to the relevant topic. Help also supports topic IDs through its <code>?topic=...</code> query parameter and text searches through <code>?search=...</code>.</p>",
+        "id": "editor-layout-and-controls--context-menus"
+      },
+      {
+        "subtitle": "Help",
+        "contents": "<h2>Help</h2><p>The <strong>?</strong> Help button opens the Help page inside the editor. The Help page has a searchable navigation tree and supports URL queries for direct navigation.</p><ul><li><code>?search=term</code> filters topics by section, subtitle, and documented contents.</li><li><code>?topic=section-id--topic-id</code> selects a specific topic.</li><li>Documentation links can use the same topic IDs with <code>data-help-topic</code> references.</li></ul>",
+        "id": "editor-layout-and-controls--help"
+      },
+      {
+        "subtitle": "Fullscreen",
+        "contents": "<h2>Fullscreen</h2><p>The Fullscreen button expands the editor to fullscreen. The icon and its button area are one clickable control, so clicking the icon or the surrounding button activates fullscreen.</p>",
+        "id": "editor-layout-and-controls--fullscreen"
+      },
+      {
+        "subtitle": "Keyboard shortcut editing",
+        "contents": "<h2>Keyboard shortcut editing</h2><p>Editor shortcuts can be changed in Editor Settings. Your chosen shortcuts are saved locally on your device and are used again when you reopen the editor.</p>",
+        "id": "editor-layout-and-controls--keyboard-shortcut-editing"
+      },
+      {
+        "subtitle": "Snapping",
+        "contents": "<h2>Snapping</h2><p>Snapping makes editing use fixed intervals instead of letting values land at arbitrary decimal positions or scales. It is useful when you want objects to line up on a predictable grid or you want repeated size changes to be consistent.</p><p><strong>Move / Scale Snap</strong> controls the interval used by Node movement and scaling. For example, a value of <code>0.1</code> means a position or scale value is rounded to steps such as <code>2.0</code>, <code>2.1</code>, <code>2.2</code>, and so on.</p><p><strong>Rotate Snap</strong> controls the angle interval. <code>0°</code> turns rotation snapping off; a value such as <code>90°</code> makes rotations land at 0°, 90°, 180°, 270°, and so on.</p><p>Snapping applies while dragging the Move, Scale, and Rotate gizmos, including their center/axis controls. It is an editing aid, not a physics rule: it changes the values you create in the editor.</p>",
+        "id": "editor-layout-and-controls--snapping"
+      },
+      {
+        "subtitle": "Scale gizmo",
+        "contents": "<h2>Scale gizmo</h2><p>The Scale gizmo appears around the selected Node when Scale or All mode is active. Its small boxes are resize handles.</p><ul><li><strong>Corner handles</strong> resize in both directions while preserving the object's starting width-to-height ratio.</li><li><strong>Left / right handles</strong> resize horizontally.</li><li><strong>Top / bottom handles</strong> resize vertically.</li></ul><p>When a scale handle is being dragged, the active handle is given an additional outline so you can see exactly which resize point is being used.</p><p>The scale operation still follows your Move / Scale Snap setting. A snap value of <code>0.1</code> prevents tiny floating-point changes from producing values such as <code>1.0000000001</code> during normal gizmo editing.</p>",
+        "id": "editor-layout-and-controls--scale-gizmo"
+      },
+      {
+        "subtitle": "Reload and close protection",
+        "contents": "<h2>Reload and close protection</h2><p>When a project is loaded, Node2D can prevent an accidental browser refresh or tab close from happening silently. The browser may show its standard confirmation dialog so you have a chance to stay on the page.</p><p>This browser protection does not replace saving. Use Save or Auto Save so your work is actually stored before leaving.</p>",
+        "id": "editor-layout-and-controls--reload-and-close-protection"
+      },
+      {
+        "subtitle": "Gizmo size while zooming",
+        "contents": "<h2>Gizmo size while zooming</h2><p>The Move, Rotate, and Scale editing controls stay visually usable while you zoom the viewport. Their handles use screen-aware sizing instead of becoming tiny or huge only because the Node itself is large or small on the screen.</p><p>The object outline still represents the actual object size, while the editing handles remain easy to grab.</p>",
+        "id": "editor-layout-and-controls--gizmo-size-while-zooming"
+      },
+      {
+        "subtitle": "Move gizmo",
+        "contents": "<h2>Move gizmo</h2><p>The Move gizmo has a center control and directional arrows. Drag the center to move freely. Drag the horizontal arrow to move horizontally, and drag the vertical arrow to move vertically.</p><p>Move Snap from Editor Settings determines the fixed editing interval used while moving. A value of <code>1</code> means movement is snapped to whole units.</p>",
+        "id": "editor-layout-and-controls--move-gizmo"
+      },
+      {
+        "subtitle": "Folders and grouping",
+        "contents": "<h2>Folders and grouping</h2><p>Use Folders to organize a Scene tree without changing a Node ID. Select several top-level Nodes or folders that share the same parent and press <strong>Ctrl+G</strong> to place them inside a new Folder. Select a Folder and press <strong>Ctrl+U</strong> to ungroup it.</p>",
+        "id": "editor-layout-and-controls--folders-and-grouping"
+      }
+    ]
+  },
+  {
+    "title": "UI Layout, Panels, and Fullscreen",
+    "items": [
+      {
+        "subtitle": "Sprite Inspector on small screens",
+        "contents": "<h2>Sprite Inspector</h2><p>The Sprite Editor keeps the Sprite Inspector available on narrow screens. When the editor is wider than the device can comfortably show, the Sprite Editor can use horizontal scrolling rather than removing the Inspector.</p><p>The Inspector contains the Sprite name, width, height, frame list, frame actions, playback controls, and FPS.</p>",
+        "id": "ui-layout-panels-and-fullscreen--sprite-inspector-on-small-screens"
+      },
+      {
+        "subtitle": "Hidden Selection and Components panels",
+        "contents": "<h2>Hidden panels</h2><p>When the Selection or Components panel is hidden, it no longer occupies visible editor space. A small <strong>S</strong> or <strong>C</strong> button appears beside the remaining dock so you can restore the hidden panel.</p><p>The buttons only appear for panels that are currently hidden.</p>",
+        "id": "ui-layout-panels-and-fullscreen--hidden-selection-and-components-panels"
+      },
+      {
+        "subtitle": "Script panel collapse",
+        "contents": "<h2>Collapsing Script panels</h2><p>The Script Editor has a Local Variables/ScriptNode Library panel on the left and a Script Inspector on the right. Each side can be collapsed with its arrow button.</p><p>When collapsed, the side becomes a narrow strip while its arrow remains available to expand it again. This gives the Script canvas more room without closing the Script Editor.</p>",
+        "id": "ui-layout-panels-and-fullscreen--script-panel-collapse"
+      },
+      {
+        "subtitle": "Resizing Script panels",
+        "contents": "<h2>Resizing Script panels</h2><p>Drag the thin handle at the edge of either Script side panel to change its width. This works like resizing the Selection and Components dock.</p>",
+        "id": "ui-layout-panels-and-fullscreen--resizing-script-panels"
+      },
+      {
+        "subtitle": "Fullscreen editor surfaces",
+        "contents": "<h2>Fullscreen editor surfaces</h2><p>Large editing surfaces such as the Script Editor, Sprite Editor, MIDI Editor, Help, and Expression Editor can cover the full viewport. They no longer leave the main topbar visible behind them.</p>",
+        "id": "ui-layout-panels-and-fullscreen--fullscreen-editor-surfaces"
+      },
+      {
+        "subtitle": "PWA fullscreen",
+        "contents": "<h2>PWA fullscreen</h2><p>When Node2D is installed as a Progressive Web App, its manifest requests the browser's <strong>fullscreen</strong> display mode. Supported browsers can therefore launch the installed Node2D app without normal browser UI around the app.</p><p>A normal browser tab still cannot be forced into fullscreen without a user gesture; the fullscreen PWA setting applies when the app is installed/launched as a PWA.</p>",
+        "id": "ui-layout-panels-and-fullscreen--pwa-fullscreen"
+      },
+      {
+        "subtitle": "Script panel resizing and collapse",
+        "contents": "<h2>Script panel resizing and collapse</h2><p>In the Script Editor, the Local Variables/ScriptNode Library panel on the left and Script Inspector panel on the right can each be resized with their edge handle.</p><p>Use the arrow in a panel header to collapse that panel. When collapsed, its content no longer occupies the main canvas area. Use the same arrow to restore it.</p>",
+        "id": "ui-layout-panels-and-fullscreen--script-panel-resizing-and-collapse"
+      },
+      {
+        "subtitle": "Sprite Editor side panels",
+        "contents": "<h2>Sprite Editor side panels</h2><p>The Sprite Editor keeps both the Tools panel and Sprite Inspector available. Each side panel can be resized with its edge handle and collapsed with its header arrow.</p><p>On a narrow screen, the editor can scroll horizontally so the Inspector remains reachable instead of simply removing it from the editor.</p>",
+        "id": "ui-layout-panels-and-fullscreen--sprite-editor-side-panels"
+      },
+      {
+        "subtitle": "Selection and Components panels",
+        "contents": "<h2>Selection and Components panels</h2><p>The editor keeps the <strong>Selection panel on the left</strong> and the <strong>Components panel on the right</strong>, with the Workspace between them.</p><p>Both panels behave like the ScriptNode modal side panels: each is independently resizable and collapsible. Collapsing a panel shrinks it to its side tab and gives the released width to the Workspace. Expanding it restores its stored width, and resizing one side does not move the other side unexpectedly.</p>",
+        "id": "ui-layout-panels-and-fullscreen--selection-and-components-panels"
+      }
+    ]
+  },
+  {
+    "title": "Scenes",
+    "items": [
+      {
+        "subtitle": "What is a Scene?",
+        "contents": "<h2>What is a Scene?</h2><p>A Scene is a collection of Nodes and folders. Use different Scenes for levels, menus, rooms, screens, or other parts of a game.</p>",
+        "id": "scenes--what-is-a-scene"
+      },
+      {
+        "subtitle": "Create and rename Scenes",
+        "contents": "<h2>Create and rename Scenes</h2><p>Use <strong>+ Add Scene</strong> to create another Scene. Select a Scene to work on it, and use the available rename action to change its name.</p>",
+        "id": "scenes--create-and-rename-scenes"
+      },
+      {
+        "subtitle": "Preferred Scene",
+        "contents": "<h2>Preferred Scene</h2><p>The Preferred Scene in Game Settings is the Scene that starts when you press Play or Debug.</p>",
+        "id": "scenes--preferred-scene"
+      },
+      {
+        "subtitle": "Scene list and menu size",
+        "contents": "<h2>Scene list</h2><p>The Scene list and Scene drop-down/context menu stay within the available screen height. When there are many Scenes, the list becomes scrollable. The <strong>+ Add Scene</strong> control stays outside the scrollable part so it remains easy to reach.</p>",
+        "id": "scenes--scene-list-and-menu-size"
+      },
+      {
+        "subtitle": "Folders",
+        "contents": "<h2>Folders</h2><p>Folders help organize Nodes inside a Scene. They do not act as game objects themselves. You can expand and collapse them to keep the Scene tree manageable.</p>",
+        "id": "scenes-folders"
+      },
+      {
+        "subtitle": "Moving Nodes",
+        "contents": "<h2>Moving Nodes</h2><p>Nodes can be moved between folders or back to the Scene root using the available tree controls or drag-and-drop where supported.</p>",
+        "id": "scenes--moving-nodes"
+      },
+      {
+        "subtitle": "Scene tree and folders",
+        "contents": "<h2>Scene tree and folders</h2><p>The Selection Panel displays Scene Cameras, global variables, UI components, folders, and Nodes. Folders organize the Scene tree and can be expanded/collapsed. Nodes can be moved between containers in the tree.</p><p>Tree selection and workspace selection refer to the same editor selection state.</p>",
+        "id": "scenes--scene-tree-and-folders"
+      },
+      {
+        "subtitle": "Multi-item tree drag",
+        "contents": "<h2>Multi-item tree drag</h2><p>When multiple Nodes or Folders are selected in the Scene tree, dragging one selected item drags the complete top-level selection. Drop the group on a Folder to move all selected items inside it, or use the Scene root drop target to move the group to the root. A selected Folder carries its entire subtree with it.</p>",
+        "id": "scenes--multi-item-tree-drag"
+      }
+    ]
+  },
+  {
+    "title": "Nodes",
+    "items": [
+      {
+        "subtitle": "What is a Node?",
+        "contents": "<h2>What is a Node?</h2><p>A Node is an object placed in a Scene. A Node can represent a player, enemy, item, button, decoration, platform, effect, or another game object.</p><p>Nodes have a name and ID and can contain Components and a visual ScriptNode graph.</p>",
+        "id": "nodes--what-is-a-node"
+      },
+      {
+        "subtitle": "Node name and ID",
+        "contents": "<h2>Node name and ID</h2><p>The name is the label you see in the Scene tree and selectors. The numeric ID helps identify the Node when it is referenced by editor and game systems.</p>",
+        "id": "nodes--node-name-and-id"
+      },
+      {
+        "subtitle": "Node selection",
+        "contents": "<h2>Node selection</h2><p>Select Nodes from the Scene tree or viewport. A selected Node shows its available Components and can be edited with the viewport tools.</p>",
+        "id": "nodes--node-selection"
+      },
+      {
+        "subtitle": "Node copy, paste, and duplicate",
+        "contents": "<h2>Copy, paste, and duplicate</h2><p><strong>Copy</strong> places a Node in the editor clipboard. <strong>Paste</strong> creates a new Node from the clipboard. <strong>Duplicate</strong> is a separate operation: it directly clones the selected Node without requiring Copy or changing the clipboard.</p><p>A duplicated Node receives fresh IDs and keeps its component and ScriptNode setup. ScriptNodes can also be duplicated directly.</p>",
+        "id": "nodes--node-copy-paste-and-duplicate"
+      },
+      {
+        "subtitle": "Deleting Nodes",
+        "contents": "<h2>Deleting Nodes</h2><p>Delete or Backspace removes selected editor objects after the editor's confirmation rules are applied.</p>",
+        "id": "nodes--deleting-nodes"
+      },
+      {
+        "subtitle": "Node ordering and Index",
+        "contents": "<h2>Node ordering and Index</h2><p>Every Node has an <code>Index</code> that controls its visual draw order. Lower indexes are drawn first; higher indexes appear above them.<span> See <a class=\"help-ref\" data-help-topic=\"components-node\" href=\"?topic=components-node\">Node Component</a> for related details.</span></p><p>The Node context menu contains <strong>Move Up</strong> and <strong>Move Down</strong>. These actions change the Index values so the selected Node moves one position in the render order.</p>",
+        "id": "nodes-index"
+      },
+      {
+        "subtitle": "Locked Nodes",
+        "contents": "<h2>Locked Nodes</h2><p>The Node component has a <strong>Locked</strong> property. A locked Node cannot be selected from the workspace, so workspace hit testing passes through it to an unlocked Node behind it when possible.</p><p>A locked Node can still be selected by itself in the Selection Panel so its properties can be inspected or edited, but it is excluded from multi-selection.</p>",
+        "id": "nodes--locked-nodes"
+      },
+      {
+        "subtitle": "Index and render order",
+        "contents": "<h2>Node Index</h2><p>Node Index controls ordering in the Scene's render order. Lower indices are rendered earlier and higher indices later, so index can be used to control which Node appears in front when visuals overlap.</p><p>The Selection Panel provides ordering commands for moving Nodes up or down.</p>",
+        "id": "nodes--index-and-render-order"
+      },
+      {
+        "subtitle": "Index is not ID",
+        "contents": "<h2>Index vs ID</h2><p><strong>ID</strong> identifies a Node. <strong>Index</strong> controls draw order. They are separate values.</p><p>Multiple Nodes may use the same Index. When Nodes share an Index, they keep their existing stable order for ties. Use Move Up / Move Down when you want to exchange ordering positions.</p>",
+        "id": "nodes--index-is-not-id"
+      },
+      {
+        "subtitle": "Node documentation from the context menu",
+        "contents": "<h2>Node documentation from the context menu</h2><p>Right-click or open the Node context menu and choose <strong>? Documentation</strong> to jump from the selected Node to the Help system. The documentation target uses the Node name as the search query so user-created Node names can be used to locate matching topics when appropriate.</p>",
+        "id": "nodes--documentation-context-menu"
+      }
+    ]
+  },
+  {
+    "title": "Multi-Node Editing",
+    "items": [
+      {
+        "subtitle": "Multi-selection commands",
+        "contents": "<h2>Multi-selection</h2><p>Select several Nodes with <strong>Ctrl/Command + click</strong> or <strong>Shift + click</strong> when using modifier gestures. You can also enable <strong>Actions → Multi Selection</strong> to select multiple Nodes without a keyboard modifier.</p><p>Locked Nodes are skipped by workspace multi-selection and are not included when building a group selection.</p><p>Workspace transform gizmos also work on the whole selection. In Move mode, the X and Y arrows constrain movement to one axis and the center handle moves freely. This matches the single-Node gizmo.</p>",
+        "id": "multi-editing--commands"
+      },
+      {
+        "subtitle": "Mixed values and &lt;&gt;",
+        "contents": "<h2>Mixed values and &lt;&gt;</h2><p>When more than one Node is selected, every editable Component field is evaluated independently across the selected Nodes. A field shows <code>&lt;&gt;</code> when its values differ.</p><p>Vector properties are split per axis. For example, if Position X differs but Position Y is identical, X shows <code>&lt;&gt;</code> while Y shows the shared number. Changing X does not write to Y, and changing Y does not write to X. The same rule applies to other independently editable X/Y fields.</p><p>The mixed-value editor is not limited to a fixed Component allow-list. Specialized Components keep their normal inspectors, while generic/new Component properties can participate through the same MUE path when they expose editable scalar values.</p>",
+        "id": "multi-editing--mixed-values"
+      },
+      {
+        "subtitle": "Identity fields",
+        "contents": "<h2>Identity fields</h2><p>Multi-selection exposes shared editing for Node Name and Index. Node IDs remain read-only in the multi-selection header because each Node must keep its own unique numeric identity.</p><p>The Components header uses <code>&lt;Name&gt; &lt;amount&gt;</code> only when multiple Nodes are selected. A single selection shows only the selected item name.</p>",
+        "id": "multi-editing--identity-fields"
+      },
+      {
+        "subtitle": "Create New Missing Component",
+        "contents": "<h2>Create New Missing Component</h2><p>Editor Settings contains <strong>Create New Missing Component</strong>, which defaults to <strong>False</strong>.</p><p>When enabled, editing a Component property across multiple selected Nodes automatically creates that Component on Nodes that do not already have it, then applies the edited value. When disabled, Nodes missing the Component are left unchanged.</p>",
+        "id": "multi-editing--create-missing-component"
+      },
+      {
+        "subtitle": "Commit rules",
+        "contents": "<h2>Multi-edit commit rules</h2><p>Editing a normal Component input while several Nodes are selected is a real multi-edit: the committed value is applied to every selected Node. The previous value of the first Node is not used as a gate that can cancel the other writes.</p><p>For mixed fields, typing a value replaces the mixed state for that field only. Other fields and other axes retain their own values.</p>",
+        "id": "multi-editing--commit-rules"
+      },
+      {
+        "subtitle": "Multi-edit queue",
+        "contents": "<h2>Multi-edit update flow</h2><p>Node2D keeps multi-edit changes in the editor history pipeline so a Component edit can be undone and redone as one logical operation. The propagation targets the selected Nodes at commit time rather than relying on a stale inspector snapshot.</p>",
+        "id": "multi-node-editing--queued-refresh"
+      },
+      {
+        "subtitle": "Transform gizmo and keyboard movement",
+        "contents": "<h2>Multi-selection transform gizmo</h2><p>The multi-selection Move gizmo follows the same interaction model as a single Node. Drag the red X arrow to move only along X, the green Y arrow to move only along Y, or the center handle for free movement.</p><p>The same selected Nodes receive one shared translation delta. This is independent of whether their individual transforms, sizes, or scales differ.</p><p>Move keyboard nudges use Move / Scale Snap. Rotation keyboard nudges use Rotate Snap. With MUE enabled, Scale and Rotate treat the selection as a unified transform; with MUE disabled, the Nodes retain per-Node transform behavior.</p>",
+        "id": "multi-editing--transform-gizmo"
+      },
+      {
+        "subtitle": "Per-axis mixed values",
+        "contents": "<h2>Per-axis mixed values</h2><p>Each inspector input owns its own mixed state. X and Y are never treated as one combined value. This is why a two-Node selection can show <code>X: &lt;&gt;</code> and <code>Y: 20</code> at the same time.</p><p>The same principle applies to Scale, Size, Position, and other vector-like Component properties. New Components can use the same generic multi-edit machinery without requiring a new hardcoded pair of X/Y rules.</p>",
+        "id": "multi-node-editing--per-axis-mixed-values"
+      }
+    ]
+  },
+  {
+    "title": "History and Undo/Redo",
+    "items": [
+      {
+        "subtitle": "How history works",
+        "contents": "<h2>History</h2><p>Node2D history records document changes such as Node edits, Component values, ScriptNodes, connections, scene structure, asset/project state, and other editable engine data.</p><p>Viewport <strong>pan and zoom are not document history</strong>. Moving around the workspace or zooming should never consume an Undo step.</p><p>History entries are committed as user edits rather than every temporary UI redraw. Text and numeric controls commit on <strong>Enter</strong> or when focus leaves the control.</p>",
+        "id": "history--how-it-works"
+      },
+      {
+        "subtitle": "Branching history",
+        "contents": "<h2>Branching history</h2><p>Undo does not destroy the future. If you undo to an older state and then make a new edit, Node2D creates another history branch while keeping the older branch available.</p><p>Example: <code>A → B → C</code>, Undo to <code>B</code>, then edit to <code>D</code> produces <code>A → B → C</code> and <code>A → B → D</code>. Both branches remain loadable from the History modal.</p>",
+        "id": "history--branching"
+      },
+      {
+        "subtitle": "History modal and Current History",
+        "contents": "<h2>History modal</h2><p><strong>Actions → History</strong> opens the history timeline. The timeline stays vertically organized even when there are many entries and shows branch relationships without growing indefinitely to the right.</p><p>The state currently loaded in the editor is marked <strong>CURRENT</strong>, highlighted in the timeline, and shown in the Current History summary. Click any history state to load that exact state.</p>",
+        "id": "history--modal-and-current"
+      },
+      {
+        "subtitle": "Pending edits and selection changes",
+        "contents": "<h2>Pending edits</h2><p>The editor flushes an unfinished field edit before changing the selection, rebuilding the inspector, opening another relevant editor, or applying Undo/Redo. This prevents an edit from disappearing when a newly selected Node replaces the current inspector.</p><p>This applies to single selection and multi-selection component editing.</p>",
+        "id": "history--pending-edits"
+      },
+      {
+        "subtitle": "Toolbar Undo and Redo",
+        "contents": "<h2>Undo and Redo</h2><p>Undo and Redo are standalone toolbar controls placed between <strong>Actions</strong> and the Select/Move/Rotate/Scale/All controls. They use the same editor history pipeline as the other actions.</p><p>At compact widths their text labels hide and only the existing icon remains, matching the responsive behavior of the other topbar controls.</p>",
+        "id": "history--toolbar-undo-redo"
+      }
+    ]
+  },
+  {
+    "title": "Components",
+    "items": [
+      {
+        "subtitle": "Node",
+        "contents": "<h2>Node Component</h2><p>The Node component represents the Node itself.<span> See <a class=\"help-ref\" data-help-topic=\"play-debug-output\" href=\"?topic=play-debug-output\">Debug Output</a> for related details.</span></p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Name</td><td>Name shown in the Scene tree and selectors.</td></tr><tr><td>ID</td><td>Numeric identifier for the Node.</td></tr><tr><td>Index</td><td>Controls draw order. Nodes with a higher Index are drawn above Nodes with a lower Index.</td></tr></tbody></table><p>Use the Node context menu to <strong>Move Up</strong> or <strong>Move Down</strong> and change the Index ordering without manually editing each value.</p>",
+        "id": "components-node"
+      },
+      {
+        "subtitle": "Script",
+        "contents": "<h2>Script Component</h2><p>The Script component contains the Node's visual ScriptNode graph. Open it to build the Node's behavior.<span> See <a class=\"help-ref\" data-help-topic=\"scriptnodes-follow-object\" href=\"?topic=scriptnodes-follow-object\">Follow Object</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-create-object\" href=\"?topic=actions-create-object\">Create Object</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-chase\" href=\"?topic=actions-chase\">Chase</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-avoid\" href=\"?topic=actions-avoid\">Avoid</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"expressions-overview\" href=\"?topic=expressions-overview\">Expressions</a> for related details.</span></p><p>The graph belongs to that Node, so each Node has its own ScriptNode workspace.</p>",
+        "id": "components--script"
+      },
+      {
+        "subtitle": "Transform",
+        "contents": "<h2>Transform Component</h2><p>Transform controls the Node's position, scale, and rotation.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Position X/Y</td><td>Where the Node is placed.</td></tr><tr><td>Scale X/Y</td><td>How large the Node is horizontally and vertically.</td></tr><tr><td>Angle</td><td>Node rotation.</td></tr></tbody></table>",
+        "id": "components-transform"
+      },
+      {
+        "subtitle": "Text",
+        "contents": "<h2>Text Component</h2><p>Text displays text in the game.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Text</td><td>The text that is displayed.</td></tr><tr><td>Position X/Y</td><td>Text position relative to the Node.</td></tr><tr><td>Font Size</td><td>Text size.</td></tr><tr><td>Font Family</td><td>Font used for the text.</td></tr><tr><td>FG Color</td><td>Text color.</td></tr><tr><td>BG Color</td><td>Background color.</td></tr><tr><td>Border</td><td>Turns the text border on or off.</td></tr><tr><td>Border Color</td><td>Border color.</td></tr><tr><td>Border Width</td><td>Border thickness.</td></tr><tr><td>Corner Radius</td><td>Rounds the border/background corners.</td></tr></tbody></table>",
+        "id": "components--text"
+      },
+      {
+        "subtitle": "Sprite",
+        "contents": "<h2>Sprite Component</h2><p>Sprite displays an imported image asset.</p><table><thead><tr><th>Property</th><th>What it does</th></tr></thead><tbody><tr><td>Type</td><td>Use a normal Sprite or use an <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> source.</td></tr><tr><td>Sprite</td><td>Select the image asset.</td></tr><tr><td>Animation</td><td>Select the animation when the Sprite is using Animation mode.</td></tr><tr><td>Opacity</td><td>Controls Sprite transparency from 0–100.</td></tr><tr><td>Pixelated</td><td>Disables canvas smoothing so the image is drawn with hard pixel edges.</td></tr><tr><td>Position X/Y</td><td>Offsets the Sprite inside the Node.</td></tr><tr><td>Size X/Y</td><td>Sets the local Sprite size. Zero uses the asset's natural/constrained size.</td></tr></tbody></table><p>The Asset Manager can create a new Node directly from a Sprite asset.</p><p>GIF files can be imported, but the editor converts the GIF into individual PNG images with transparent pixels and frame positioning preserved, one image per GIF frame (for example Apple.gif becomes Apple1.png, Apple2.png, and so on). Each resulting PNG is a static image. GIF transparency/alpha is preserved in the generated PNG frames. The imported result is rendered as static images, not as an animated GIF.</p>",
+        "id": "components--sprite"
+      },
+      {
+        "subtitle": "Animation Sprite",
+        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite stores frame-based animations made from Sprite assets.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>The animation's name.</td></tr><tr><td>FPS</td><td>Frames played per second.</td></tr><tr><td>Frames</td><td>Sprite assets used as frames.</td></tr><tr><td>Active Animation</td><td>The animation used by the Sprite when Sprite Type is Animation.</td></tr></tbody></table><p> Use Animation Sprite when you want explicit frame sequencing. GIF files are converted into individual PNG Sprite assets; use the resulting frames with Animation Sprite when you want frame-by-frame playback.</p><p><strong>Active animation controls:</strong> <code>stopAnimation</code>, <code>startAnimation</code>, and <code>stepAnimation</code> operate on the animation selected as active. When a Sprite component is set to Animation mode, that means its selected Animation; otherwise the Animation Sprite component uses its Active Animation.</p>",
+        "id": "components--animation-sprite"
+      },
+      {
+        "subtitle": "Physics",
+        "contents": "<h2>Physics Component</h2><p>Physics controls physical motion and physical collision response.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Body</td><td>Static, Kinematic, or Dynamic.</td></tr><tr><td>Gravity</td><td>Gravity applied to Dynamic bodies.</td></tr><tr><td>Friction</td><td>Resistance during contact.</td></tr><tr><td>Bounciness</td><td>How much an object rebounds.</td></tr><tr><td>Fixed Rotation</td><td>Prevents physics from rotating the body.</td></tr><tr><td>isCollider</td><td>Enables this Physics body for physical collision response. Disabling it does not remove the Collider shape.</td></tr></tbody></table><p>Use <strong>Collider</strong> to control the detectable shape. Use <strong>Physics → isCollider</strong> to enable physical collision response for a Physics body.</p>",
+        "id": "components-physics"
+      },
+      {
+        "subtitle": "Collider",
+        "contents": "<h2>Collider Component</h2><p>Collider defines a collision shape independently from the Node's main Transform.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Collider</td><td>Turns the collider on or off.</td></tr><tr><td>Type</td><td>Rect, Circle, or Triangle.</td></tr><tr><td>Position X/Y</td><td>Local collider offset relative to the Node.</td></tr><tr><td>Scale X/Y</td><td>Local collider size/scale.</td></tr><tr><td>Angle</td><td>Local collider rotation.</td></tr></tbody></table>",
+        "id": "components-collider"
+      },
+      {
+        "subtitle": "Progress Bar",
+        "contents": "<h2>Progress Bar Component</h2><p>Progress Bar displays a value using a background and a filled area.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Width / Height</td><td>Bar size.</td></tr><tr><td>Value</td><td>Current value.</td></tr><tr><td>Min / Max</td><td>Value range.</td></tr><tr><td>Position X/Y</td><td>Local position.</td></tr><tr><td>BG Color</td><td>Background color.</td></tr><tr><td>Fill Color</td><td>Filled area color.</td></tr><tr><td>TL/TR/BR/BL</td><td>Corner radii.</td></tr><tr><td>Outline Color / Size</td><td>Outline appearance.</td></tr><tr><td>Direction</td><td>Fill direction.</td></tr></tbody></table>",
+        "id": "components--progress-bar"
+      },
+      {
+        "subtitle": "Joystick",
+        "contents": "<h2>Joystick Component</h2><p>Joystick is a screen control for touch input.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Variable</td><td>Name used to identify the joystick.</td></tr><tr><td>BG Color</td><td>Joystick base color.</td></tr><tr><td>Knob Color</td><td>Joystick knob color.</td></tr><tr><td>Size</td><td>Joystick width and height.</td></tr><tr><td>Left / Top / Right / Bottom</td><td>Positioning offsets from the screen edges.</td></tr></tbody></table><p>Joystick input can be used by the <code>onJoystick</code> event and the Expression Library.</p>",
+        "id": "components--joystick"
+      },
+      {
+        "subtitle": "Required Components",
+        "contents": "<h2>Required Components</h2><p>Every Node includes <strong>Node</strong>, <strong>Script</strong>, and <strong>Transform</strong>. These stay available on the Node and are not removed like optional visual or gameplay Components.</p>",
+        "id": "components--required-components"
+      },
+      {
+        "subtitle": "Component list and required Components",
+        "contents": "<h2>Built-in Components</h2><p>The built-in Node Component system includes <strong>Node</strong>, <strong>Script</strong>, <strong>Transform</strong>, <strong>Text</strong>, <strong>Sprite</strong>, <strong>Animation Sprite</strong>, <strong>Physics</strong>, <strong>Collider</strong>, and <strong>Progress Bar</strong>. Node, Script, and Transform are required and are not removable.</p><p>Additional UI and editor systems include Joystick, Camera, Variables, and the ScriptNode system.</p>",
+        "id": "components--component-list"
+      },
+      {
+        "subtitle": "Color Wheel controls",
+        "contents": "<h2>Color Wheel controls</h2><p>Color inputs in Component inspectors and ScriptNode inputs show a small colored swatch followed by the uppercase hexadecimal value, for example <code>[color box] #FFFFFFFF</code>.</p>",
+        "id": "components--color-wheel-controls"
+      },
+      {
+        "subtitle": "Editable text input attached to a Node",
+        "contents": "<h2>Input Component</h2><p>Input Component creates an editable text input box positioned and scaled relative to its Node.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Text</td><td>The current text value.</td></tr><tr><td>Placeholder</td><td>Text shown when the input is empty. Its color follows <strong>Outline Color</strong>.</td></tr><tr><td>Position</td><td>X/Y position relative to the Node.</td></tr><tr><td>Scale</td><td>X/Y scale relative to the Node.</td></tr><tr><td>Multiline</td><td>Allows multiple lines when enabled.</td></tr><tr><td>FG Color</td><td>Text color.</td></tr><tr><td>BG Color</td><td>Input background color.</td></tr><tr><td>Outline Color</td><td>Input border and placeholder color.</td></tr><tr><td>Font Family</td><td>CSS font-family used to draw the text.</td></tr><tr><td>Font Size</td><td>Text size.</td></tr><tr><td>Width / Height</td><td>Input box size.</td></tr><tr><td>Padding</td><td>Inner text padding.</td></tr><tr><td>Outline Width</td><td>Border thickness.</td></tr><tr><td>Border Radius</td><td>Corner radius.</td></tr><tr><td>Max Length</td><td>Maximum text length; 0 means unlimited.</td></tr></tbody></table><p>The ScriptNode action <code>setInputComponent</code> can independently update text, placeholder, position, scale, size, multiline, colors, font settings, padding, outline settings, and max length.</p><p>Color Wheel values are shown with a color swatch followed by uppercase hexadecimal text.</p>",
+        "id": "components-input"
+      },
+      {
+        "subtitle": "Node Visibility",
+        "contents": "<h2>Node Visibility</h2><p>The Node component has a <strong>Visibility</strong> boolean. When it is false, the Node visual is not rendered. Hiding is not the same as destroying the Node: scripts, variables, and other runtime state remain available.</p>",
+        "id": "components--node-visibility"
+      },
+      {
+        "subtitle": "Joints",
+        "contents": "<h2>Joints Component</h2><p>The Joints component connects this Node to another Node. Add joints from the <strong>Add Joint</strong> menu. Available types are Distance, Rope, Revolute, Prismatic, Weld, Wheel, Motor, Gear, Pulley, and Friction.</p><table><thead><tr><th>Joint</th><th>What it does</th></tr></thead><tbody><tr><td>Distance</td><td>Keeps two local anchor points at a fixed distance.</td></tr><tr><td>Rope</td><td>Limits two anchors to a maximum distance.</td></tr><tr><td>Revolute</td><td>Hinges two Nodes around a shared anchor and allows rotation.</td></tr><tr><td>Prismatic</td><td>Allows sliding along an axis while constraining sideways motion and relative rotation.</td></tr><tr><td>Weld</td><td>Keeps the anchor relationship and relative angle fixed.</td></tr><tr><td>Wheel</td><td>Constrains sideways motion along an axis and adds spring/damping behavior.</td></tr><tr><td>Motor</td><td>Drives a target Node toward a linear/angular offset with force and torque limits.</td></tr><tr><td>Gear</td><td>Couples angular motion using a ratio.</td></tr><tr><td>Pulley</td><td>Keeps two rope lengths related by a ratio between two ground anchors.</td></tr><tr><td>Friction</td><td>Resists relative linear and angular motion up to force/torque limits.</td></tr></tbody></table><p>Most joints expose Anchor A and Anchor B. Wheel and Prismatic also expose Axis. Pulley exposes Ground A/Ground B, Ratio, and Constant. Motor, Friction, and Mouse expose force/torque or spring controls appropriate to their behavior.</p>",
+        "id": "components--joints"
+      },
+      {
+        "subtitle": "Sub Camera",
+        "contents": "<h2>Sub Camera</h2><p>Sub Camera is a Node Component used for a camera surface attached to a Node. Its runtime behavior is exposed through the <code>setSubCam</code> Action and the editor/runtime camera system.</p><p>Use it when a Node needs an additional camera-like render surface without replacing the main Scene Camera.</p>",
+        "id": "components--sub-camera"
+      },
+      {
+        "subtitle": "Input",
+        "contents": "<h2>Input</h2><p>The Input Component provides editable text input at runtime. It supports text, placeholder, position, scale, width, height, multiline mode, foreground/background/outline colors, font settings, padding, outline width, border radius, and maximum length.</p><p>ScriptNodes can use <code>focusInput</code> and <code>blurInput</code> to control focus.</p>",
+        "id": "components--input"
+      }
+    ]
+  },
+  {
+    "title": "Joints",
+    "items": [
+      {
+        "subtitle": "Joints overview",
+        "contents": "<h2>Joints overview</h2><p>The <strong>Joints</strong> Component stores one or more physics relationships on a Node. Each joint selects another Node as its connected Object and exposes only the fields relevant to its joint type. Joint edits are applied immediately in the editor so connected transforms can be previewed before Play.</p><p>The current build supports Distance, Rope, Revolute, Prismatic, Weld, Wheel, Motor, Gear, Pulley, and Friction joints.</p>",
+        "id": "joints--joints-overview"
+      },
+      {
+        "subtitle": "Distance Joint",
+        "contents": "<h2>Distance Joint</h2><p>Keeps two anchor points at a target distance. Use it for rods, rigid links, or connections where the separation should remain constant.</p><p>Editor fields: Anchor A, Anchor B, and Distance.</p>",
+        "id": "joints--distance-joint"
+      },
+      {
+        "subtitle": "Rope Joint",
+        "contents": "<h2>Rope Joint</h2><p>Limits the separation between two anchor points to a maximum length. Bodies can move closer together but should not exceed the configured maximum.</p><p>Editor fields: Anchor A, Anchor B, and Max Length.</p>",
+        "id": "joints--rope-joint"
+      },
+      {
+        "subtitle": "Revolute Joint",
+        "contents": "<h2>Revolute Joint</h2><p>Connects two Nodes around a pivot so the connected body can rotate around the shared anchor relationship. It is useful for hinges, doors, wheels, and levers.</p><p>Editor fields: Parent, Child, Anchor A, and Anchor B.</p>",
+        "id": "joints--revolute-joint"
+      },
+      {
+        "subtitle": "Prismatic Joint",
+        "contents": "<h2>Prismatic Joint</h2><p>Constrains the connected relationship to a linear axis. It is useful for sliders, pistons, elevators, and mechanisms that should move along one direction instead of freely rotating.</p><p>Editor fields: Anchor A, Anchor B, and Axis.</p>",
+        "id": "joints--prismatic-joint"
+      },
+      {
+        "subtitle": "Weld Joint",
+        "contents": "<h2>Weld Joint</h2><p>Locks two Nodes together as a rigid connection relative to the configured anchors and reference angle.</p><p>Editor fields: Anchor A, Anchor B, and Reference Angle.</p>",
+        "id": "joints--weld-joint"
+      },
+      {
+        "subtitle": "Wheel Joint",
+        "contents": "<h2>Wheel Joint</h2><p>Combines an anchored relationship with a suspension axis and damping/frequency controls. It is useful for wheels and vehicle-style suspension.</p><p>Editor fields: Anchor A, Anchor B, Axis, Damping Ratio, and Frequency.</p>",
+        "id": "joints--wheel-joint"
+      },
+      {
+        "subtitle": "Motor Joint",
+        "contents": "<h2>Motor Joint</h2><p>Drives the connected Node toward a relative linear and angular target instead of requiring a fixed anchor arrangement.</p><p>Editor fields: Linear Offset, Angular Offset, Max Force, Max Torque, and Correction Factor.</p>",
+        "id": "joints--motor-joint"
+      },
+      {
+        "subtitle": "Gear Joint",
+        "contents": "<h2>Gear Joint</h2><p>Couples two other joint motions through a ratio. It is intended for mechanically related motion such as gears and transmissions.</p><p>Editor fields: Ratio, Reference Angle, Joint 1, and Joint 2.</p>",
+        "id": "joints--gear-joint"
+      },
+      {
+        "subtitle": "Pulley Joint Pulley joints constrain the two rope lengths and can transfer torque through offset anchors; excessive spinning usually indicates solver/contact energy, not a required pulley behavior.",
+        "contents": "<h2>Pulley Joint</h2><p>Relates two bodies through two ground anchors and a ratio, preserving the configured pulley-length relationship.</p><p>Editor fields: Anchor A, Anchor B, Ground A, Ground B, Ratio, and Constant.</p> Pulley joints constrain the two rope lengths and can transfer torque through offset anchors; excessive spinning usually indicates solver/contact energy, not a required pulley behavior.",
+        "id": "joints--pulley-joint"
+      },
+      {
+        "subtitle": "Friction Joint",
+        "contents": "<h2>Friction Joint</h2><p>Applies limits against relative linear and angular movement through maximum force and torque values.</p><p>Editor fields: Max Force and Max Torque.</p>",
+        "id": "joints--friction-joint"
+      },
+      {
+        "subtitle": "Joint editing behavior",
+        "contents": "<h2>Joint editing behavior</h2><p>Changing joint properties updates the editor preview immediately. Choosing an Object, changing the joint type, or changing its anchors calls the editor joint-transform pass so the relationship can be inspected before runtime.</p><p>Use the joint card menu to change type, focus the connected Object, or delete the joint.</p>",
+        "id": "joints--joint-editing-behavior"
+      }
+    ]
+  },
+  {
+    "title": "Variables",
+    "items": [
+      {
+        "subtitle": "What is a variable?",
+        "contents": "<h2>Variables</h2><p>A variable stores a value that your game can read or change. Variables are useful for scores, health, names, counters, states, settings, and switches.</p>",
+        "id": "variables--what-is-a-variable"
+      },
+      {
+        "subtitle": "Global Variables",
+        "contents": "<h2>Global Variables</h2><p>Global variables belong to the whole project. They can be used across Scenes.</p><p>Example expression: <code>ctx.global.score</code>.</p>",
+        "id": "variables--global-variables"
+      },
+      {
+        "subtitle": "Scene Variables",
+        "contents": "<h2>Scene Variables</h2><p>Scene variables belong to one Scene. Each Scene can have its own values.</p><p>Example expression: <code>ctx.sceneVariables.level</code>.</p>",
+        "id": "variables--scene-variables"
+      },
+      {
+        "subtitle": "Local Variables",
+        "contents": "<h2>Local Variables</h2><p>Local variables belong to one Node and its Script. Two different Nodes can have Local variables with the same name because they have separate local scopes.</p><p>Example expression: <code>ctx.local.speed</code>.</p>",
+        "id": "variables--local-variables"
+      },
+      {
+        "subtitle": "Variable types",
+        "contents": "<h2>Variable types</h2><p>Depending on where a value is used, you can work with text, numbers, true/false values, colors, selectors, or empty values.</p>",
+        "id": "variables--variable-types"
+      },
+      {
+        "subtitle": "Variable name errors",
+        "contents": "<h2>Variable name errors</h2><p>When a variable name is not allowed because it conflicts with another name, the editor rejects the change and shows a red error outline. The previous valid name is kept.</p>",
+        "id": "variables--variable-name-errors"
+      },
+      {
+        "subtitle": "Browser Variable Storage",
+        "contents": "<h2>Browser Variable Storage</h2><p><code>saveVariable</code> saves an existing Global, Scene, or Local Variable in the user's browser. <code>loadVariable</code> reads that stored value back into the same variable.</p><p>Inputs: <code>Scope</code>, <code>Name</code>, and <code>StorageType</code> (<code>local</code>, <code>session</code>, or <code>indexedDB</code>).</p><ul><li><strong>local</strong> uses Local Storage and normally survives browser restarts until the site data is cleared.</li><li><strong>session</strong> uses Session Storage and normally lasts for the current browser tab/session; it is cleared when that session ends.</li><li><strong>indexedDB</strong> uses IndexedDB, a browser database designed for persistent client-side data and larger data sets. It normally survives browser restarts until the site data is cleared.</li></ul><p>The data stays in the browser for that site/origin; it is not automatically sent to a server. Browser privacy settings, clearing site data, private browsing behavior, quotas, or storage restrictions can remove or prevent stored data.</p><p>For <strong>Local</strong> variables, the current ScriptNode's Node is used as the local scope. Scene storage is associated with the current Scene, while Global storage is associated with the current project.</p>",
+        "id": "variables--browser-variable-storage"
+      },
+      {
+        "subtitle": "Scene-variable frame consistency",
+        "contents": "<h2>Scene-variable frame consistency</h2><p>Scene variables are live shared values. During a single <code>onTick</code> event dispatch, the runtime uses one Scene-variable snapshot for all participating <code>onTick</code> ScriptNodes. This avoids one Node seeing a newly written value only because another Node happened to run first.</p><p>After the current dispatch finishes, the actual Scene variable remains updated and subsequent runtime work sees the new value.</p>",
+        "id": "variables--scene-variable-frame-consistency"
+      },
+      {
+        "subtitle": "Changing Variable Scope",
+        "contents": "<h2>Changing Variable Scope</h2><p>Global Variables belong to the whole project. Scene Variables belong to the active Scene. A variable can be moved between supported scopes from its variable context menu.</p><p>When Node2D changes a variable scope, expression references can be rewritten from one scope form to another, such as <code>ctx.global.score</code> and <code>ctx.sceneVariables.score</code>. Review the lifetime and ownership of the value after a scope change.</p>",
+        "id": "variables--changing-variable-scope"
+      },
+      {
+        "subtitle": "Scene Variable Lifetime",
+        "contents": "<h2>Scene Variable Lifetime</h2><p>Each Scene stores its own Scene Variables and their initial values. Different Scenes can use the same variable name with different starting values.</p><p>When <code>loadScene</code> loads another Scene, the target Scene is rebuilt from its saved Scene data. Scene Variables and Local Variables therefore return to that Scene’s stored state, while Global Variables remain project-wide.</p>",
+        "id": "variables--scene-variable-lifetime"
+      },
+      {
+        "subtitle": "Live Global, Scene, and Local reads",
+        "contents": "<h2>Live variable reads</h2><p><code>ctx.global</code>, <code>ctx.sceneVariables</code>, and <code>ctx.local</code> are live runtime variable views rather than one-time copies. Local values resolve against the executing Node; Global values resolve against the runtime project; Scene values resolve against the active Scene.</p><p>Use <code>setVariable</code> when you intentionally want to write a value. The scope determines how widely the value is shared.</p>",
+        "id": "variables--live-runtime-variable-reads"
+      }
+    ]
+  },
+  {
+    "title": "Camera",
+    "items": [
+      {
+        "subtitle": "Scene Camera",
+        "contents": "<h2>Scene Camera</h2><p>The Scene Camera controls what part of the game world the player sees.</p><p>Common settings include Enabled, Follow, Position, Horizontal and Vertical movement, Animation, Speed, Scale, Angle, and Background Color.</p>",
+        "id": "camera--scene-camera"
+      },
+      {
+        "subtitle": "Camera Follow",
+        "contents": "<h2>Camera Follow</h2><p>The camera can follow <strong>This</strong> or another Node selected from the Scene.</p>",
+        "id": "camera--camera-follow"
+      },
+      {
+        "subtitle": "Camera Animation",
+        "contents": "<h2>Camera Animation</h2><p>Quick changes the camera immediately. Smooth moves toward the target over time using the camera speed.</p>",
+        "id": "camera--camera-animation"
+      },
+      {
+        "subtitle": "Camera Scale",
+        "contents": "<h2>Camera Scale</h2><p>Camera scale changes how close or wide the world appears through the camera.</p>",
+        "id": "camera--camera-scale"
+      }
+    ]
+  },
+  {
+    "title": "Game Settings and Screen",
+    "items": [
+      {
+        "subtitle": "Screen Type",
+        "contents": "<h2>Screen Type</h2><p>Game Settings controls how the game's logical view fits the physical screen.</p><p>The available modes are <strong>Windowboxing</strong>, <strong>Stretch</strong>, <strong>Crop</strong>, and <strong>Smart Camera</strong>.</p>",
+        "id": "game-settings-and-screen--screen-type"
+      },
+      {
+        "subtitle": "Windowboxing",
+        "contents": "<h2>Windowboxing</h2><p>Windowboxing is the default screen type. The 16:9 game view keeps its shape and unused space appears as bars using the active Camera Background Color.</p>",
+        "id": "game-settings-and-screen--windowboxing"
+      },
+      {
+        "subtitle": "Stretch",
+        "contents": "<h2>Stretch</h2><p>Stretch fills the physical screen. The game view can look wider or taller when the screen is not the same shape as the game view.</p>",
+        "id": "game-settings-and-screen--stretch"
+      },
+      {
+        "subtitle": "Crop",
+        "contents": "<h2>Crop</h2><p>Crop fills the screen while keeping the game view shape, but parts of the world may be cut off at the edges.</p>",
+        "id": "game-settings-and-screen--crop"
+      },
+      {
+        "subtitle": "Smart Camera",
+        "contents": "<h2>Smart Camera</h2><p>Smart Camera changes the visible camera area to match the physical screen shape instead of stretching the image.</p>",
+        "id": "game-settings-and-screen--smart-camera"
+      },
+      {
+        "subtitle": "Required Features",
+        "contents": "<h2>Required features</h2><p>Some ScriptNodes can depend on a feature that your game must explicitly enable. A Node can still show those ScriptNodes in the library, but the ScriptNode is disabled until its requirement is enabled.</p><p>When you click a disabled required ScriptNode, the editor can offer to take you to Game Settings so you can enable the required feature.</p>",
+        "id": "game-settings-and-screen--required-features"
+      },
+      {
+        "subtitle": "Use Mic",
+        "contents": "<h2>Use Mic</h2><p><strong>Use Mic</strong> enables microphone features for the game.</p><p>When enabled, the runtime requests microphone permission from the browser the first time the running game needs the microphone. If permission was already granted, the game can continue without asking again.</p><p>Microphone-powered features include <code>ctx.mic.decibel</code>, <code>onAudioPickup</code>, and speech recognition actions.</p><p>Turning the setting off prevents microphone-dependent features from being usable.</p>",
+        "id": "game-settings-and-screen--use-mic"
+      },
+      {
+        "subtitle": "Speech recognition settings",
+        "contents": "<h2>Speech recognition settings</h2><p>When Use Mic is enabled, you can choose the Speech Language and whether speech recognition is Continuous and uses Live Interim Results.</p>",
+        "id": "game-settings-and-screen--speech-recognition-settings"
+      },
+      {
+        "subtitle": "Screen modes at a glance",
+        "contents": "<h2>Screen modes</h2><p>Choose <strong>Stretch</strong>, <strong>Windowboxing</strong>, <strong>Crop</strong>, or <strong>Smart Camera</strong> in Game Settings to control how the runtime logical screen maps to the display.</p>",
+        "id": "game-settings-and-screen--screen-modes-at-a-glance"
+      },
+      {
+        "subtitle": "Choosing a screen mode",
+        "contents": "<h2>Choosing a screen mode</h2><p>Use <strong>Windowboxing</strong> when you want to preserve the camera aspect ratio with matching side/top bars, <strong>Stretch</strong> when filling the display matters more than aspect ratio, <strong>Crop</strong> when the scene may lose edges, and <strong>Smart Camera</strong> when the visible camera area should adapt.</p>",
+        "id": "game-settings-and-screen--choosing-a-screen-mode"
+      }
+    ]
+  },
+  {
+    "title": "Asset Manager",
+    "items": [
+      {
+        "subtitle": "What is the Asset Manager?",
+        "contents": "<h2>Asset Manager</h2><p>The Asset Manager is where you keep the image, audio, and MIDI files used by your project.</p>",
+        "id": "asset-manager--what-is-the-asset-manager"
+      },
+      {
+        "subtitle": "Supported asset types",
+        "contents": "<h2>Supported asset types</h2><table><thead><tr><th>Type</th><th>Supported examples</th><th>Notes</th></tr></thead><tbody><tr><td>Sprite / Image</td><td>PNG, JPEG, JPG, WebP, SVG, GIF, and other supported image types</td><td>GIF imports are converted into individual PNG images, one per frame (for example Apple.gif becomes Apple1.png, Apple2.png, and so on). Each resulting PNG is static.</td></tr><tr><td>Audio</td><td>MP3, WAV, OGG, M4A and other browser-supported audio types</td><td>Audio can be previewed from the Asset Manager.</td></tr><tr><td>MIDI</td><td>MID, MIDI</td><td>Opens in the MIDI Editor.</td></tr></tbody></table><p>The file picker accepts image, audio, and MIDI files. Files are stored as project asset data, so saved projects can restore their imported assets.</p>",
+        "id": "asset-manager--supported-asset-types"
+      },
+      {
+        "subtitle": "Importing assets",
+        "contents": "<h2>Importing assets</h2><p>You can use the <strong>Import</strong> button or drag and drop a file into the asset area.</p><p>Only supported image and audio files are accepted by the drag-and-drop area. Unsupported file types are rejected instead of being added as assets.</p>",
+        "id": "asset-manager--importing-assets"
+      },
+      {
+        "subtitle": "Drag and Drop",
+        "contents": "<h2>Drag and Drop</h2><p>The asset area shows a drop target next to the Import control. Drag a supported image or audio file onto it to import the file.</p>",
+        "id": "asset-manager--drag-and-drop"
+      },
+      {
+        "subtitle": "Asset names",
+        "contents": "<h2>Asset names</h2><p>Imported files receive project asset names. When a name is already in use, the editor chooses another available name instead of silently replacing the existing asset.</p>",
+        "id": "asset-manager--asset-names"
+      },
+      {
+        "subtitle": "Rename Audio",
+        "contents": "<h2>Rename Audio</h2><p>In the Audio section, press the <strong>✎ Edit</strong> button for an audio asset. The editor asks for a new name. Enter the name you want to use and confirm it to rename the asset.</p>",
+        "id": "asset-manager--rename-audio"
+      },
+      {
+        "subtitle": "Using assets",
+        "contents": "<h2>Using assets</h2><p>Sprite assets are used by Sprite and Animation Sprite Components. Audio and MIDI assets are used by audio playback and related ScriptNodes.</p>",
+        "id": "asset-manager--using-assets"
+      },
+      {
+        "subtitle": "Clicking a Sprite",
+        "contents": "<h2>Clicking a Sprite</h2><p>Clicking a Sprite in the Asset Manager creates a new Node using the same Node-creation path as <strong>+ Add Node</strong>.</p><p>The new Node includes a Sprite Component and its Sprite source is already set to the clicked Sprite asset. You can then edit the Node normally.</p>",
+        "id": "asset-manager--clicking-a-sprite"
+      },
+      {
+        "subtitle": "Sprite selection",
+        "contents": "<h2>Sprite selection</h2><p>Sprite selection uses the same card-style image layout as the Asset Manager, keeping each image inside its own preview area without overlapping other images.</p>",
+        "id": "asset-manager--sprite-selection"
+      },
+      {
+        "subtitle": "Click a Sprite to create a Node",
+        "contents": "<h2>Click a Sprite to create a Node</h2><p>Clicking a Sprite in the Asset Manager creates a new Node using the same normal Node creation path as <strong>+ Add Node</strong>. The new Node receives a Sprite Component whose source points to the selected Sprite asset.</p><p>The Asset Manager closes automatically after the Node is created.</p>",
+        "id": "asset-manager--click-a-sprite-to-create-a-node"
+      },
+      {
+        "subtitle": "Sprite asset shortcut",
+        "contents": "<h2>Sprite asset shortcut</h2><p>Clicking an image in the Sprites section can immediately create a new Node using that image.</p><ol><li>Open the Asset Manager.</li><li>Click the Sprite image you want.</li><li>Node2D creates a Node using the same Node-creation path as <strong>+ Add Node</strong>.</li><li>A Sprite Component is added to that Node.</li><li>The Sprite's source is set to the exact asset you clicked.</li><li>The Asset Manager closes automatically.</li></ol><p>This is useful when you want to place an imported image in the Scene without manually creating a Node and then searching for the same asset again.</p>",
+        "id": "asset-manager--sprite-asset-shortcut"
+      },
+      {
+        "subtitle": "Audio preview",
+        "contents": "<h2>Audio preview</h2><p>Clicking an Audio asset opens a preview modal before you use it in a ScriptNode. Use the preview controls to test whether you imported the expected sound.</p><p>This lets you check a sound directly from the Asset Manager instead of repeatedly starting the game just to hear the asset.</p>",
+        "id": "asset-manager--audio-preview"
+      },
+      {
+        "subtitle": "GIF files",
+        "contents": "<h2>GIF files</h2><p>GIF files are importable. The editor decodes every frame and creates individual PNG assets, so Apple.gif becomes Apple1.png, Apple2.png, and so on. Each imported PNG is rendered as a static image.</p><p>For animated playback, import individual frames and use <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a>.</p>",
+        "id": "asset-manager--gif-files"
+      },
+      {
+        "subtitle": "Load Sample Flappy Bird",
+        "contents": "<h2>Load Sample Flappy Bird</h2><p>Open <strong>File → Project → Load Local</strong> and use <strong>Load Sample Flappy Bird</strong>. Node2D fetches <code>samples/flappybird.ndc</code>, saves it using the same Local NDC storage as other projects, and opens it.</p><p>After a successful load, Node2D stores <code>flappybirdsample = true</code> in browser local storage so the sample loader is not offered again on that device.</p>",
+        "id": "asset-manager--load-sample-flappy-bird"
+      }
+    ]
+  },
+  {
+    "title": "Sprite Editor",
+    "items": [
+      {
+        "subtitle": "Sprite Editor overview",
+        "contents": "<h2>Sprite Editor</h2><p>The Sprite Editor is used for pixel-based image editing and Sprite frames.</p>",
+        "id": "sprite-editor--sprite-editor-overview"
+      },
+      {
+        "subtitle": "Drawing tools",
+        "contents": "<h2>Drawing tools</h2><p>Common tools include Pencil, Eraser, Line, Rectangle, Ellipse, Triangle, Fill, and color picking.</p>",
+        "id": "sprite-editor--drawing-tools"
+      },
+      {
+        "subtitle": "Selections",
+        "contents": "<h2>Selections</h2><p>Box and lasso selections let you isolate part of a Sprite. You can move, copy, cut, delete, flip, mirror, rotate, and transform the selected pixels where supported.</p>",
+        "id": "sprite-editor--selections"
+      },
+      {
+        "subtitle": "Multiple frames",
+        "contents": "<h2>Frames</h2><p>Sprites can have multiple frames. Frames can be added, copied, reordered, removed, and previewed as an animation.</p>",
+        "id": "sprite-editor--multiple-frames"
+      },
+      {
+        "subtitle": "Zoom and grid",
+        "contents": "<h2>Zoom and grid</h2><p>Use zoom and grid controls for pixel-level work. The editing view can be enlarged for precise drawing.</p>",
+        "id": "sprite-editor--zoom-and-grid"
+      }
+    ]
+  },
+  {
+    "title": "ScriptNodes — Events",
+    "items": [
+      {
+        "subtitle": "onLoad",
+        "contents": "<h2>onLoad</h2><p>Starts when the Node enters the active game Scene.</p><p>Inputs: none. Output: <code>out</code>.</p><p>Use it for setup that should happen when a Node starts.</p>",
+        "id": "scriptnodes-events--onload"
+      },
+      {
+        "subtitle": "onTick",
+        "contents": "<h2>onTick</h2><p>Runs repeatedly while the game is running.</p><p>Inputs: none. Output: <code>out</code>.</p><p>Useful for repeated checks and continuous behavior.</p>",
+        "id": "scriptnodes-events--ontick"
+      },
+      {
+        "subtitle": "onKeybind",
+        "contents": "<h2>onKeybind</h2><p>Starts when a selected keyboard key or keybind is pressed.</p><p>Input: <code>Keybind</code>. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--onkeybind"
+      },
+      {
+        "subtitle": "onTouch",
+        "contents": "<h2>onTouch</h2><p>Responds to touch input.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--ontouch"
+      },
+      {
+        "subtitle": "onMouse",
+        "contents": "<h2>onMouse</h2><p>Responds to mouse or pointer input.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--onmouse"
+      },
+      {
+        "subtitle": "onScreenInput",
+        "contents": "<h2>onScreenInput</h2><p>Responds to pointer input using screen-space coordinates.</p><p>Input: <code>Event</code> = up, down, or move. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--onscreeninput"
+      },
+      {
+        "subtitle": "onJoystick",
+        "contents": "<h2>onJoystick</h2><p>Responds to a selected Joystick control.</p><p>Input: <code>Variable</code> = the joystick name. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--onjoystick"
+      },
+      {
+        "subtitle": "onUnload",
+        "contents": "<h2>onUnload</h2><p>Starts when a Node leaves the active runtime Scene.</p><p>Inputs: none. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-events--onunload"
+      },
+      {
+        "subtitle": "onConnectionChange",
+        "contents": "<h2>onConnectionChange</h2><p>Runs when the device's network state changes between online and offline.</p><p>Input: <code>Connection</code>. Choose <strong>Online</strong> or <strong>Offline</strong>.</p><p>Output: <code>out</code>.</p><p>This is useful for games that need to change behavior when connectivity is lost or restored—for example, showing an offline message, pausing online-only actions, or starting a locally available fallback.</p>",
+        "id": "scriptnodes-events--onconnectionchange"
+      },
+      {
+        "subtitle": "onAudioPickup",
+        "contents": "<h2>onAudioPickup</h2><p>Runs when the microphone audio level is detected as a pickup event while microphone use is enabled.</p><p>Output: <code>out</code>.</p><p>Read the current microphone loudness with <code>ctx.mic.decibel</code>. A simple use is to react when someone claps, speaks loudly, or creates another sound above the pickup threshold.</p><p>Microphone use must first be enabled in Game Settings. The browser may also ask the user for microphone permission.</p>",
+        "id": "scriptnodes-events--onaudiopickup"
+      },
+      {
+        "subtitle": "onInputFocus",
+        "contents": "<h2>onInputFocus</h2><p>Runs when an Input Component receives focus in Play or Debug. The event runs on the Node containing the focused Input Component.</p><p>Output: <code>out</code>. The current input text is available as <code>ctx.input.value</code>.</p>",
+        "id": "scriptnodes-events--oninputfocus"
+      },
+      {
+        "subtitle": "onInputBlur",
+        "contents": "<h2>onInputBlur</h2><p>Runs when an Input Component loses focus in Play or Debug. The event runs on the Node containing the Input Component that lost focus.</p><p>Output: <code>out</code>. The final current input text is available as <code>ctx.input.value</code>.</p>",
+        "id": "scriptnodes-events--oninputblur"
+      },
+      {
+        "subtitle": "onCollideWith",
+        "contents": "<h2>onCollideWith</h2><p>An event-style collision trigger for simple collision reactions. See <a class=\"help-ref\" data-help-topic=\"controls-iscollidedwith\" href=\"?topic=controls-iscollidedwith\">isCollidedWith</a> for related details.</p><p>Inputs: <code>Target</code> and Boolean <code>applyByName</code>. When <code>applyByName</code> is true, the collision target is matched by Node name; when false, name-only matching does not apply.</p><p>Outputs: <code>next</code> and <code>truth</code>. There is intentionally no <code>falsy</code> output.</p><p>Use this when you want a flow to start when the selected target begins colliding with the current Node.</p>",
+        "id": "events-oncollidewith"
+      }
+    ]
+  },
+  {
+    "title": "ScriptNodes — Actions",
+    "items": [
+      {
+        "subtitle": "loadScene",
+        "contents": "<h2>loadScene</h2><p>Loads another Scene using the same runtime Scene initialization pipeline used when starting Play Scene.</p><p>Input: <code>Scene</code>. Output: <code>out</code>.</p><p>The target Scene is rebuilt from its saved project data: Nodes, Components, ScriptNodes, connections, Scene Variables, Local Variables, Camera, Physics, timers, collision/runtime caches, and <code>onLoad</code> are initialized for the new Scene.</p><p>Changing Scenes does not erase <code>saveState</code> snapshots. Global Variables are preserved across Scene changes; Scene and Local Variables are reset to the target Scene's initial values.</p>",
+        "id": "scriptnodes-actions--loadscene"
+      },
+      {
+        "subtitle": "saveState",
+        "contents": "<h2>saveState</h2><p>Saves the current runtime state of the current Scene under a String <strong>Name</strong>. It captures the running Scene, Node transforms/components, runtime-created Nodes, Physics velocity, Variables, Scripts, Script connections, and Camera state.</p><p>State names are <strong>case insensitive</strong>; saving the same name replaces the previous saved state.</p><p>Saved states are stored independently from the currently loaded Scene, so loading another Scene or reloading a Scene does <strong>not</strong> erase them. A saved state remembers which Scene it came from.</p>",
+        "id": "scriptnodes-actions--savestate"
+      },
+      {
+        "subtitle": "loadState",
+        "contents": "<h2>loadState</h2><p>Loads a previously saved runtime state using its String <strong>Name</strong>. The name is case insensitive.</p><p>The saved state can belong to a different Scene. Loading it restores that saved Scene and its runtime state instead of requiring the current Scene to match.</p><p><strong>loadState does not delete other saved states.</strong></p>",
+        "id": "scriptnodes-actions--loadstate"
+      },
+      {
+        "subtitle": "removeState",
+        "contents": "<h2>removeState</h2><p>Removes one saved Scene state using a String <strong>Name</strong>. The name is case insensitive and the removal only affects the current Scene.</p>",
+        "id": "scriptnodes-actions--removestate"
+      },
+      {
+        "subtitle": "clearState",
+        "contents": "<h2>clearState</h2><p>Removes <strong>all saved states of the current Scene</strong>. It does not remove states belonging to another Scene.</p>",
+        "id": "scriptnodes-actions--clearstate"
+      },
+      {
+        "subtitle": "setVariable",
+        "contents": "<h2>setVariable</h2><p>Changes a variable.</p><p>Inputs: <code>Type</code> (Global, Local, or Scene), <code>Name</code>, <code>Value</code>. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setvariable"
+      },
+      {
+        "subtitle": "loadVariable",
+        "contents": "<h2>loadVariable</h2><p>Loads a previously saved browser value back into an existing variable. It does not create a missing variable.</p><p>Inputs: <code>Scope</code>, <code>Name</code>, and <code>StorageType</code>. Output: <code>out</code> after the load completes successfully.</p>",
+        "id": "scriptnodes-actions--loadvariable"
+      },
+      {
+        "subtitle": "saveVariable",
+        "contents": "<h2>saveVariable</h2><p>Saves an existing variable to browser storage.</p><p>Inputs: <code>Scope</code> (Global, Local, or Scene), <code>Name</code>, and <code>StorageType</code> (<code>local</code>, <code>session</code>, or <code>indexedDB</code>). Output: <code>out</code> after the save completes.</p>",
+        "id": "scriptnodes-actions--savevariable"
+      },
+      {
+        "subtitle": "setTransform",
+        "contents": "<h2>setTransform</h2><p>Changes the current Node's Transform.</p><p>Inputs: <code>PosX</code>, <code>PosY</code>, <code>ScaleX</code>, <code>ScaleY</code>, <code>Angle</code>. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--settransform"
+      },
+      {
+        "subtitle": "setNode",
+        "contents": "<h2>setNode</h2><p>Changes supported Node identity values during runtime.</p><p>Inputs: <code>Name</code>, <code>Id</code>. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setnode"
+      },
+      {
+        "subtitle": "setText",
+        "contents": "<h2>setText</h2><p>Changes a Text component during runtime.</p><p>Inputs include Text, Position X/Y, Font Size, Font Family, foreground/background colors, and border settings. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--settext"
+      },
+      {
+        "subtitle": "stopAnimation",
+        "contents": "<h2>stopAnimation</h2><p>Stops/freeze the currently active Sprite animation on this Node at its current frame. It does not remove the animation or change which animation is active.</p><p>Use <code>startAnimation</code> to resume that same active animation.</p>",
+        "id": "scriptnodes-actions--stopanimation"
+      },
+      {
+        "subtitle": "startAnimation",
+        "contents": "<h2>startAnimation</h2><p>Starts/resumes the currently active Sprite animation on this Node. It resumes from the frame where <code>stopAnimation</code> or <code>stepAnimation</code> left it.</p>",
+        "id": "scriptnodes-actions--startanimation"
+      },
+      {
+        "subtitle": "stepAnimation",
+        "contents": "<h2>stepAnimation</h2><p>Manually moves the currently active Sprite animation by a fixed number of frames.</p><table><thead><tr><th>forward</th><th>Result</th></tr></thead><tbody><tr><td><code>true</code></td><td>Move forward by <strong>1 frame</strong>.</td></tr><tr><td><code>false</code></td><td>Move backward by <strong>2 frames</strong>.</td></tr></tbody></table><p>The animation stays at the selected frame until it is started again or stepped again.</p>",
+        "id": "scriptnodes-actions--stepanimation"
+      },
+      {
+        "subtitle": "setSprite",
+        "contents": "<h2>setSprite</h2><p>Changes the visible Sprite or Animation selection.</p><p>Inputs: <code>Type</code>, <code>Sprite</code>, <code>Animation</code>, <code>Pixelated</code>, and <code>Opacity</code>. Opacity uses a 0–100 value.</p><p>Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setsprite"
+      },
+      {
+        "subtitle": "setPhysics",
+        "contents": "<h2>setPhysics</h2><p>Changes the runtime Physics settings.</p><p>Inputs: Body, Gravity, Friction, Bounciness, Fixed Rotation, and collider participation. Output: <code>out</code>.</p>",
+        "id": "actions-setphysics"
+      },
+      {
+        "subtitle": "setCollider",
+        "contents": "<h2>setCollider</h2><p>Changes the runtime Collider.</p><p>Inputs: Collider enabled, Type (Rect/Circle/Triangle), Position X/Y, Scale X/Y, and Angle. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setcollider"
+      },
+      {
+        "subtitle": "setProgressBar",
+        "contents": "<h2>setProgressBar</h2><p>Changes a Progress Bar during runtime.</p><p>Inputs include Width, Height, Value, Min, Max, Position, colors, corner radii, outline, and direction. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setprogressbar"
+      },
+      {
+        "subtitle": "Follow Object",
+        "contents": "<h2>Follow Object</h2><p>Makes the current Node move directly toward a selected target using the Node’s <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> velocity.<span> See <a class=\"help-ref\" data-help-topic=\"components-transform\" href=\"?topic=components-transform\">Transform</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-setvelocity\" href=\"?topic=actions-setvelocity\">setVelocity</a> for related details.</span></p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node needs a <strong>Physics</strong> component. Without Physics, it does not move.</p><p>The Node faces the movement direction unless Physics <code>Fixed Rotation</code> is enabled. A fixed rotation still allows the Node to move.</p>",
+        "id": "actions-follow-object"
+      },
+      {
+        "subtitle": "Destroy Object",
+        "contents": "<h2>Destroy Object</h2><p>Removes the current runtime object from the running Scene.<span> See <a class=\"help-ref\" data-help-topic=\"actions-create-object\" href=\"?topic=actions-create-object\">Create Object</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-memory\" href=\"?topic=play-runtime-memory\">Runtime object lifecycle</a> for related details.</span></p><p>Its runtime Node, Physics body, ScriptNode state, connections, timers, follow/AI targets, collision references, render entry, and lookup references are removed so it can become eligible for JavaScript garbage collection when no outside reference remains.</p>",
+        "id": "actions-destroy-object"
+      },
+      {
+        "subtitle": "focusInput",
+        "contents": "<h2>focusInput</h2><p>Focuses the Input Component on the current Node in Play or Debug and makes it ready for keyboard or touch text entry.</p><p>Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--focusinput"
+      },
+      {
+        "subtitle": "blurInput",
+        "contents": "<h2>blurInput</h2><p>Removes focus from the current Node&apos;s Input Component in Play or Debug.</p><p>Output: <code>out</code>. Losing focus triggers <code>onInputBlur</code>.</p>",
+        "id": "scriptnodes-actions--blurinput"
+      },
+      {
+        "subtitle": "Create Object",
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected <a class=\"help-ref\" data-help-topic=\"components-node\" href=\"?topic=components-node\">Node</a>.<span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-memory\" href=\"?topic=play-runtime-memory\">Runtime object lifecycle</a> for related details.</span></p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>ScaleX</code>, <code>ScaleY</code>, <code>VelocityX</code>, <code>VelocityY</code>, and <code>AngularVelocity</code>.</p><p><code>ScaleX</code> and <code>ScaleY</code> set the copy's starting <a class=\"help-ref\" data-help-topic=\"components-transform\" href=\"?topic=components-transform\">Transform</a> scale independently. <code>Angle</code> is applied when the copy spawns, before ongoing velocity/<a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> updates.</p><p>The copy retains the source Node's Components and ScriptNode graph. Runtime ScriptNode IDs and internal connections are remapped so the copy executes its own graph instead of routing back to the original.</p>",
+        "id": "actions-create-object"
+      },
+      {
+        "subtitle": "setVelocity",
+        "contents": "<h2>setVelocity</h2><p>Changes movement speed during runtime.</p><p>Inputs: <code>VelocityX</code>, <code>VelocityY</code>, <code>AngularVelocity</code>. Output: <code>out</code>.</p>",
+        "id": "actions-setvelocity"
+      },
+      {
+        "subtitle": "setCamera",
+        "contents": "<h2>setCamera</h2><p>Changes the Scene Camera during runtime.</p><p>Inputs include Enabled, Follow, Position X/Y, Angle, Horizontal/Vertical movement, Animation, Speed, Scale, and Background Color. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--setcamera"
+      },
+      {
+        "subtitle": "playAudio",
+        "contents": "<h2>playAudio</h2><p>Plays an imported Audio or MIDI asset. Inputs include source, volume, start, duration, loop, fade-in, fade-out, and <strong>panValue</strong>.</p><p><strong>panValue</strong> is automatically clamped to <code>-1</code> through <code>1</code>: <code>-1</code> is left, <code>0</code> is center, and <code>1</code> is right.</p>",
+        "id": "actions-playaudio"
+      },
+      {
+        "subtitle": "stopAudio",
+        "contents": "<h2>stopAudio</h2><p>Stops active runtime audio.</p><p>Inputs: none. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--stopaudio"
+      },
+      {
+        "subtitle": "clearAudio",
+        "contents": "<h2>clearAudio</h2><p>Stops active runtime audio and clears the current runtime audio playback list.</p><p>Inputs: none. Output: <code>out</code>.</p>",
+        "id": "scriptnodes-actions--clearaudio"
+      },
+      {
+        "subtitle": "startSpeechRecognition",
+        "contents": "<h2>startSpeechRecognition</h2><p>Starts browser speech recognition when microphone use is enabled and the browser supports speech recognition.</p><p>You can use it when you want spoken words to become text during gameplay.</p><p>The current recognized text is available through <code>ctx.mic.speech</code> while recognition is running.</p>",
+        "id": "scriptnodes-actions--startspeechrecognition"
+      },
+      {
+        "subtitle": "stopSpeechRecognition",
+        "contents": "<h2>stopSpeechRecognition</h2><p>Stops active speech recognition.</p><p>Use it when you no longer need speech input, such as when leaving a voice-controlled menu or ending a voice command.</p>",
+        "id": "scriptnodes-actions--stopspeechrecognition"
+      },
+      {
+        "subtitle": "Chase",
+        "contents": "<h2>Chase</h2><p>Makes the current Node find a route to a moving target through the selected obstacle map.<span> See <a class=\"help-ref\" data-help-topic=\"actions-follow-object\" href=\"?topic=actions-follow-object\">Follow Object</a> for related details.</span></p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. <code>Map</code> selects a Folder; child <a class=\"help-ref\" data-help-topic=\"scenes-folders\" href=\"?topic=scenes-folders\">Folders</a> are searched recursively and child Nodes with <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a>s become obstacles.</p><p>When the direct route is blocked, Chase uses a lightweight grid-based <strong>A*</strong> path search with diagonal corner-cut prevention and path smoothing. The path is kept and replanned only when needed, such as when the target moves enough or the obstacle map changes.</p><p>The current Node needs <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a>. Its velocity follows the route, and its right-facing direction is updated to face movement unless Physics <code>Fixed Rotation</code> is enabled.</p>",
+        "id": "actions-chase"
+      },
+      {
+        "subtitle": "Avoid",
+        "contents": "<h2>Avoid</h2><p>Makes the current Node move away from a selected target while using a selected Folder as its obstacle map.</p><p>Inputs: <code>Map</code>, <code>Target</code>, <code>Speed</code>. Child Nodes with <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a>s are treated as obstacles.</p><p>Avoid reverses the target direction used by <a class=\"help-ref\" data-help-topic=\"actions-chase\" href=\"?topic=actions-chase\">Chase</a> while keeping obstacle handling separate, so walls remain obstacles instead of becoming the target to flee from.</p><p>The current Node needs <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> and faces movement unless <code>Fixed Rotation</code> is enabled.</p>",
+        "id": "actions-avoid"
+      },
+      {
+        "subtitle": "setVisible",
+        "contents": "<h2>setVisible</h2><p><strong>Visibility</strong> shows or hides the current Node at runtime. The Node itself is not deleted.</p>",
+        "id": "scriptnodes-actions--setvisible"
+      },
+      {
+        "subtitle": "createParticles",
+        "contents": "<h2>createParticles</h2><p>Creates short-lived particles with position, scale, velocity, acceleration, angle, type, color, and opacity controls.</p><p>Types are <strong>Circle</strong>, <strong>Trail</strong>, <strong>Box</strong>, and <strong>Sprite</strong>. Choosing Sprite reveals the Sprite selector. <strong>Lifetime</strong> is milliseconds and <strong>Count</strong> controls how many particles are created for one execution.</p>",
+        "id": "scriptnodes-actions--createparticles"
+      },
+      {
+        "subtitle": "setSubCam",
+        "contents": "<h2>setSubCam</h2><p>Changes the active Node's <strong>Sub Camera</strong> component. If the component is missing, the action creates it.</p><p>Inputs: <code>camX</code>, <code>camY</code>, <code>camSizeX</code>, <code>camSizeY</code>, <code>camAngle</code>, <code>canvasX</code>, <code>canvasY</code>, <code>canvasScaleX</code>, <code>canvasScaleY</code>, <code>render</code>, and <code>pixelated</code>. Output: <code>out</code>.</p><p><code>camX/camY/camAngle</code> are independent camera values. <code>canvasX/canvasY</code> are relative to the Node that owns the Sub Camera.</p>",
+        "id": "scriptnodes-actions--setsubcam"
+      }
+    ]
+  },
+  {
+    "title": "ScriptNodes — Controls",
+    "items": [
+      {
+        "subtitle": "Boolean",
+        "contents": "<h2>Boolean</h2><p>Checks a true/false value.</p><p>Inputs: <code>Value</code>. Outputs: <code>next</code>, <code>truth</code>, <code>falsy</code>.</p><p><code>next</code> continues the flow regardless of the Boolean result. Use <code>truth</code> and <code>falsy</code> when you need branches.</p>",
+        "id": "controls-boolean"
+      },
+      {
+        "subtitle": "Interval",
+        "contents": "<h2>Interval</h2><p>Repeatedly continues a flow after a time interval.</p><p>Inputs: <code>Milliseconds</code> and Boolean <code>cancellable</code>, which defaults to <code>false</code>.</p><p>When <code>cancellable</code> is true, the input signal must remain active. The interval runs only once for that signal activation; when the signal disappears, the pending interval no longer fires. Outputs: <code>next</code> and <code>out</code>.</p>",
+        "id": "controls-interval"
+      },
+      {
+        "subtitle": "Timeout",
+        "contents": "<h2>Timeout</h2><p>Delays a flow once by the selected time.</p><p>Inputs: <code>Milliseconds</code> and Boolean <code>cancellable</code>, which defaults to <code>false</code>.</p><p>When <code>cancellable</code> is true, the pending timeout itself is cancelled when its input signal disappears before the timeout completes. Outputs: <code>next</code> and <code>out</code>.</p>",
+        "id": "controls-timeout"
+      },
+      {
+        "subtitle": "isCollidedWith",
+        "contents": "<h2>isCollidedWith</h2><p>Checks whether the current Node is colliding with a selected target.</p><p>Inputs: <code>Target</code> and Boolean <code>applyByName</code>. When <code>applyByName</code> is true, the collision is considered true when the target Node name matches. When false, name-only matching does not apply.</p><p>Outputs: <code>next</code>, <code>truth</code>, and <code>falsy</code>. <code>next</code> continues the flow whether the collision result is true or false.</p>",
+        "id": "controls-iscollidedwith"
+      },
+      {
+        "subtitle": "isVisible",
+        "contents": "<h2>isVisible</h2><p>Checks the current Node Visibility setting. The <strong>truth</strong> output fires when visible and <strong>falsy</strong> fires when hidden.</p>",
+        "id": "scriptnodes-controls--isvisible"
+      }
+    ]
+  },
+  {
+    "title": "ScriptNodes",
+    "items": [
+      {
+        "subtitle": "New ScriptNode placement",
+        "contents": "<h2>New ScriptNode placement</h2><p>When you add a ScriptNode from the ScriptNode Library, Node2D places it at the center of the ScriptNode canvas view. If you have already panned or zoomed the graph, the new ScriptNode is placed at the center of the area you are currently looking at rather than at a fixed screen corner.</p><p>Dragging a ScriptNode from the library onto the canvas is different: it is placed at the exact drop location.</p>",
+        "id": "scriptnodes--new-scriptnode-placement"
+      },
+      {
+        "subtitle": "Follow Object",
+        "contents": "<h2>Follow Object</h2><p>Makes the current Node move directly toward a selected target using the Node’s <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> velocity.<span> See <a class=\"help-ref\" data-help-topic=\"components-transform\" href=\"?topic=components-transform\">Transform</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-setvelocity\" href=\"?topic=actions-setvelocity\">setVelocity</a> for related details.</span></p><p>Inputs: <code>Target</code> and <code>Speed</code>. The current Node must have a <strong>Physics</strong> component. Without Physics, the behavior does nothing.</p><p>The movement direction is updated continuously. When the target is reached, the movement velocity is stopped. The Node faces the direction of movement unless Physics <code>Fixed Rotation</code> is enabled.</p>",
+        "id": "scriptnodes-follow-object"
+      },
+      {
+        "subtitle": "Create Object",
+        "contents": "<h2>Create Object</h2><p>Creates a runtime copy of a selected Node.<span> See <a class=\"help-ref\" data-help-topic=\"components-transform\" href=\"?topic=components-transform\">Transform</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-setvelocity\" href=\"?topic=actions-setvelocity\">setVelocity</a> for related details.</span></p><p>Inputs: <code>Object</code>, <code>PosX</code>, <code>PosY</code>, <code>Angle</code>, <code>VelocityX</code>, <code>VelocityY</code>, and <code>AngularVelocity</code>. The new <code>Angle</code> is the starting rotation in degrees.</p>",
+        "id": "scriptnodes-create-object"
+      },
+      {
+        "subtitle": "Chase",
+        "contents": "<h2>Chase</h2><p>Makes the current Node pursue a target while using a selected folder as its obstacle map.<span> See <a class=\"help-ref\" data-help-topic=\"scenes-folders\" href=\"?topic=scenes-folders\">Folders</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"actions-follow-object\" href=\"?topic=actions-follow-object\">Follow Object</a> for related details.</span></p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a> become obstacles.</p><p>Chase uses a lightweight pursuit direction based on the target’s current movement, then combines it with local obstacle avoidance. It samples a small set of nearby movement directions instead of running a full pathfinder every frame, which keeps the behavior suitable for real-time gameplay. This is a hybrid steering approach based on the common seek/pursuit/flee and obstacle-avoidance behaviors described by Craig Reynolds.</p><p>The current Node must have a <strong><a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a></strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p>",
+        "id": "scriptnodes-chase"
+      },
+      {
+        "subtitle": "Avoid",
+        "contents": "<h2>Avoid</h2><p>Makes the current Node move away from a selected target while using a selected folder as its obstacle map.<span> See <a class=\"help-ref\" data-help-topic=\"scenes-folders\" href=\"?topic=scenes-folders\">Folders</a> for related details.</span></p><p>Inputs: <code>Map</code>, <code>Target</code>, and <code>Speed</code>. The Map selector chooses a Folder. Its child Nodes are searched recursively; Nodes with a <a class=\"help-ref\" data-help-topic=\"components-collider\" href=\"?topic=components-collider\">Collider</a> become obstacles.</p><p>Avoid uses the same lightweight obstacle-steering pass as <a class=\"help-ref\" data-help-topic=\"actions-chase\" href=\"?topic=actions-chase\">Chase</a>, but reverses the target direction. In other words, Chase seeks the target while Avoid flees from it. Obstacle avoidance is kept separate from flee direction so walls are treated as obstacles rather than simply causing the Node to run away from the wall.</p><p><small>Based on Craig Reynolds, <a href=\"https://www.red3d.com/cwr/steer/gdc99/\" target=\"_blank\" rel=\"noopener\">Steering Behaviors for Autonomous Characters</a> (1999).</small></p><p>The current Node must have a <strong><a class=\"help-ref\" data-help-topic=\"components-physics\" href=\"?topic=components-physics\">Physics</a></strong> component. Without Physics, the behavior does nothing. The Node faces its movement direction unless Physics <code>Fixed Rotation</code> is enabled.</p>",
+        "id": "scriptnodes-avoid"
+      },
+      {
+        "subtitle": "Sliding numeric inputs",
+        "contents": "<h2>Sliding numeric inputs</h2><p>ScriptNode numeric inputs can be adjusted by swiping left or right. Swipe left to decrement and right to increment.</p><p>The step is based on the current value. For example, <code>3.42</code> uses a step of <code>0.01</code>, while <code>3</code> uses a step of <code>1</code>.</p>",
+        "id": "scriptnodes--sliding-numeric-inputs"
+      },
+      {
+        "subtitle": "Script viewport position",
+        "contents": "<h2>Script viewport position</h2><p>Each Node's Script editor remembers its own pan and zoom. Close the Script editor and reopen that same Node to return to its previous Script position.</p>",
+        "id": "scriptnodes--script-viewport-position"
+      },
+      {
+        "subtitle": "Connections and execution flow",
+        "contents": "<h2>ScriptNode connections</h2><p>ScriptNodes communicate through their input and output ports. Connect an output to another ScriptNode input to create an execution/data route.</p><p>Connections are part of the editable project state and participate in Undo/Redo and history snapshots.</p>",
+        "id": "scriptnodes--connections-and-execution"
+      },
+      {
+        "subtitle": "ScriptNode duplication and history",
+        "contents": "<h2>ScriptNode editing</h2><p>ScriptNodes can be copied, pasted, and duplicated. Duplicate creates an independent ScriptNode with a fresh ID.</p><p>Changing ScriptNode values, selectors, booleans, expressions, connections, creation, deletion, and duplication participates in history so Undo/Redo restores the visible ScriptNode editor state too.</p>",
+        "id": "scriptnodes--editing-and-history"
+      },
+      {
+        "subtitle": "Component transfer and color inputs",
+        "contents": "<h2>Component transfer and color inputs</h2><p><strong>Apply to all - &lt;name&gt;</strong> is an independent Component transfer command. It uses the same underlying value-transfer behavior as Copy/Paste, including Script components and their ScriptNode graph, but never touches the clipboard.</p><p>ScriptNode Color Wheel inputs show a colored swatch before the uppercase hexadecimal color value.</p><p><code>setInputComponent</code> updates an Input Component. Its inputs include Text, Placeholder, PosX/PosY, ScaleX/ScaleY, Width, Height, Multiline, FG Color, BG Color, Outline Color, Font Size, Font Family, Padding, Outline Width, Border Radius, and Max Length.</p>",
+        "id": "scriptnodes--component-transfer-and-color-inputs"
+      }
+    ]
+  },
+  {
+    "title": "Expressions",
+    "items": [
+      {
+        "subtitle": "What is an expression?",
+        "contents": "<h2>Expressions</h2><p>An expression lets an input use a calculated value instead of a fixed value. You can type expressions or choose helpers from the Expression Library.</p>",
+        "id": "expressions-overview"
+      },
+      {
+        "subtitle": "Variables in expressions",
+        "contents": "<h2>Variables in expressions</h2><p>Use the matching variable scope when reading a variable.</p><pre><code>ctx.global.score\nctx.sceneVariables.level\nctx.local.speed</code></pre>",
+        "id": "expressions--variables-in-expressions"
+      },
+      {
+        "subtitle": "Input and event values",
+        "contents": "<h2>Input and event values</h2><p>Use <code>ctx.input.value</code> to read the current text of the Input Component on the current Node.</p><p><code>onInputFocus</code> runs when the Input Component receives focus and <code>onInputBlur</code> runs when it loses focus.</p><p>Example:</p><pre><code>ctx.input.value.length\nctx.input.value === \"Player\"</code></pre>",
+        "id": "expressions--input-and-event-values"
+      },
+      {
+        "subtitle": "Transform and velocity values",
+        "contents": "<h2>Transform and velocity values</h2><p>Expressions can read position, scale, angle, and velocity values for the current Node.</p><pre><code>ctx.position.x\nctx.position.y\nctx.scale.x\nctx.scale.y\nctx.angle\nctx.velocity.velocityX\nctx.velocity.velocityY\nctx.velocity.angularVelocity</code></pre>",
+        "id": "expressions--transform-and-velocity-values"
+      },
+      {
+        "subtitle": "Math functions",
+        "contents": "<h2>Math functions</h2><table><thead><tr><th>Function</th><th>Arguments</th><th>Use</th></tr></thead><tbody><tr><td>Math.lerp</td><td>(a, b, t)</td><td>Interpolate between two values.</td></tr><tr><td>Math.clamp</td><td>(value, min, max)</td><td>Keep a value inside a range.</td></tr><tr><td>Math.map</td><td>(value, inMin, inMax, outMin, outMax)</td><td>Convert one range to another.</td></tr><tr><td>Math.moveTowards</td><td>(current, target, maxDelta)</td><td>Move toward a target.</td></tr><tr><td>Math.smoothstep</td><td>(a, b, t)</td><td>Smoothly interpolate.</td></tr><tr><td>Math.wrap</td><td>(value, min, max)</td><td>Wrap a value into a range.</td></tr><tr><td>Math.degToRad</td><td>(degrees)</td><td>Convert degrees to radians.</td></tr><tr><td>Math.radToDeg</td><td>(radians)</td><td>Convert radians to degrees.</td></tr><tr><td>Math.distance</td><td>(a, b)</td><td>Distance between two 2D vectors.</td></tr><tr><td>Math.randInt</td><td>(min, max)</td><td>Random whole number from min through max.</td></tr></tbody></table>",
+        "id": "expressions--math-functions"
+      },
+      {
+        "subtitle": "Common JavaScript math",
+        "contents": "<h2>Common Math functions</h2><p>You can also use standard JavaScript Math functions supported by the expression field, such as <code>Math.abs</code>, <code>Math.floor</code>, <code>Math.ceil</code>, <code>Math.round</code>, <code>Math.sqrt</code>, <code>Math.pow</code>, <code>Math.sin</code>, <code>Math.cos</code>, <code>Math.tan</code>, <code>Math.atan2</code>, <code>Math.min</code>, and <code>Math.max</code>.</p>",
+        "id": "expressions--common-javascript-math"
+      },
+      {
+        "subtitle": "Vectors",
+        "contents": "<h2>Vectors</h2><table><thead><tr><th>Function</th><th>Arguments</th><th>Use</th></tr></thead><tbody><tr><td>vec2</td><td>(x, y)</td><td>Create a 2D vector.</td></tr><tr><td>length</td><td>(v)</td><td>Get vector length.</td></tr><tr><td>dot</td><td>(a, b)</td><td>Get the dot product.</td></tr><tr><td>normalize</td><td>(v)</td><td>Turn a vector into a unit direction.</td></tr></tbody></table>",
+        "id": "expressions--vectors"
+      },
+      {
+        "subtitle": "Function argument hints",
+        "contents": "<h2>Function argument hints</h2><p>The Expression Library shows function names together with their argument names, such as <code>Math.randInt(min, max)</code>, so you can see what values the function expects before using it.</p>",
+        "id": "expressions--function-argument-hints"
+      },
+      {
+        "subtitle": "Microphone expressions",
+        "contents": "<h2>Microphone expressions</h2><p>When microphone use is enabled and permission is available, the Expression Library provides a Mic group.</p><table><thead><tr><th>Expression</th><th>Meaning</th></tr></thead><tbody><tr><td><code>ctx.mic.decibel</code></td><td>Current microphone loudness level.</td></tr><tr><td><code>ctx.mic.speech</code></td><td>Current speech-recognition text while recognition is active.</td></tr><tr><td><code>ctx.mic.active</code></td><td>Whether microphone input is currently active.</td></tr><tr><td><code>ctx.mic.speechActive</code></td><td>Whether speech recognition is currently running.</td></tr></tbody></table><p>These values are intended for runtime expressions, such as showing a live microphone meter, reacting to a sound level, or displaying recognized speech.</p>",
+        "id": "expressions--microphone-expressions"
+      },
+      {
+        "subtitle": "Misc — color helper functions",
+        "contents": "<h2>Misc — Color helper functions</h2><p>The Expression Library has a <strong>Misc</strong> group for small utility helpers that do not belong to Variables, Input, Math, or Vectors.</p><table><thead><tr><th>Expression</th><th>Result</th></tr></thead><tbody><tr><td><code>ctx.col.rgb(r, g, b)</code></td><td>Returns a <code>#RRGGBB</code> hex color. <code>r</code>, <code>g</code>, and <code>b</code> use 0–255.</td></tr><tr><td><code>ctx.col.rgba(r, g, b, a)</code></td><td>Returns a <code>#RRGGBBAA</code> hex color. <code>r</code>, <code>g</code>, and <code>b</code> use 0–255. Alpha accepts 0–1 or 0–255.</td></tr></tbody></table><pre><code>ctx.col.rgb(255, 128, 0)\nctx.col.rgba(255, 128, 0, 0.5)</code></pre><p>The helpers are available to expressions in the editor and runtime.</p>",
+        "id": "expressions--color-helper-functions"
+      },
+      {
+        "subtitle": "JavaScript values and operators",
+        "contents": "<h2>JavaScript values and operators</h2><p>Expression fields use JavaScript-style expressions for calculations and conditions. The basic pieces you will use most often are numbers, strings, booleans, properties, arithmetic, comparisons, and logical operators.</p><table><thead><tr><th>Syntax</th><th>Example</th><th>Meaning</th></tr></thead><tbody><tr><td>Arithmetic</td><td><code>10 + 5 * 2</code></td><td>Calculate numbers.</td></tr><tr><td>Comparison</td><td><code>ctx.global.score &gt;= 100</code></td><td>Check a condition.</td></tr><tr><td>Equality</td><td><code>ctx.local.state === \"dead\"</code></td><td>Check whether two values are equal.</td></tr><tr><td>Not equal</td><td><code>ctx.local.health !== 0</code></td><td>Check whether values differ.</td></tr><tr><td>AND</td><td><code>a &amp;&amp; b</code></td><td>Both conditions must be true.</td></tr><tr><td>OR</td><td><code>a || b</code></td><td>At least one condition must be true.</td></tr><tr><td>NOT</td><td><code>!ctx.local.dead</code></td><td>Reverse a boolean value.</td></tr></tbody></table>",
+        "id": "expressions--javascript-values-and-operators"
+      },
+      {
+        "subtitle": "Ternary operator",
+        "contents": "<h2>Ternary operator</h2><p>The ternary operator chooses one of two values using a condition:</p><pre><code>condition ? truth : falsy</code></pre><p>For example:</p><pre><code>ctx.global.score &gt;= 100 ? \"Winner\" : \"Keep Playing\"</code></pre><p>If the condition is true, the expression produces <code>\"Winner\"</code>. Otherwise it produces <code>\"Keep Playing\"</code>.</p><p>This is useful when an input needs one value for one case and another value for the opposite case.</p>",
+        "id": "expressions--ternary-operator"
+      },
+      {
+        "subtitle": "Optional chaining",
+        "contents": "<h2>Optional chaining <code>?.</code></h2><p>Optional chaining lets you safely read a property when an earlier value might not exist.</p><pre><code>ctx.node?.name</code></pre><p>Without optional chaining, trying to read a property from a missing value can cause an error. With <code>?.</code>, the result becomes <code>undefined</code> instead of stopping the expression at that point.</p><p>It can also be used through a chain:</p><pre><code>ctx.node?.sprite?.src</code></pre><p>Use it when an object or Component may be absent.</p>",
+        "id": "expressions--optional-chaining"
+      },
+      {
+        "subtitle": "Nullish coalescing",
+        "contents": "<h2>Nullish coalescing <code>??</code></h2><p><code>??</code> supplies a fallback when the value on its left is <code>null</code> or <code>undefined</code>.</p><pre><code>ctx.local.name ?? \"Player\"</code></pre><p>If <code>ctx.local.name</code> has a real value, that value is used. If it is missing, <code>\"Player\"</code> is used instead.</p><p>This is different from using <code>||</code> when you need to keep valid values such as <code>0</code> or <code>false</code>.</p>",
+        "id": "expressions--nullish-coalescing"
+      },
+      {
+        "subtitle": "Property and bracket access",
+        "contents": "<h2>Property and bracket access</h2><p>Use a dot to read a normal property:</p><pre><code>ctx.position.x\nctx.global.score</code></pre><p>Use brackets when the property name is dynamic or is not a convenient identifier:</p><pre><code>ctx.events.key[\"1\"]\nctx.local[\"player-name\"]</code></pre><p>Bracket access is also useful when a value comes from another expression.</p>",
+        "id": "expressions--property-and-bracket-access"
+      },
+      {
+        "subtitle": "Parentheses and order",
+        "contents": "<h2>Parentheses and order</h2><p>Parentheses let you make the intended order of a calculation explicit.</p><pre><code>(ctx.global.score + 10) * 2</code></pre><p>Without parentheses, multiplication is evaluated before addition. Use parentheses whenever a long expression could be confusing or when a comparison is combined with several logical operators.</p>",
+        "id": "expressions--parentheses-and-order"
+      },
+      {
+        "subtitle": "Operators quick reference",
+        "contents": "<h2>Operators quick reference</h2><p>The Expression Library includes common operators you can insert into an expression.</p><table><thead><tr><th>Operator</th><th>Meaning</th></tr></thead><tbody><tr><td><code>&amp;&amp;</code></td><td>Logical AND</td></tr><tr><td><code>||</code></td><td>Logical OR</td></tr><tr><td><code>&lt;</code>, <code>&gt;</code></td><td>Less than / greater than</td></tr><tr><td><code>&lt;=</code>, <code>&gt;=</code></td><td>Less than or equal / greater than or equal</td></tr><tr><td><code>==</code></td><td>Loose equality</td></tr><tr><td><code>===</code></td><td>Strict equality</td></tr><tr><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code></td><td>Arithmetic operators</td></tr><tr><td><code>(condition) ? true : false</code></td><td>Ternary conditional expression</td></tr></tbody></table><p>The inserted operator is only a starting point; edit the expression to supply operands and values.</p>",
+        "id": "expressions--operators-quick-reference"
+      },
+      {
+        "subtitle": "Timing and conversion helpers",
+        "contents": "<h2>Timing and conversion helpers</h2><p><code>performance.now()</code> is a high-resolution elapsed-time value in milliseconds and is useful for measuring durations and profiling. <code>Date.now()</code> returns the current Unix timestamp in milliseconds.</p><p>Useful conversion helpers include <code>Number(value)</code>, <code>String(value)</code>, <code>Boolean(value)</code>, <code>parseInt(value)</code>, <code>parseFloat(value)</code>, and <code>isNaN(value)</code>. <code>ctx.isVisible</code> reports whether the current Node is visible.</p>",
+        "id": "expressions--timing-and-conversion-helpers"
+      },
+      {
+        "subtitle": "Runtime expression safety",
+        "contents": "<h2>Runtime expression safety</h2><p>ScriptNode runtime expressions are evaluated against the engine-provided <code>ctx</code> and <code>Math</code> values. Browser/DOM escape paths are rejected before evaluation.</p><p>The safety filter blocks direct references to browser globals such as <code>document</code>, <code>window</code>, <code>globalThis</code>, <code>self</code>, <code>parent</code>, and <code>top</code>; DOM insertion APIs; dynamic code execution such as <code>eval()</code> and <code>Function()</code>; timer APIs; <code>fetch()</code>; <code>XMLHttpRequest</code>; <code>WebSocket</code>; <code>MutationObserver</code>; and <code>Worker</code>.</p><p>Use ScriptNode Actions and Controls for engine behavior instead of trying to modify the editor page or exported HTML from a normal runtime expression.</p>",
+        "id": "expressions--runtime-expression-safety"
+      }
+    ]
+  },
+  {
+    "title": "Expression Syntax — JavaScript Basics",
+    "items": [
+      {
+        "subtitle": "Numbers and arithmetic",
+        "contents": "<h2>Numbers and arithmetic</h2><p>Use normal arithmetic in expressions: <code>+</code> add, <code>-</code> subtract, <code>*</code> multiply, <code>/</code> divide, and <code>%</code> get the remainder.</p><pre><code>ctx.local.speed * 2\nctx.global.score + 10\nctx.velocity.velocityX / 60</code></pre>",
+        "id": "expression-syntax-javascript-basics--numbers-and-arithmetic"
+      },
+      {
+        "subtitle": "Comparisons",
+        "contents": "<h2>Comparisons</h2><p>Comparisons produce <code>true</code> or <code>false</code>.</p><pre><code>ctx.local.health &gt; 0\nctx.global.score &gt;= 100\nctx.local.state === \"ready\"\nctx.local.state !== \"dead\"</code></pre>",
+        "id": "expression-syntax-javascript-basics--comparisons"
+      },
+      {
+        "subtitle": "Logical operators",
+        "contents": "<h2>Logical operators</h2><p><code>&amp;&amp;</code> means AND, <code>||</code> means OR, and <code>!</code> means NOT.</p><pre><code>ctx.local.health &gt; 0 &amp;&amp; ctx.global.score &gt; 100\nctx.local.state === \"win\" || ctx.local.state === \"draw\"\n!ctx.local.dead</code></pre>",
+        "id": "expression-syntax-javascript-basics--logical-operators"
+      },
+      {
+        "subtitle": "Ternary",
+        "contents": "<h2>Ternary</h2><p>Choose between two values:</p><pre><code>condition ? truth : falsy</code></pre><pre><code>ctx.local.health &gt; 0 ? \"Alive\" : \"Dead\"</code></pre>",
+        "id": "expression-syntax-javascript-basics--ternary"
+      },
+      {
+        "subtitle": "Optional chaining",
+        "contents": "<h2>Optional chaining</h2><p><code>?.</code> safely reads through a value that might be missing.</p><pre><code>ctx.node?.name\nctx.node?.sprite?.src</code></pre>",
+        "id": "expression-syntax-javascript-basics--optional-chaining"
+      },
+      {
+        "subtitle": "Nullish fallback",
+        "contents": "<h2>Nullish fallback</h2><p><code>??</code> uses the value on the left unless it is <code>null</code> or <code>undefined</code>.</p><pre><code>ctx.local.name ?? \"Player\"</code></pre>",
+        "id": "expression-syntax-javascript-basics--nullish-fallback"
+      },
+      {
+        "subtitle": "Property access",
+        "contents": "<h2>Property access</h2><p>Use <code>.</code> to access named properties.</p><pre><code>ctx.position.x\nctx.scale.y\nctx.global.score</code></pre>",
+        "id": "expression-syntax-javascript-basics--property-access"
+      },
+      {
+        "subtitle": "Bracket access",
+        "contents": "<h2>Bracket access</h2><p>Use brackets when a property name needs to be written as a string.</p><pre><code>ctx.events.key[\"1\"]\nctx.local[\"player-name\"]</code></pre>",
+        "id": "expression-syntax-javascript-basics--bracket-access"
+      },
+      {
+        "subtitle": "Parentheses",
+        "contents": "<h2>Parentheses</h2><p>Use parentheses to control the order of a calculation and make complex expressions easier to read.</p><pre><code>(ctx.global.score + 10) * 2</code></pre>",
+        "id": "expression-syntax-javascript-basics--parentheses"
+      },
+      {
+        "subtitle": "Combining syntax",
+        "contents": "<h2>Combining syntax</h2><p>These pieces can be combined into one expression.</p><pre><code>ctx.node?.name === \"Player\" &amp;&amp; (ctx.global.score &gt;= 100 ? true : false)</code></pre><p>Build complex expressions from small understandable pieces and test them in the input where they will be used.</p>",
+        "id": "expression-syntax-javascript-basics--combining-syntax"
+      }
+    ]
+  },
+  {
+    "title": "Audio and Playback",
+    "items": [
+      {
+        "subtitle": "Playing audio",
+        "contents": "<h2>Playing audio</h2><p>Use the audio controls or the <code>playAudio</code> ScriptNode to play an Audio or MIDI asset during runtime.</p>",
+        "id": "audio-and-playback--playing-audio"
+      },
+      {
+        "subtitle": "Audio options",
+        "contents": "<h2>Audio options</h2><p><code>playAudio</code> supports volume (0–100), start position, duration, looping, fade-in, and fade-out. Decoded Audio data can be cached for lower-latency repeated playback.</p><p><a class=\"help-ref\" href=\"?topic=actions-playaudio\" data-help-topic=\"actions-playaudio\">Open playAudio</a></p>",
+        "id": "audio-audio-options"
+      },
+      {
+        "subtitle": "Stopping audio",
+        "contents": "<h2>Stopping audio</h2><p>Use the available stop control or the <code>stopAudio</code> ScriptNode to stop active playback.</p>",
+        "id": "audio-and-playback--stopping-audio"
+      },
+      {
+        "subtitle": "Audio preview",
+        "contents": "<h2>Audio preview</h2><p>Click an Audio asset in the Audio section to open an Audio Preview modal. Use the audio controls there to play and test the sound before using it with <code>playAudio</code>.</p><p>The preview does not change the asset or create a game object.</p>",
+        "id": "audio-and-playback--audio-preview"
+      },
+      {
+        "subtitle": "Stereo panning",
+        "contents": "<h2>Stereo panning</h2><p><strong>panValue</strong> controls left-to-right stereo position and is clamped to <code>-1</code> through <code>1</code>.</p><ul><li><strong>-1</strong> = fully left</li><li><strong>0</strong> = center</li><li><strong>1</strong> = fully right</li></ul><p>The runtime uses a stereo panner when Web Audio is available.</p>",
+        "id": "audio-and-playback--stereo-panning"
+      }
+    ]
+  },
+  {
+    "title": "MIDI Editor",
+    "items": [
+      {
+        "subtitle": "MIDI Editor overview",
+        "contents": "<h2>MIDI Editor</h2><p>The MIDI Editor is a piano-roll editor for creating and editing MIDI music. You can draw, erase, move, resize, select, copy, paste, duplicate, and delete notes.</p>",
+        "id": "midi-editor--midi-editor-overview"
+      },
+      {
+        "subtitle": "MIDI name",
+        "contents": "<h2>Changing the MIDI name</h2><p>The MIDI name is shown beside <strong>MIDI Editor</strong>. Double-click the name to edit it directly. Press <strong>Enter</strong> or click elsewhere to save the new name.</p>",
+        "id": "midi-editor--midi-name"
+      },
+      {
+        "subtitle": "Cancel",
+        "contents": "<h2>Cancel</h2><p>Canceling the MIDI Editor asks for confirmation before leaving, so you have a chance to avoid losing the current editing session.</p>",
+        "id": "midi-editor--cancel"
+      },
+      {
+        "subtitle": "Tracks",
+        "contents": "<h2>Tracks</h2><p>A MIDI file can contain multiple tracks. Select a track to edit its notes and use the track controls to add or remove tracks where available.</p>",
+        "id": "midi-editor--tracks"
+      },
+      {
+        "subtitle": "Notes",
+        "contents": "<h2>Notes</h2><p>A note has a pitch, time position, duration, and velocity. Notes can be drawn, moved, resized, copied, duplicated, and deleted.</p>",
+        "id": "midi-editor--notes"
+      },
+      {
+        "subtitle": "Note selection",
+        "contents": "<h2>Note selection</h2><p>Use click selection and marquee selection to select multiple notes. Ctrl/Cmd-click can add or remove individual notes, and Shift can select ranges where supported.</p>",
+        "id": "midi-editor--note-selection"
+      },
+      {
+        "subtitle": "Snap and length",
+        "contents": "<h2>Snap and length</h2><p>Snap sets the timing grid used for note placement and movement. Length controls the note timing length used by the editor.</p>",
+        "id": "midi-editor--snap-and-length"
+      },
+      {
+        "subtitle": "BPM",
+        "contents": "<h2>BPM</h2><p>BPM controls playback tempo.</p>",
+        "id": "midi-editor--bpm"
+      },
+      {
+        "subtitle": "Playback and loop",
+        "contents": "<h2>Playback and loop</h2><p>Use Play, Stop, Rewind, and Loop to preview the MIDI while editing.</p>",
+        "id": "midi-editor--playback-and-loop"
+      },
+      {
+        "subtitle": "MIDI loading progress",
+        "contents": "<h2>MIDI loading progress</h2><p>When a MIDI file is being edited or loaded, the editor shows a loading progress bar with a percentage. This makes it clear that a large MIDI file is still being processed.</p>",
+        "id": "midi-editor--midi-loading-progress"
+      },
+      {
+        "subtitle": "Import and Export",
+        "contents": "<h2>Import and Export</h2><p>Import loads a MIDI file into the editor. Export writes the edited MIDI sequence back to a MIDI file.</p>",
+        "id": "midi-editor--import-and-export"
+      },
+      {
+        "subtitle": "Changing the MIDI name",
+        "contents": "<h2>Changing the MIDI name</h2><p>The MIDI name is shown beside <strong>MIDI Editor</strong>.</p><ol><li>Double-click the name.</li><li>The normal text becomes directly editable.</li><li>Type the new name.</li><li>Press <strong>Enter</strong> or click somewhere else to apply it.</li></ol><p>The rename changes the project asset name rather than changing the musical notes.</p>",
+        "id": "midi-editor--changing-the-midi-name"
+      },
+      {
+        "subtitle": "Cancel editing",
+        "contents": "<h2>Cancel editing</h2><p>Cancel asks for confirmation before leaving the MIDI Editor. This gives you a chance to stop the cancellation if you changed your mind and want to keep editing.</p>",
+        "id": "midi-editor--cancel-editing"
+      }
+    ]
+  },
+  {
+    "title": "Play, Debug, and Runtime",
+    "items": [
+      {
+        "subtitle": "Play",
+        "contents": "<h2>Play</h2><p>Play starts the Preferred Scene using the project settings, scripts, input, camera, physics, audio, and variables.</p>",
+        "id": "play-debug-and-runtime--play"
+      },
+      {
+        "subtitle": "Debug",
+        "contents": "<h2>Debug</h2><p>Debug runs the game while exposing additional inspection information.<span> See <a class=\"help-ref\" data-help-topic=\"play-debug-output\" href=\"?topic=play-debug-output\">Debug Output</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-performance\" href=\"?topic=play-runtime-performance\">Runtime performance and memory</a> for related details.</span></p><p>When Debug is running, the runtime top bar includes an <strong>Output</strong> button. Open it to see runtime logs, warnings, JavaScript errors, unhandled promise rejections, and ScriptNode execution errors. Output is limited to the most recent 500 entries.</p>",
+        "id": "play-debug"
+      },
+      {
+        "subtitle": "Runtime changes",
+        "contents": "<h2>Runtime changes</h2><p>Changes made while the game is running affect the running game state. They are separate from changing the saved project in the editor. <a class=\"help-ref\" href=\"?topic=play-runtime-performance\" data-help-topic=\"play-runtime-performance\">Runtime performance</a></p>",
+        "id": "play-runtime-changes"
+      },
+      {
+        "subtitle": "Scene changes during runtime",
+        "contents": "<h2>Scene changes</h2><p>A ScriptNode can change the current runtime Scene using <code>loadScene</code>.</p>",
+        "id": "play-debug-and-runtime--scene-changes-during-runtime"
+      },
+      {
+        "subtitle": "Runtime performance and memory",
+        "contents": "<h2>Runtime performance and memory</h2><p>Node2D keeps runtime lookup tables for Nodes, Physics bodies, ScriptNodes, connections, event lists, render order, timers, and AI state so common runtime operations do not repeatedly walk the full Scene.<span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-memory\" href=\"?topic=play-runtime-memory\">Runtime object lifecycle</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-cpugpu\" href=\"?topic=play-runtime-cpugpu\">CPU and GPU</a> for related details.</span><span> See <a class=\"help-ref\" data-help-topic=\"play-runtime-largescenes\" href=\"?topic=play-runtime-largescenes\">Large scenes</a> for related details.</span></p><p>Rendering keeps a cached draw order and skips Nodes outside the camera area. Physics uses a broadphase before detailed collision tests and adapts substeps for larger Physics populations.</p><p>Create Object queues new-object <code>onLoad</code> work instead of executing a large spawn burst synchronously. Destroy Object removes the runtime references needed by the engine so destroyed objects can become garbage-collectable.</p>",
+        "id": "play-runtime-performance"
+      },
+      {
+        "subtitle": "Runtime object lifecycle",
+        "contents": "<h2>Runtime object lifecycle</h2><p>Created runtime copies receive their own Node ID, numeric ID, ScriptNode IDs, ScriptNode connections, local variables, bodies, render entries, and event registrations.<span> See <a class=\"help-ref\" data-help-topic=\"actions-create-object\" href=\"?topic=actions-create-object\">Create Object</a> for related details.</span></p><p><a class=\"help-ref\" data-help-topic=\"actions-destroy-object\" href=\"?topic=actions-destroy-object\">Destroy Object</a> removes those runtime registrations, removes pending timers and collision pairs, clears target references, and removes the object from its runtime Scene container.</p><p>Memory is actually reclaimed by the browser’s JavaScript garbage collector after no reachable references remain.</p>",
+        "id": "play-runtime-memory"
+      },
+      {
+        "subtitle": "CPU and GPU",
+        "contents": "<h2>CPU and GPU</h2><p>JavaScript, ScriptNodes, and Physics execute on the CPU. Runtime Canvas 2D rendering is requested with browser-friendly low-latency settings, and the browser may hardware-accelerate Canvas rendering using the available GPU.</p><p>Node2D does not force a particular GPU; browser, operating system, and device drivers decide the actual rendering path.</p>",
+        "id": "play-runtime-cpugpu"
+      },
+      {
+        "subtitle": "Large scenes",
+        "contents": "<h2>Large scenes</h2><p>For scenes with many objects, avoid doing expensive work on every <code>onTick</code> when an event can do it instead. Give Physics/Collider components only to objects that need them, destroy temporary objects when finished, and avoid unnecessary DOM/UI work during runtime.</p><p>Debug adds Output and variable inspection work, so normal Play mode is lighter when debugging is not needed.</p>",
+        "id": "play-runtime-largescenes"
+      },
+      {
+        "subtitle": "Debug Output",
+        "contents": "<h2>Debug Output</h2><p>Click <strong>Output</strong> in the Debug runtime top bar to open the Output panel.</p><p>Messages are grouped as <strong>LOG</strong>, <strong>WARN</strong>, or <strong>ERROR</strong>. ScriptNode exceptions identify the ScriptNode and Node where possible. Use <strong>Clear</strong> to remove the current Output entries.</p><p>Debug captures console log/warn/error calls and browser error/unhandled-rejection events while the Debug runtime is active.</p>",
+        "id": "play-debug-output"
+      },
+      {
+        "subtitle": "FPS and Output",
+        "contents": "<h2>Runtime FPS and Output</h2><p>Play and Debug display a live <strong>FPS</strong> indicator in the runtime header. Click <strong>Output</strong> to open the runtime output panel.</p><p>Output entries can include LOG, WARN, and ERROR messages. Debug captures console messages plus browser error and unhandled-rejection events while the Debug runtime is active.</p>",
+        "id": "play-debug-and-runtime--fps-and-output"
+      },
+      {
+        "subtitle": "Play versus Debug",
+        "contents": "<h2>Play versus Debug</h2><p><strong>Play Scene</strong> starts the Scene as a game runtime. <strong>Debug</strong> starts the same runtime with additional debugging facilities such as Output and debug visualization support.</p><p>Stop the runtime to return to the editor.</p>",
+        "id": "play-debug-and-runtime--play-versus-debug"
+      },
+      {
+        "subtitle": "Particle and object performance",
+        "contents": "<h2>Particle and object performance</h2><p>Particles are removed automatically after their lifetime. For large games, keep particle counts reasonable, prefer pooling for frequently created objects, hide objects with Visibility when appropriate, and avoid creating temporary objects every frame.</p>",
+        "id": "runtime-performance--particles-and-objects"
+      },
+      {
+        "subtitle": "Particles and Sub Cameras",
+        "contents": "<h2>Particles and Sub Cameras</h2><p>Runtime Trail particles keep a visible trail until their lifetime ends and do not automatically fade. Sub Cameras render a separate world view into a canvas attached to their Node.</p>",
+        "id": "play-runtime--particles-subcameras"
+      }
+    ]
+  },
+  {
+    "title": "Runtime and Script Execution",
+    "items": [
+      {
+        "subtitle": "Consistent Scene variables during onTick",
+        "contents": "<h2>Consistent Scene variables during onTick</h2><p>During one <code>onTick</code> event dispatch, Node2D gives each participating ScriptNode the same Scene-variable snapshot for that event. A ScriptNode can still write the real Scene variable; that change becomes visible to subsequent runtime work after the current event dispatch rather than causing other <code>onTick</code> Nodes in the same dispatch to observe a different value only because of execution order.</p><p>This prevents order-dependent behavior in common multi-Node patterns such as shared positions, scores, spawn values, and synchronized visual markers.</p>",
+        "id": "runtime-and-script-execution--consistent-scene-variables-during-ontick"
+      }
+    ]
+  },
+  {
+    "title": "Project Management",
+    "items": [
+      {
+        "subtitle": "New Project",
+        "contents": "<h2>New Project</h2><p>Creates a fresh project with the normal starting project settings and a starting Scene.</p>",
+        "id": "project-management--new-project"
+      },
+      {
+        "subtitle": "Save Project",
+        "contents": "<h2>Save Project</h2><p>Save stores your current project so it can be reopened later.</p>",
+        "id": "project-management--save-project"
+      },
+      {
+        "subtitle": "Load Project",
+        "contents": "<h2>Load Project</h2><p>Load opens a previously saved local project.</p>",
+        "id": "project-management--load-project"
+      },
+      {
+        "subtitle": "Import NDC",
+        "contents": "<h2>Import NDC</h2><p>Import NDC loads a complete project file containing your Scenes, Nodes, Components, Scripts, settings, and project assets.</p>",
+        "id": "project-management--import-ndc"
+      },
+      {
+        "subtitle": "Export NDC",
+        "contents": "<h2>Export NDC</h2><p>Export NDC saves the complete project as one portable project file.</p>",
+        "id": "project-management--export-ndc"
+      },
+      {
+        "subtitle": "Export Project",
+        "contents": "<h2>Export Project</h2><p>Export Project creates a playable web package containing the project data, the Node2D runtime package, the shared NDC codec, the engine decoder, and the launcher HTML.</p><p>The current standalone layout is <code>index.html</code>, <code>project.ndc</code>, and <code>js/</code> containing <code>ndcCodec.js</code>, <code>engineDecoder.js</code>, and <code>node2dEngine.ndc</code>, plus optional exported assets, PWA files, and the splash icon.</p><p>Use <strong>Export NDC</strong> when you want editable project data. Use <strong>Export Project</strong> when you want a playable web package.</p>",
+        "id": "project-management--export-project"
+      },
+      {
+        "subtitle": "Current project on reload",
+        "contents": "<h2>Current project on reload</h2><p>Node2D remembers which local project is currently loaded during the browser session. When you reload the page, the editor can automatically reopen that project instead of dropping you back at the project chooser.</p><p>This is especially useful when refreshing the page during development. Closing the tab or ending the browser session clears session-only information according to normal browser session storage behavior.</p>",
+        "id": "project-management--current-project-on-reload"
+      },
+      {
+        "subtitle": "What is saved in a project",
+        "contents": "<h2>Project contents</h2><p>Project data includes Scenes and their Nodes, Components, ScriptNodes, connections, Variables, Camera settings, UI components, Game Settings, and imported assets referenced by the project.</p><p>Editor-only view state such as viewport pan/zoom is not part of document history.</p>",
+        "id": "project-management--what-is-saved"
+      },
+      {
+        "subtitle": "Load Local and the Flappy Bird sample",
+        "contents": "<h2>Load Local and the Flappy Bird sample</h2><p><strong>Load Local</strong> lists projects saved on the device. <strong>Load Sample Flappy Bird</strong> fetches the sample NDC once and saves it into the same Local NDC storage used by normal saved projects.</p><p>After it succeeds, Node2D sets <code>flappybirdsample</code> to <code>true</code> in local storage and stops offering the sample loader on that device.</p>",
+        "id": "project-management--load-local-and-the-flappy-bird-sample"
+      },
+      {
+        "subtitle": "NDC Import and Export",
+        "contents": "<h2>NDC Import and Export</h2><p>Exporting and importing <code>.ndc</code> projects uses background workers for the expensive encode/decode work. A progress modal shows the current stage.</p><p>During export/import the editor yields between large data chunks so UI events remain responsive. Import asks before replacing an existing project.</p>",
+        "id": "project-management--ndc-progress"
+      },
+      {
+        "subtitle": "Asset filename uniqueness",
+        "contents": "<h2>Asset filename uniqueness</h2><p>Sprite, Audio, and MIDI files share one project-wide filename namespace. Two assets cannot keep the same filename, even when they belong to different asset tabs.</p><p>When a name is already used, Node2D appends a numeric suffix before the extension: <code>image.png</code> → <code>image (2).png</code> → <code>image (3).png</code>. The check is case-insensitive and applies to imports, generated GIF frames, new Sprite assets, and replacements.</p><p>When an existing project is loaded, asset filenames are normalized again so older duplicates are repaired automatically.</p>",
+        "id": "project-management--asset-filename-uniqueness"
+      },
+      {
+        "subtitle": "Engine license and game distribution",
+        "contents": "<h2>Engine license and game distribution</h2><p>The bundled license identifies Node2D Engine as a CardHollow-owned engine under the included non-commercial engine license. The license permits inspection, modification, and non-commercial redistribution of the engine subject to its terms.</p><p>The same license explicitly permits commercial games, applications, and other works created with Node2D, and permits distribution of the runtime pieces required as an integrated part of those works. Read the included <code>LICENSE.md</code> for the exact terms and restrictions.</p>",
+        "id": "project-management--engine-license-and-game-distribution"
+      }
+    ]
+  },
+  {
+    "title": "Standalone Export and PWA",
+    "items": [
+      {
+        "subtitle": "Export Project",
+        "contents": "<h2>Export Project</h2><p>Export Project creates a playable web package from the project you are editing. It is meant for sharing or hosting the game, not for continuing to edit the project.</p><p>The exported package contains a launcher page, the project data, and the runtime files needed to load the project. Your Scenes, Nodes, Components, ScriptNode graphs, variables, camera/game settings, and project assets are represented in the project data.</p><p>The export process reads the current engine files at export time, so a newly exported package uses the runtime build from the editor you exported from.</p><h3>Typical use</h3><ol><li>Save the project.</li><li>Choose Export Project.</li><li>Wait for the export progress to finish.</li><li>Open the resulting web package from a web-capable location.</li><li>Test the exported game separately from the editor.</li></ol><p>Use NDC export when you want the editable project data. Use Project Export when you want a playable web build.</p>",
+        "id": "standalone-export-and-pwa--export-project"
+      },
+      {
+        "subtitle": "PWA export and offline use",
+        "contents": "<h2>PWA export and offline use</h2><p>A PWA-capable export includes the information a browser needs to treat the exported game as an installable web application when the browser and hosting environment support it.</p><p>Offline caching lets the browser keep a local copy of the web app so the exported game can continue to open without downloading the same files again while offline.</p>",
+        "id": "standalone-export-and-pwa--pwa-export-and-offline-use"
+      },
+      {
+        "subtitle": "Protected engine package",
+        "contents": "<h2>Protected engine package</h2><p>The exported engine is stored as <code>js/node2dEngine.ndc</code> instead of being copied to many separate readable JavaScript files.</p><p>The package uses the same <code>ndcCodec.js</code> as project NDC data. Inside the encoded engine document, each runtime file is represented by a <code>&lt;node2DEngine file=\"...\" length=\"...\"&gt;</code> block containing that file’s source and a matching closing tag.</p><p><code>engineDecoder.js</code> fetches the engine NDC, asks <code>ndcCodec.js</code> to decode it, reconstructs the individual runtime files, and injects them as real JavaScript <code>&lt;script&gt;</code> elements before the exported launcher loads <code>project.ndc</code>.</p><p>The current exported runtime package contains the required Node2D runtime files: <code>node.js</code>, <code>assets.js</code>, <code>scriptNodes.js</code>, <code>uiComponents.js</code>, <code>runtimeEngine.js</code>, <code>app.js</code>, and <code>midiParser.js</code> when the project contains MIDI assets. Editor-only files such as the Sprite Editor and Project Exporter are not placed inside the engine package.</p>",
+        "id": "standalone-export-and-pwa--engine-package"
+      },
+      {
+        "subtitle": "Export splash",
+        "contents": "<h2>Export splash</h2><p>The Export Project dialog includes a <strong>Splash</strong> checkbox, enabled by default. You can choose a Sprite asset for <strong>Icon</strong> and enter the <strong>Title</strong> shown below it.</p><p>If the splash is enabled but no Sprite icon is selected, the exporter falls back to the built-in Node2D <code>icon.svg</code>. The splash is displayed by the exported <code>index.html</code> and is hidden after the runtime has started successfully.</p>",
+        "id": "standalone-export-and-pwa--splash"
+      }
+    ]
+  },
+  {
+    "title": "Standalone Export Architecture",
+    "items": [
+      {
+        "subtitle": "Exported file layout",
+        "contents": "<h2>Exported file layout</h2><pre><code>index.html\nproject.ndc\njs/\n  ndcCodec.js\n  engineDecoder.js\n  node2dEngine.ndc</code></pre><p>Optional files include exported splash/PWA icons, <code>manifest.json</code>, and <code>sw.js</code> when PWA export is enabled.</p>",
+        "id": "standalone-export-architecture--exported-file-layout"
+      },
+      {
+        "subtitle": "node2dEngine.ndc container",
+        "contents": "<h2>node2dEngine.ndc container</h2><p>The engine package is itself stored through the existing NDC codec. Its decoded engine payload is a sequence of <code>&lt;node2DEngine&gt;</code> blocks. Each block records the original runtime file path and source length so the decoder can reconstruct the files without using HTML script parsing as the container format.</p>",
+        "id": "standalone-export-architecture--node2dengine-ndc-container"
+      },
+      {
+        "subtitle": "engineDecoder.js loading sequence",
+        "contents": "<h2>engineDecoder.js loading sequence</h2><ol><li><code>index.html</code> loads <code>ndcCodec.js</code>.</li><li><code>index.html</code> loads <code>engineDecoder.js</code>.</li><li>The decoder fetches <code>js/node2dEngine.ndc</code>.</li><li>The decoder asks <code>ndcCodec.js</code> to decode the engine package.</li><li>The decoder reconstructs the runtime files in package order and injects each as a JavaScript <code>&lt;script&gt;</code> element.</li><li>The launcher fetches and loads <code>project.ndc</code> and starts the runtime.</li></ol>",
+        "id": "standalone-export-architecture--enginedecoder-loading-sequence"
+      },
+      {
+        "subtitle": "Engine package scope",
+        "contents": "<h2>Engine package scope</h2><p>The current export compiler packages <code>node.js</code>, <code>assets.js</code>, <code>scriptNodes.js</code>, <code>uiComponents.js</code>, <code>runtimeEngine.js</code>, <code>app.js</code>, and, when MIDI assets are present, <code>midiParser.js</code>. Editor-only tooling such as Sprite Editor and Project Exporter code is not shipped as part of the protected runtime package.</p>",
+        "id": "standalone-export-architecture--engine-package-scope"
+      }
+    ]
+  },
+  {
+    "title": "Editor Settings",
+    "items": [
+      {
+        "subtitle": "Editor Settings",
+        "contents": "<h2>Editor Settings</h2><p>Editor Settings control shortcuts, snapping, saving behavior, and multiselection behavior. These preferences are stored locally on the device rather than inside the project.</p><p>The settings include <strong>Move / Scale Snap</strong>, <strong>Rotate Snap</strong>, <strong>Auto Save</strong>, <strong>Auto Save Interval</strong>, <strong>Multiselection Unified Editing</strong>, and <strong>Create New Missing Component</strong>.</p>",
+        "id": "editor-settings--editor-settings"
+      },
+      {
+        "subtitle": "Shortcut preference storage",
+        "contents": "<h2>Shortcut preferences</h2><p>Your chosen editor shortcuts are saved locally on your device, so the editor can reuse them after you close and reopen it.</p>",
+        "id": "editor-settings--shortcut-preference-storage"
+      },
+      {
+        "subtitle": "Download Preferences",
+        "contents": "<h2>Download Preferences</h2><p><strong>Download Pref...</strong> saves your editor preferences as JSON.</p><p>The export includes the stored editor preference data rather than only a manually selected list. This allows preferences introduced by a future editor version to travel with the downloaded settings when they are stored in the preference data.</p><p>Your chosen keyboard shortcuts, Move / Scale Snap, Rotate Snap, Auto Save, and Auto Save Interval are included when they are stored as editor preferences.</p>",
+        "id": "editor-settings--download-preferences"
+      },
+      {
+        "subtitle": "Move / Scale Snap",
+        "contents": "<h2>Move / Scale Snap</h2><p>Sets the fixed editing interval used by Node movement and scaling.</p><p>Default: <code>1</code>.</p><p>Examples:</p><ul><li><code>1</code> → values move/scale in whole-unit steps.</li><li><code>0.5</code> → values use half-unit steps.</li><li><code>0.1</code> → values use one-tenth-unit steps.</li><li><code>0</code> → no movement/scale snapping.</li></ul><p>The setting is saved with your editor preferences.</p>",
+        "id": "editor-settings--move-scale-snap"
+      },
+      {
+        "subtitle": "Rotate Snap",
+        "contents": "<h2>Rotate Snap</h2><p>Sets the fixed angle interval used by the Rotate gizmo.</p><p><code>0° (Off)</code> allows free rotation. A value such as <code>90°</code> makes the rotation land on right-angle increments.</p><p>Rotation snapping is independent from Move / Scale Snap.</p>",
+        "id": "editor-settings--rotate-snap"
+      },
+      {
+        "subtitle": "Auto Save",
+        "contents": "<h2>Auto Save</h2><p>Enable Auto Save when you want Node2D to periodically save the currently loaded project instead of relying only on manual saves.</p><p>Auto Save applies to the loaded project. It does not replace exporting a project when you need a portable file.</p>",
+        "id": "editor-settings--auto-save"
+      },
+      {
+        "subtitle": "Auto Save Interval",
+        "contents": "<h2>Auto Save Interval</h2><p>This controls how often Auto Save runs, in seconds.</p><p>For example, <code>30 s</code> means the current project is automatically saved about every 30 seconds while Auto Save is enabled.</p><p>Set a shorter interval when you are doing frequent small edits. Use a longer interval when you are making large groups of changes.</p>",
+        "id": "editor-settings--auto-save-interval"
+      },
+      {
+        "subtitle": "Prevent accidental reload or close",
+        "contents": "<h2>Prevent accidental reload or close</h2><p>When a project is loaded, the editor prevents common accidental reload shortcuts such as F5 and Ctrl/Cmd+R and asks the browser for confirmation when the page is being reloaded or closed.</p>",
+        "id": "editor-settings--prevent-accidental-reload-or-close"
+      },
+      {
+        "subtitle": "Reset Defaults",
+        "contents": "<h2>Reset Defaults</h2><p><strong>Reset Defaults</strong> restores the editor settings to their default values and restores the default keyboard shortcuts. The current editor preference values are replaced by the defaults.</p><table><thead><tr><th>Setting</th><th>Default</th></tr></thead><tbody><tr><td>Move / Scale Snap</td><td>1</td></tr><tr><td>Rotate Snap</td><td>0° (Off)</td></tr><tr><td>Auto Save</td><td>Off</td></tr><tr><td>Auto Save Interval</td><td>30 Seconds</td></tr></tbody></table>",
+        "id": "editor-settings--reset-defaults"
+      },
+      {
+        "subtitle": "Import Preferences",
+        "contents": "<h2>Import Preferences</h2><p><strong>Import Pref...</strong> loads an editor preference JSON file previously downloaded from Node2D. Stored editor settings and saved shortcut choices are restored from the file, so the editor changes to match the imported preferences.</p><p>The import can also restore stored preference keys contained in the exported preference data, allowing newer preference values to be carried between editor versions.</p>",
+        "id": "editor-settings--import-preferences"
+      },
+      {
+        "subtitle": "Multiselection Unified Editing",
+        "contents": "<h2>Multiselection Unified Editing</h2><p><strong>Multiselection Unified Editing</strong> is a Bool editor setting and is <strong>True</strong> by default.</p><p>When True, multiple selected Nodes behave like one object for Move, Scale, and Rotate. Scaling changes the group as a whole while preserving each Node's relative position and size. Rotating turns the group around its combined center.</p><p>The selection gets one large yellow outline covering the whole group.</p><p>When False, each selected Node gets its own yellow outline. Scale changes each Node individually, and Rotate changes each Node's own angle without orbiting its position around the group center.</p><h3>Transform gizmo interaction</h3><p>With multiple Nodes selected, the Move gizmo uses the same axis behavior as a single Node: drag the red arrow to move only on X, drag the green arrow to move only on Y, and drag the center square to move freely. The same group behavior is applied to keyboard nudging.</p>",
+        "id": "editor-settings--multiselection-unified-editing"
+      },
+      {
+        "subtitle": "Create New Missing Component",
+        "contents": "<h2>Create New Missing Component</h2><p>Default: <strong>False</strong>.</p><p>When enabled, a multi-selection edit can create the edited Component on Nodes that do not currently have it. This is useful when you want a group of Nodes to end up with the same Component property even if some Nodes started without that Component.</p>",
+        "id": "editor-settings--create-new-missing-component"
+      },
+      {
+        "subtitle": "Save without blocking the editor",
+        "contents": "<h2>Saving and editor responsiveness</h2><p>Project saving is queued so repeated Save requests do not overlap. Project encoding is moved to a background Web Worker when supported, while the browser continues handling the editor UI. A newer save request waits as one queued operation instead of starting several saves at once.</p><p>Auto Save uses the same queued save path.</p>",
+        "id": "editor-settings--background-saving"
+      },
+      {
+        "subtitle": "Inspector numeric editing",
+        "contents": "<h2>Inspector value editing</h2><p>String and numeric Component values use normal inputs. Double-clicking or double-tapping a Component property is not required.</p><p>In multi-selection, the same normal inputs participate in MUE and per-field <code>&lt;&gt;</code> state. Editing one field writes that field to every selected Node without changing unrelated fields.</p>",
+        "id": "editor-settings--inspector-values"
+      },
+      {
+        "subtitle": "Component Value Editing",
+        "contents": "<h2>Component Value Editing</h2><p>Component string and numeric properties are edited directly through their normal inputs. Double-click and double-tap are not part of the Component property editing model.</p><p>In multi-selection, these same inputs participate in per-field <code>&lt;&gt;</code> mixed values and MUE propagation. Editing a value commits it to all selected Nodes without changing unrelated properties.</p>",
+        "id": "editor-settings--component-value-editing"
+      }
+    ]
+  },
+  {
+    "title": "Keyboard Shortcuts",
+    "items": [
+      {
+        "subtitle": "Project shortcuts",
+        "contents": "<h2>Project shortcuts</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Ctrl+S</td><td>Save</td></tr><tr><td>Ctrl+N</td><td>New Project</td></tr><tr><td>Ctrl+O</td><td>Open / Load</td></tr><tr><td>Ctrl+E</td><td>Export</td></tr></tbody></table>",
+        "id": "keyboard-shortcuts--project-shortcuts"
+      },
+      {
+        "subtitle": "Editing shortcuts",
+        "contents": "<h2>Editing shortcuts</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Ctrl+C</td><td>Copy</td></tr><tr><td>Ctrl+X</td><td>Cut</td></tr><tr><td>Ctrl+V</td><td>Paste</td></tr><tr><td>Ctrl+D</td><td>Duplicate</td></tr><tr><td>Delete / Backspace</td><td>Delete</td></tr><tr><td>F2</td><td>Rename</td></tr><tr><td>Ctrl+A</td><td>Select All</td></tr><tr><td>Ctrl+Shift+A</td><td>Deselect All</td></tr><tr><td>Ctrl+Z</td><td>Undo</td></tr><tr><td>Ctrl+Y or Ctrl+Shift+Z</td><td>Redo</td></tr></tbody></table>",
+        "id": "keyboard-shortcuts--editing-shortcuts"
+      },
+      {
+        "subtitle": "View and runtime shortcuts",
+        "contents": "<h2>View and runtime</h2><table><thead><tr><th>Shortcut</th><th>Action</th></tr></thead><tbody><tr><td>Space</td><td>Play / Stop</td></tr><tr><td>F11</td><td>Fullscreen</td></tr><tr><td>Ctrl+=</td><td>Zoom In</td></tr><tr><td>Ctrl+-</td><td>Zoom Out</td></tr><tr><td>Ctrl+0</td><td>Reset Zoom</td></tr><tr><td>F</td><td>Center Camera</td></tr><tr><td>Escape</td><td>Close / Cancel</td></tr><tr><td>Shift+F10</td><td>Context Menu</td></tr><tr><td>Ctrl+Q</td><td>Snap to Target</td></tr></tbody></table>",
+        "id": "keyboard-shortcuts--view-and-runtime-shortcuts"
+      },
+      {
+        "subtitle": "Node tool shortcuts",
+        "contents": "<h2>Node tool shortcuts</h2><table><thead><tr><th>Key</th><th>Tool</th></tr></thead><tbody><tr><td>1</td><td>Select</td></tr><tr><td>2</td><td>Move</td></tr><tr><td>3</td><td>Rotate</td></tr><tr><td>4</td><td>Scale</td></tr><tr><td>5</td><td>All</td></tr></tbody></table><p>These commands can be changed in Editor Settings.</p><h3>Move mode</h3><p><strong>Shift+Arrow Left/Right/Up/Down</strong> and <strong>Shift+A/D/W/S</strong> move the selection by the Move / Scale Snap amount. The commands operate on multi-selection and on MUE selections.</p><h3>Rotate mode</h3><p><strong>Shift+ArrowLeft / Shift+ArrowUp / Shift+A</strong> rotate left. <strong>Shift+ArrowRight / Shift+ArrowDown / Shift+D</strong> rotate right. The step uses Rotate Snap; when Rotate Snap is 0, keyboard rotation uses a 1-degree fallback.</p>",
+        "id": "keyboard-shortcuts--node-tool-shortcuts"
+      },
+      {
+        "subtitle": "Core editing shortcuts",
+        "contents": "<h2>Core editing shortcuts</h2><table><thead><tr><th>Command</th><th>Default</th></tr></thead><tbody><tr><td>Save</td><td>Ctrl+S</td></tr><tr><td>Copy / Cut / Paste</td><td>Ctrl+C / Ctrl+X / Ctrl+V</td></tr><tr><td>Duplicate</td><td>Ctrl+D</td></tr><tr><td>Delete</td><td>Delete or Backspace</td></tr><tr><td>Rename</td><td>F2</td></tr><tr><td>Select All</td><td>Ctrl+A</td></tr><tr><td>Deselect All</td><td>Ctrl+Shift+A</td></tr><tr><td>Undo / Redo</td><td>Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z</td></tr><tr><td>Play / Stop</td><td>Space</td></tr><tr><td>Fullscreen</td><td>F11</td></tr></tbody></table><p>All shortcuts are configurable in Editor Settings.</p><p>Move and Rotate nudging shortcuts are mode-specific and are configurable in Editor Settings.</p>",
+        "id": "keyboard-shortcuts--core-editing"
+      },
+      {
+        "subtitle": "Group and ungroup",
+        "contents": "<h2>Group and Ungroup</h2><p><strong>Ctrl+G</strong> groups the selected Scene items into a new Folder. <strong>Ctrl+U</strong> moves the children of the selected Folder back into its parent and removes the Folder. Grouping works on top-level selected items from the same parent folder.</p>",
+        "id": "keyboard-shortcuts--group-and-ungroup"
+      }
+    ]
+  },
+  {
+    "title": "Offline Mode and PWA",
+    "items": [
+      {
+        "subtitle": "Automatic offline mode",
+        "contents": "<h2>Automatic offline mode</h2><p>Node2D caches its editor files in your browser whenever you visit it while online.</p><ul><li><strong>Online:</strong> loads the newest editor files and refreshes the browser cache.</li><li><strong>Offline:</strong> opens from the most recently cached editor copy.</li><li><strong>Online again:</strong> requests the newest version and updates the cache when the newer files are available.</li></ul><p>The editor cache is separate from Local NDC project storage.</p>",
+        "id": "offline-mode-and-pwa--automatic-offline-mode"
+      },
+      {
+        "subtitle": "Offline toast",
+        "contents": "<h2>Offline message</h2><p>When the editor starts using its saved offline copy, it shows a notification so you know that Offline Mode is active.</p>",
+        "id": "offline-mode-and-pwa--offline-toast"
+      },
+      {
+        "subtitle": "PWA installation",
+        "contents": "<h2>PWA</h2><p>The editor itself can be used as a Progressive Web App when the browser supports installation. This is separate from exporting a game as a PWA: the editor can also have its own installable/offline behavior.</p>",
+        "id": "offline-mode-and-pwa--pwa-installation"
+      },
+      {
+        "subtitle": "Landscape PWA preference",
+        "contents": "<h2>Landscape PWA preference</h2><p>The Node2D Game Engine PWA manifest requests <strong>landscape</strong> orientation. On browsers and installed-app environments that support the manifest orientation setting, the installed app prefers to open in landscape.</p>",
+        "id": "offline-mode-and-pwa--landscape-pwa-preference"
+      }
+    ]
+  },
+  {
+    "title": "Quick Reference",
+    "items": [
+      {
+        "subtitle": "Components",
+        "contents": "<h2>Components</h2><p><code>Node</code> — object identity. <code>Script</code> — visual script graph. <code>Transform</code> — position, scale, rotation. <code>Text</code> — displayed text. <code>Sprite</code> — images and animated presentation. <code>Animation Sprite</code> — collections of sprite frames. <code>Physics</code> — physical movement. <code>Collider</code> — collision shape. <code>Progress Bar</code> — value meter. <code>Joystick</code> — touch control.</p>",
+        "id": "quick-reference--components"
+      },
+      {
+        "subtitle": "Events",
+        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onInputFocus</code>, <code>onInputBlur</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, <code>onUnload</code>.</p>",
+        "id": "quickref-events"
+      },
+      {
+        "subtitle": "Actions",
+        "contents": "<h2>Actions</h2><p><code>loadScene</code>, <code>stopAnimation</code>, <code>startAnimation</code>, <code>stepAnimation</code>, <code>setVariable</code>, <code>saveVariable</code>, <code>loadVariable</code>, <code>setTransform</code>, <code>setNode</code>, <code>setText</code>, <code>setSprite</code>, <code>setInputComponent</code>, <code>focusInput</code>, <code>blurInput</code>, <code>setPhysics</code>, <code>setCollider</code>, <code>setProgressBar</code>, <code>Follow Object</code>, <code>Chase</code>, <code>Avoid</code>, <code>Destroy Object</code>, <code>Create Object</code>, <code>setVelocity</code>, <code>setCamera</code>, <code>playAudio</code>, <code>startSpeechRecognition</code>, <code>stopSpeechRecognition</code>, <code>stopAudio</code>, <code>clearAudio</code>.</p>",
+        "id": "quickref-actions"
+      },
+      {
+        "subtitle": "Controls",
+        "contents": "<h2>Controls</h2><p><a class=\"help-ref\" href=\"?topic=controls-boolean\" data-help-topic=\"controls-boolean\">Boolean</a> · <a class=\"help-ref\" href=\"?topic=controls-interval\" data-help-topic=\"controls-interval\">Interval</a> · <a class=\"help-ref\" href=\"?topic=controls-timeout\" data-help-topic=\"controls-timeout\">Timeout</a> · <a class=\"help-ref\" href=\"?topic=controls-iscollidedwith\" data-help-topic=\"controls-iscollidedwith\">isCollidedWith</a></p><p>Control nodes use <code>next</code> to continue a flow where applicable.</p>",
+        "id": "quickref-controls"
+      },
+      {
+        "subtitle": "New Event: onConnectionChange",
+        "contents": "<h2>onConnectionChange</h2><p><code>onConnectionChange</code> is an Event ScriptNode with a <code>Connection</code> selector containing <code>Online</code> and <code>Offline</code>. It sends <code>out</code> when the browser changes network connection state while the game is running.</p>",
+        "id": "quick-reference--new-event-onconnectionchange"
+      },
+      {
+        "subtitle": "Editor Snap",
+        "contents": "<h2>Editor Snap</h2><p>Default Move / Scale Snap: <code>1</code>. Default Rotate Snap: <code>0° (Off)</code>. Both settings can be changed in Editor Settings and are saved on your device.</p>",
+        "id": "quick-reference--editor-snap"
+      },
+      {
+        "subtitle": "Audio playback inputs",
+        "contents": "<h2>Audio playback inputs</h2><p><code>playAudio</code> uses <code>src</code>, <code>volume</code>, <code>start</code>, <code>duration</code>, <code>loop</code>, <code>fadein</code>, and <code>fadeout</code>. Volume is a 0–100 value. Frequently played short sounds are decoded and cached so later calls can be scheduled with very little playback overhead.</p>",
+        "id": "quick-reference--audio-playback-inputs"
+      },
+      {
+        "subtitle": "New microphone ScriptNodes",
+        "contents": "<h2>Microphone ScriptNodes</h2><p>Events: <code>onAudioPickup</code>. Actions: <code>startSpeechRecognition</code> and <code>stopSpeechRecognition</code>. These require <strong>Use Mic</strong> to be enabled in Game Settings.</p>",
+        "id": "quick-reference--new-microphone-scriptnodes"
+      },
+      {
+        "subtitle": "Requirements",
+        "contents": "<h2>ScriptNode requirements</h2><p>A ScriptNode can require a Game Settings feature. Required ScriptNodes remain visible but are disabled until the required feature is enabled.</p>",
+        "id": "quick-reference--requirements"
+      },
+      {
+        "subtitle": "Editor Settings defaults",
+        "contents": "<h2>Editor Settings defaults</h2><table><thead><tr><th>Setting</th><th>Default</th></tr></thead><tbody><tr><td>Move / Scale Snap</td><td>1</td></tr><tr><td>Rotate Snap</td><td>0° / Off</td></tr><tr><td>Multiselection Unified Editing</td><td>True</td></tr><tr><td>Create New Missing Component</td><td>False</td></tr><tr><td>Auto Save</td><td>Off</td></tr><tr><td>Auto Save Interval</td><td>30 seconds</td></tr></tbody></table><p>Reset Defaults restores these values and the default keyboard shortcuts.</p>",
+        "id": "quick-reference--editor-settings-defaults"
+      },
+      {
+        "subtitle": "Multi-selection editing",
+        "contents": "<h2>Multi-selection editing</h2><p>Select multiple Nodes and edit them through the group gizmo. <a class=\"help-ref\" href=\"#help:editor-settings--multiselection-unified-editing\" data-help-topic=\"editor-settings--multiselection-unified-editing\">Multiselection Unified Editing</a> controls whether transforms are unified or per-Node. <a class=\"help-ref\" href=\"#help:editor-layout-and-controls--context-menus\" data-help-topic=\"editor-layout-and-controls--context-menus\">Context menus</a> contains Select All - &lt;Name&gt;.</p>",
+        "id": "quick-reference--multi-selection-editing"
+      },
+      {
+        "subtitle": "Scene State ScriptNodes",
+        "contents": "<h2>Scene State ScriptNodes</h2><p><a class=\"help-ref\" href=\"#help:scriptnodes-actions--savestate\" data-help-topic=\"scriptnodes-actions--savestate\">saveState</a> and <a class=\"help-ref\" href=\"#help:scriptnodes-actions--loadstate\" data-help-topic=\"scriptnodes-actions--loadstate\">loadState</a> store and restore complete runtime Scene snapshots. <a class=\"help-ref\" href=\"#help:scriptnodes-actions--removestate\" data-help-topic=\"scriptnodes-actions--removestate\">removeState</a> deletes one named snapshot and <a class=\"help-ref\" href=\"#help:scriptnodes-actions--clearstate\" data-help-topic=\"scriptnodes-actions--clearstate\">clearState</a> deletes all saved snapshots for the current play session. Snapshots survive Scene changes and Scene reloads until removed or the play session ends.</p>",
+        "id": "quick-reference--scene-state-scriptnodes"
+      },
+      {
+        "subtitle": "Node ordering",
+        "contents": "<h2>Node ordering</h2><p><a class=\"help-ref\" href=\"?topic=nodes-index\" data-help-topic=\"nodes-index\">Index and Move Up/Down</a></p>",
+        "id": "quickref-node-ordering"
+      },
+      {
+        "subtitle": "Visibility and Particles",
+        "contents": "<h2>Visibility and Particles</h2><p><code>setVisible</code> shows/hides a Node without destroying it. <code>isVisible</code> checks that state. <code>createParticles</code> creates Circle, Trail, Box, or Sprite particles with position, scale, velocity, acceleration, angle, color, opacity, lifetime, and count.</p>",
+        "id": "quick-reference--visibility-and-particles"
+      },
+      {
+        "subtitle": "Expression timing helpers",
+        "contents": "<h2>Expression timing helpers</h2><p>Use <code>performance.now()</code> for elapsed-time/profiling measurements and <code>Date.now()</code> for a wall-clock Unix timestamp.</p>",
+        "id": "quick-reference--expression-timing"
+      }
+    ]
+  },
+  {
+    "title": "Documentation and Context Navigation",
+    "items": [
+      {
+        "subtitle": "Documentation query behavior",
+        "contents": "<h2>Documentation query behavior</h2><p>Node2D Help is designed so context-menu documentation can open the same documentation surface already used by the Help button. The Help page reads <code>help.json</code>, indexes section titles, subtitles, and HTML contents, and accepts query parameters for navigation.</p><h3>Query forms</h3><ul><li><code>?search=Sprite</code> filters the navigation and selects the first matching topic.</li><li><code>?topic=components--sprite</code> selects a specific topic ID.</li></ul><p>For a context menu entry such as <strong>? Documentation</strong>, the useful target is the exact Node, Component, or ScriptNode name so the Help search can locate the corresponding topic.</p>",
+        "id": "documentation-and-context-navigation--documentation-query-behavior"
+      },
+      {
+        "subtitle": "Documentation structure",
+        "contents": "<h2>Documentation structure</h2><p>Every documentation topic uses the same structure: a section title, a <strong>subtitle</strong> used in the navigation, an HTML <strong>contents</strong> body, and a stable <strong>id</strong>. This keeps the Help renderer predictable and makes direct links possible.</p><p>Component and ScriptNode topics should use their exact editor-facing names in the subtitle whenever possible so context-menu queries can find them without requiring aliases.</p>",
+        "id": "documentation-and-context-navigation--documentation-structure"
+      }
+    ]
+  },
+  {
+    "title": "Troubleshooting",
+    "items": [
+      {
+        "subtitle": "A variable name was rejected",
+        "contents": "<h2>Variable name rejected</h2><p>Choose a name that is not already used in a conflicting scope. The editor keeps the last valid name and shows the field with red error styling when a conflict is detected.</p>",
+        "id": "troubleshooting--a-variable-name-was-rejected"
+      },
+      {
+        "subtitle": "An asset was rejected",
+        "contents": "<h2>Asset rejected</h2><p>Check that the file is a supported image or audio type for the drop/import area you are using. Unsupported file types are intentionally rejected.</p>",
+        "id": "troubleshooting--an-asset-was-rejected"
+      },
+      {
+        "subtitle": "The game view does not fit the screen",
+        "contents": "<h2>Game view fitting</h2><p>Check Game Settings → Screen Type. Windowboxing keeps the 16:9 shape, Stretch fills the screen, Crop fills the screen while cutting edges, and Smart Camera changes the visible camera area.</p>",
+        "id": "troubleshooting--the-game-view-does-not-fit-the-screen"
+      },
+      {
+        "subtitle": "A MIDI file is still loading",
+        "contents": "<h2>MIDI loading</h2><p>Large MIDI files can take time to process. Watch the loading percentage shown by the MIDI Editor instead of assuming the editor is frozen.</p>",
+        "id": "troubleshooting--a-midi-file-is-still-loading"
+      },
+      {
+        "subtitle": "The editor is too narrow",
+        "contents": "<h2>Editor too narrow</h2><p>Rotate the device or expand the window when the editor displays the small-screen warning. Editing is intentionally blocked while the screen is too narrow.</p>",
+        "id": "troubleshooting--the-editor-is-too-narrow"
+      },
+      {
+        "subtitle": "Objects move by tiny decimal amounts",
+        "contents": "<h2>Objects move by tiny decimal amounts</h2><p>Check <strong>Editor Settings → Move / Scale Snap</strong>. A value such as <code>0.1</code> makes the position and scale use tenth-unit steps while the gizmo is dragged.</p><p>Snapping is applied to the Move gizmo center/axes and to the Scale gizmo handles. Rotation has its own separate snap setting.</p>",
+        "id": "troubleshooting--objects-move-by-tiny-decimal-amounts"
+      },
+      {
+        "subtitle": "Scale corner does not keep the ratio",
+        "contents": "<h2>Scale corner behavior</h2><p>Use a corner handle when you want a proportional resize. Corner handles preserve the starting width-to-height ratio. Use a side handle when you intentionally want to change only width or only height.</p>",
+        "id": "troubleshooting--scale-corner-does-not-keep-the-ratio"
+      },
+      {
+        "subtitle": "ScriptNode placement",
+        "contents": "<h2>ScriptNode placement</h2><p>When adding a ScriptNode from the library, Node2D places it at the center of the currently visible Script canvas, taking the current pan and zoom into account. Dragging a ScriptNode into the canvas places it at the actual drop location.</p>",
+        "id": "troubleshooting--scriptnode-placement"
+      },
+      {
+        "subtitle": "Mixed-value control does not commit",
+        "contents": "<h2>Multi-selection value will not commit</h2><p>Press <strong>Enter</strong> or click/focus outside the control. Changing selection also forces the active edit to commit before the inspector is rebuilt. If values differ, first click <code>&lt;&gt;</code> to activate the normal field; the field starts from the first selected Node and then applies the committed value to the current selection.</p>",
+        "id": "troubleshooting--mixed-value-commit"
+      }
+    ]
+  },
+  {
+    "title": "Latest Editor and Runtime Reference",
+    "items": [
+      {
+        "subtitle": "Physics collision participation",
+        "contents": "<h2>Physics isCollider</h2><p><strong>Collider</strong> controls whether the Node has a detectable collision shape. Turning Collider off disables that shape for collision detection.</p><p><strong>Physics → isCollider</strong> controls whether this Physics body participates in physical collision response. Turning isCollider off does <em>not</em> remove or disable the Collider shape, and the body continues to receive normal physics motion such as gravity, velocity and rotation.</p><p>For physical response between two Physics bodies, both bodies must have isCollider enabled. A Collider shape can still be detected/overlapped when isCollider is disabled.</p>",
+        "id": "latest-reference--physics-iscollider-eligibility"
+      },
+      {
+        "subtitle": "Multi-selection component editing",
+        "contents": "<h2>Multi-selection component editing</h2><p>The multi-selection inspector uses the same property-editing model as single selection. Properties are identified by component/property paths rather than a fixed component list.</p><p>Mixed values are evaluated independently. For vectors, each axis has its own <code>&lt;&gt;</code> state, so X can be mixed while Y is identical. Editing a mixed property propagates that property to every selected Node.</p><p>Adding a component applies to every selected Node that is missing it. Removing a removable component applies to every selected Node that has it. Pasting a component also applies to every selected Node.</p>",
+        "id": "latest-reference--multi-selection-components"
+      },
+      {
+        "subtitle": "Joint inspector, MUE, and visualization",
+        "contents": "<h2>Joint inspector, MUE, and visualization</h2><p>Every supported joint property uses the same multi-selection property system as other components. Joint vector axes and scalar values can show their own <code>&lt;&gt;</code> markers.</p><p>Joint editor visualization shows connection lines, anchors, type labels, wheel/prismatic axes, and pulley ground guides. Editing a joint does not move bodies in the editor. Runtime physics enforces the actual constraint when the project runs.</p>",
+        "id": "latest-reference--joint-inspector"
+      },
+      {
+        "subtitle": "Circle and Triangle collision shapes",
+        "contents": "<h2>Circle and Triangle collision shapes</h2><p>Circle, Triangle, and Rectangle Collider shapes use the runtime collision pipeline. Circle-versus-polygon detection includes polygon axes plus a closest-feature axis so edge and corner contacts resolve consistently.</p><p>Physical collision response requires both Physics bodies to have isCollider enabled. The Collider shape remains available independently of isCollider, so overlap/detection does not erase the configured shape.</p><p>Friction and rotational contact response use the same contact solver for circles, triangles, and rectangles.</p>",
+        "id": "latest-reference--circle-triangle-colliders"
+      },
+      {
+        "subtitle": "Component context-menu documentation",
+        "contents": "<h2>Component context-menu documentation</h2><p>The component, Node, and Script context menus include <strong>? Documentation</strong>. Selecting it opens the Help page with a targeted search query for that component or feature.</p>",
+        "id": "latest-reference--component-context-documentation"
+      }
+    ]
+  },
+  {
+    "title": "Debugging",
+    "subtitle": "Editor and runtime debugging",
+    "items": [
+      {
+        "subtitle": "Show Collider",
+        "contents": "<h2>Show Collider</h2><p><strong>Editor Settings → Debugging → Show Collider</strong> controls collider visualization during Debug Play. When enabled, Debug Play draws the same collider geometry used by the runtime physics system, including rectangles, circles, and triangles.</p>",
+        "id": "debugging--show-collider"
+      },
+      {
+        "subtitle": "Show Joints",
+        "contents": "<h2>Show Joints</h2><p><strong>Editor Settings → Debugging → Show Joints</strong> controls joint visualization during Debug Play. When enabled, Debug Play draws joint links, anchors, axes, pulley ground anchors, and joint labels using the same visual style as the editor joint display.</p>",
+        "id": "debugging--show-joints"
+      }
+    ]
+  }
+]
