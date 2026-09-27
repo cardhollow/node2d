@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Node2D Game Engine</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23111'/%3E%3Cg stroke='%23555' stroke-width='16' fill='none' stroke-linecap='round'%3E%3Cpath d='M256 100V180'/%3E%3Cpath d='M256 180H140V270'/%3E%3Cpath d='M256 180H372V270'/%3E%3Cpath d='M140 270V350'/%3E%3Cpath d='M372 270V350'/%3E%3C/g%3E%3Crect x='196' y='70' width='120' height='90' rx='22' fill='white'/%3E%3Crect x='90' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Crect x='302' y='250' width='120' height='90' rx='22' fill='%23111' stroke='white' stroke-width='14'/%3E%3Ccircle cx='140' cy='390' r='28' fill='white'/%3E%3Ccircle cx='372' cy='390' r='28' fill='white'/%3E%3C/svg%3E">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111111">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="appShell" class="app-shell">
+    <header id="topbar" class="topbar">
+      <div class="top-part part-left" anchor="left">
+        <button class="top-button menu-trigger" data-menu="fileMenu" title="File"><span class="icon">▣</span><span class="label">File</span></button>
+        <div id="fileMenu" class="context-menu" data-close-outside="true">
+          <button data-menu-sub="projectMenu"><span>▰</span>Project <b>›</b></button>
+          <div id="projectMenu" class="context-menu nested-menu" data-close-outside="true">
+            <button data-action="new-project"><span>＋</span>New</button>
+            <button data-action="load-local"><span>▱</span>Load Local</button>
+            <button data-action="save-project"><span>▣</span>Save in Project</button>
+            <button data-action="export-ndc"><span>⇧</span>Export .ndc</button>
+            <button data-action="import-project"><span>⇩</span>Import .ndc</button>
+          </div>
+          <div class="menu-separator"></div>
+          <button data-menu-sub="viewMenu"><span>◫</span>View <b>›</b></button>
+          <div id="viewMenu" class="context-menu nested-menu" data-close-outside="true">
+            <button data-toggle-panel="selectionPanel"><span class="check-box-icon" id="selectionPanelIcon">☑</span>Selection panel</button>
+            <button data-toggle-panel="componentPanel"><span class="check-box-icon" id="componentPanelIcon">☑</span>Component panel</button>
+          </div>
+          <div class="menu-separator"></div>
+          <button data-action="export-project"><span>⇧</span>Export Project</button>
+          <button data-action="game-settings"><span>⚙</span>Game Settings</button>
+          <button data-action="editor-settings"><span>⚙</span>Editor Settings</button>
+          <button data-action="help"><span>?</span>Help</button>
+          <div class="menu-separator"></div>
+          <button data-action="install-node2d" data-node2d-install hidden><span>⇩</span>Install Node2D</button>
+          <div class="menu-separator"></div>
+          <button data-action="exit"><span>⏻</span>Exit</button>
+        </div>
+      </div>
+
+      <div class="top-part part-center scene-part" anchor="center">
+        <button class="top-button menu-trigger" data-menu="sceneMenu" title="Scene"><span class="icon">◇</span><span class="label">Scene</span><span class="chevron">⌄</span></button>
+        <div id="sceneMenu" class="context-menu scene-menu" data-close-outside="true">
+          <div class="menu-title">Scenes</div>
+          <div id="sceneList"></div>
+          <div class="menu-separator"></div>
+          <button data-action="add-scene"><span class="accent">＋</span>Add scene</button>
+        </div>
+        <button class="top-button" data-action="open-assets" title="Assets Manager"><span class="icon">▦</span><span class="label">Assets Manager</span></button>
+      </div>
+
+      <div class="top-part part-actions" anchor="center">
+        <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon">☷</span><span class="label">Actions</span><span class="chevron">⌄</span></button>
+        <button id="topUndoButton" class="top-button history-top-button" data-action="undo" title="Undo"><span class="icon">↶</span><span class="label">Undo</span></button>
+        <button id="topRedoButton" class="top-button history-top-button" data-action="redo" title="Redo"><span class="icon">↷</span><span class="label">Redo</span></button>
+        <div id="actionsMenu" class="context-menu" data-close-outside="true">
+          <button data-action="cut-node"><span>✂</span>Cut Node</button>
+          <button data-action="copy-node"><span>⧉</span>Copy Node</button>
+          <button data-action="paste-node"><span>▣</span>Paste Node</button>
+          <button id="toggleMultiSelectionAction" data-action="toggle-multi-selection" aria-pressed="false"><span data-multi-selection-icon>☐</span>Multi Selection</button>
+          <div class="menu-separator"></div>
+          <button data-action="open-history"><span>◷</span>History</button>
+        </div>
+      </div>
+
+      <div class="top-part part-modes" anchor="center">
+        <button class="mode-button active" data-mode="select" title="Select"><span>⌖</span><span class="mode-label">Select</span></button>
+        <button class="mode-button" data-mode="move" title="Move"><span>↔</span><span class="mode-label">Move</span></button>
+        <button class="mode-button" data-mode="rotate" title="Rotate"><span>⟳</span><span class="mode-label">Rotate</span></button>
+        <button class="mode-button" data-mode="scale" title="Scale"><span>⤢</span><span class="mode-label">Scale</span></button>
+        <button class="mode-button" data-mode="all" title="All"><span>✣</span><span class="mode-label">All</span></button>
+      </div>
+
+      <div class="top-part part-right" anchor="right">
+        <button class="top-button add-node-top" data-action="add-node" title="Add Node"><span class="icon">◇＋</span><span class="label">Add Node</span></button>
+        <button class="top-button menu-trigger" data-menu="playMenu" title="Play"><span class="icon">▶</span><span class="label">Play</span><span class="chevron">⌄</span></button>
+        <div id="playMenu" class="context-menu right-align" data-close-outside="true">
+          <button data-action="play-scene"><span>▶</span>Play Scene</button>
+          <button data-action="debug-scene"><span>⌁</span>Debug</button>
+          <div class="context-separator"></div>
+          <button data-action="play-current-scene"><span>▶</span>Play Current Scene</button>
+          <button data-action="debug-current-scene"><span>⌁</span>Debug Current Scene</button>
+        </div>
+        <button id="fullscreenButton" class="top-button icon-only fullscreen-button" data-action="toggle-fullscreen" title="Fullscreen" type="button"><span class="icon">⛶</span><span class="shortcut-hint">F11</span></button>
+      </div>
+    </header>
+    <div id="stageStatus" class="workplace-status">Ready</div>
+
+    <main class="editor-body">
+      <section id="workplace" class="workplace" aria-label="Workplace">
+        <canvas id="workplaceCanvas"></canvas>
+        <div class="workplace-toolbar">
+          <div class="stage-badge"><span class="stage-dot"></span><span id="stageSceneName">Main</span></div>
+          <div class="stage-hint"><span id="activeModeLabel">Select</span> · Zoom <span id="zoomLabel">100%</span> · <span id="panLabel">Pan 0, 0</span></div>
+        </div>
+      </section>
+
+      <aside id="inspectorDock" class="inspector-dock" aria-label="Editor inspector panels">
+        <section id="selectionPanel" class="panel selection-panel">
+          <div class="panel-edge panel-edge-right" data-resize-split="selection"></div>
+          <div class="panel-header"><div><strong>Selection</strong><span class="panel-subtitle">Scene structure</span></div><span id="selectionId" class="selection-id">—</span><button class="panel-icon" data-action="collapse-selection" title="Collapse">‹</button></div>
+          <div id="selectionTree" class="selection-tree"></div>
+        </section>
+        <section id="componentPanel" class="panel component-panel">
+          <div class="panel-edge panel-edge-left" data-resize-split="component"></div>
+          <div class="panel-header"><div><strong>Components</strong><span id="componentTarget" class="panel-subtitle">Scene Camera</span></div><button class="panel-icon" data-action="collapse-components" title="Collapse">›</button></div>
+          <div id="componentContent" class="component-scroll"></div>
+          <div class="component-footer"><button class="add-component-button" data-action="open-add-component"><span>＋</span>Add Component</button></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" hidden></div>
+
+  <section id="projectModal" class="modal project-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header project-modal-header"><div><h3>Node2D</h3><p>Create a project to enter the editor.</p></div><span id="node2dVersion" class="node2d-version" aria-label="Node2D version">v—</span></div>
+    <div class="project-choice-grid">
+      <button class="project-choice" data-project-action="create"><span class="choice-icon">＋</span><strong>Create New</strong><small>Create a new unsaved Node2D project.</small></button>
+      <button class="project-choice" data-project-action="load"><span class="choice-icon">▱</span><strong>Load</strong><small>Load a local project or import an .ndc file.</small></button>
+    </div>
+    <div id="node2dInstallBar" class="node2d-install-bar" data-node2d-install hidden>
+      <div class="node2d-install-info"><span class="node2d-install-icon">⇩</span><div><strong>Install Node2D APP</strong><small>Install Node2D Game Engine for faster access and offline use.</small></div></div>
+      <button class="btn primary node2d-install-button" type="button" data-action="install-node2d">Install</button>
+    </div>
+
+  </section>
+
+  <section id="projectNameModal" class="modal project-name-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Project Name</h3><p>Name your new Node2D project.</p></div></div>
+    <div class="project-name-body"><label class="property-label" for="projectNameInput">Name</label><input id="projectNameInput" type="text" maxlength=120 autocomplete="off" placeholder="My Project" /></div>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="submit-project-name">Create</button></div>
+  </section>
+
+  <section id="exportProjectModal" class="modal export-project-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Export Project</h3><p>Build a standalone app package from the current project.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="export-project-scroll">
+      <div class="export-section">
+        <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input id="exportProjectName" class="export-input" type="text" maxlength="120" autocomplete="off"></div></div>
+        <div class="property-row"><span class="property-label">Version</span><div class="property-control"><input id="exportProjectVersion" class="export-input" type="text" maxlength="32" autocomplete="off" placeholder="1.0.0"></div></div>
+        <div class="property-row"><span class="property-label">Icon</span><div class="property-control"><button id="exportProjectIcon" class="asset-select-button export-icon-select" type="button">Select Sprite</button></div></div>
+      </div>
+      <div class="export-section export-splash-section">
+        <div class="export-section-title">Splash</div>
+        <label class="property-row checkbox-row"><span class="property-label">Splash</span><span class="property-control checkbox-control"><input id="exportSplashEnabled" type="checkbox" class="ui-checkbox" checked></span></label>
+        <div class="property-row"><span class="property-label">Icon</span><div class="property-control"><button id="exportSplashIcon" class="asset-select-button export-icon-select" type="button">Select Sprite</button></div></div>
+        <div class="property-row"><span class="property-label">Title</span><div class="property-control"><input id="exportSplashTitle" class="export-input" type="text" maxlength="80" value="Node2D" autocomplete="off"></div></div>
+      </div>
+      <div class="export-section export-pwa-toggle">
+        <label class="property-row checkbox-row"><span class="property-label">Allow PWA Installation</span><span class="property-control checkbox-control"><input id="exportPwaEnabled" type="checkbox" class="ui-checkbox"></span></label>
+      </div>
+      <section id="exportPwaEditor" class="export-pwa-editor" hidden>
+        <div class="export-section-title">PWA Editor</div>
+        <div class="property-row"><span class="property-label">App Name</span><div class="property-control"><input id="pwaName" class="export-input" type="text"></div></div>
+        <div class="property-row"><span class="property-label">Short Name</span><div class="property-control"><input id="pwaShortName" class="export-input" type="text" maxlength="32"></div></div>
+        <div class="property-row"><span class="property-label">Start URL</span><div class="property-control"><input id="pwaStartUrl" class="export-input" type="text" value="./"></div></div>
+        <div class="property-row"><span class="property-label">Display</span><div class="property-control"><select id="pwaDisplay" class="export-native-select"><option value="standalone">Standalone</option><option value="fullscreen">Fullscreen</option><option value="minimal-ui">Minimal UI</option><option value="browser">Browser</option></select></div></div>
+        <div class="property-row"><span class="property-label">Orientation</span><div class="property-control"><select id="pwaOrientation" class="export-native-select"><option value="any">Any</option><option value="landscape">Landscape</option><option value="portrait">Portrait</option><option value="natural">Natural</option></select></div></div>
+        <div class="property-row"><span class="property-label">Theme Color</span><div class="property-control"><input id="pwaThemeColor" class="export-input" type="text" value="#202020"></div></div>
+        <div class="property-row"><span class="property-label">Background</span><div class="property-control"><input id="pwaBackgroundColor" class="export-input" type="text" value="#202020"></div></div>
+        <div class="property-row"><span class="property-label">Description</span><div class="property-control"><input id="pwaDescription" class="export-input" type="text"></div></div>
+        <div class="pwa-json-head"><span>manifest.json</span><button id="pwaApplyJson" class="btn" type="button">Apply JSON</button></div>
+        <textarea id="pwaManifestJson" class="pwa-json-editor" spellcheck="false"></textarea>
+        <div id="pwaJsonError" class="pwa-json-error"></div>
+      </section>
+    </div>
+    <div id="exportProgressBox" class="export-progress-box" hidden><div class="export-progress-head"><span id="exportProgressText">Preparing runtime…</span><span id="exportProgressPct">0%</span></div><div class="export-progress-track"><div id="exportProgressBar"></div></div></div><div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button id="exportProjectDownload" class="btn primary" type="button">Download</button></div>
+  </section>
+
+  <section id="ndcTransferModal" class="modal ndc-transfer-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3 id="ndcTransferTitle">NDC Transfer</h3><p id="ndcTransferSubtitle">Working in the background so the editor stays responsive.</p></div></div>
+    <div class="ndc-transfer-body">
+      <div class="export-progress-box" style="display:block">
+        <div class="export-progress-head"><span id="ndcTransferText">Preparing…</span><span id="ndcTransferPct">0%</span></div>
+        <div class="export-progress-track"><div id="ndcTransferBar"></div></div>
+      </div>
+    </div>
+    <div class="modal-actions"><button id="ndcTransferCancel" class="btn" type="button">Cancel</button></div>
+  </section>
+
+  <section id="gameSettingsModal" class="modal game-settings-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Game Settings</h3><p>The Preferred Scene is the first scene loaded when you Play or Debug.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="game-settings-body">
+      <div class="property-row"><span class="property-label">Preferred Scene</span><div class="property-control" id="preferredSceneControl"></div></div>
+      <div class="property-row"><span class="property-label">Screen Type</span><div class="property-control" id="screenTypeControl"></div></div>
+      <div class="game-settings-section"><div class="game-settings-subheading">Required Features</div><div id="gameRequirementsControl" class="game-requirements-control"></div></div>
+      <div id="micSettingsSection" class="game-settings-section" hidden><div class="game-settings-subheading">Microphone &amp; Speech</div><div class="property-row"><span class="property-label">Speech Language</span><div class="property-control"><input id="micSpeechLanguage" class="text-input" type="text" placeholder="en-US"></div></div><label class="game-setting-check"><input id="micSpeechContinuous" type="checkbox"><span>Continuous Speech</span></label><label class="game-setting-check"><input id="micSpeechInterim" type="checkbox"><span>Live Interim Results</span></label></div>
+      <div class="game-settings-note">Windowboxing preserves the 16:9 landscape ratio and adds black space around the game when needed. Stretch fills the screen.</div>
+    </div>
+  </section>
+
+  <section id="loadModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Load Project</h3><p>Choose where the project should come from.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="project-choice-grid">
+      <button class="project-choice" data-action="load-local"><span class="choice-icon">▱</span><strong>Load Local</strong><small>Open one of the .ndc projects saved on this device.</small></button>
+      <button class="project-choice" data-action="import-project"><span class="choice-icon">⇩</span><strong>Import .ndc</strong><small>Choose an .ndc file and load the complete project.</small></button>
+    </div>
+  </section>
+
+  <section id="localNdcModal" class="modal local-ndc-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Load Local</h3><p>Projects saved in this device's IndexedDB.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div id="localNdcList" class="local-ndc-list"></div>
+  </section>
+
+  <section id="componentModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Add Component</h3><p>Choose a component.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div id="componentGrid" class="component-grid"></div>
+  </section>
+
+  <section id="assetModal" class="modal asset-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Assets Manager</h3><p>Project assets are saved with the project and included in project exports.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="asset-toolbar"><div class="asset-tabs"><button class="asset-tab active" data-asset-tab="Sprite">Sprites</button><button class="asset-tab" data-asset-tab="Audio">Audio</button><button class="asset-tab" data-asset-tab="MIDI">MIDI</button></div><div class="asset-actions"><button class="btn" data-action="import-assets">Import</button><button class="btn" data-action="create-asset">Create</button><span id="assetDropHint" class="asset-drop-hint">Drag &amp; Drop your file</span></div></div>
+    <div id="assetContent" class="asset-content"></div>
+  </section>
+
+  <section id="assetCreateModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Create Asset</h3><p>Choose an editor.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="project-choice-grid"><button class="project-choice" data-action="new-sprite-editor"><span class="choice-icon">▧</span><strong>Sprite Editor</strong><small>Create single or multiple PNG frames.</small></button><button class="project-choice" data-action="new-midi-editor"><span class="choice-icon">♫</span><strong>MIDI Editor</strong><small>Create and edit note-based MIDI files.</small></button></div>
+  </section>
+
+  <section id="assetSelectorModal" class="modal asset-selector-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3 id="assetSelectorTitle">Select Sprite</h3><p id="assetSelectorSubtitle">Select an imported asset.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div id="assetSelectorGrid" class="asset-selector-grid"></div>
+  </section>
+
+  <section id="spriteModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Animation Sprite</h3><p>Add and select animation frames.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div id="spriteEditor" class="sprite-editor"></div>
+  </section>
+
+
+  <div id="spriteEditorMount"></div>
+
+  <section id="colorModal" class="modal color-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Color</h3><p id="colorTargetLabel">RGBA</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="color-editor">
+      <div class="color-main"><canvas id="colorWheel" width="260" height="260"></canvas><div class="color-preview-row"><span id="colorPreview"></span><span id="colorHexPreview">#FFFFFFFF</span></div></div>
+      <div id="colorSliders" class="color-sliders"></div>
+      <div class="color-input-row"><label>Color Input</label><input id="colorTextInput" value="#FFFFFFFF" spellcheck="false"></div>
+      <div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="apply-color">Apply</button></div>
+    </div>
+  </section>
+
+  <section id="scriptModal" class="modal script-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><div class="script-header-actions"><button id="scriptUndoButton" class="script-history-button" data-action="undo" title="Undo">↶</button><button id="scriptRedoButton" class="script-history-button" data-action="redo" title="Redo">↷</button><button class="modal-close" data-action="close-modal">×</button></div></div>
+    <div class="script-layout">
+      <aside class="script-left">
+        <div class="script-panel-header">
+          <div class="script-panel-heading"><strong>Local Variables</strong><span>Lives only inside this node</span></div>
+          <button class="script-panel-collapse" type="button" data-script-panel-collapse="left" title="Collapse">‹</button>
+        </div>
+        <div class="script-panel-resize script-panel-resize-left" data-resize-script-panel="left"></div>
+        <div id="localVariablesContent" class="local-vars-scroll"></div>
+        <div class="script-section-divider"></div>
+        <div id="scriptNodeLibrary" class="script-node-library"></div>
+      </aside>
+      <section id="scriptCanvas" class="script-canvas">
+        <svg id="scriptConnections" class="script-connections"></svg>
+        <div id="scriptCanvasWorld" class="script-canvas-world"></div>
+        <div class="script-canvas-status">Zoom <span id="scriptZoomLabel">100%</span></div>
+      </section>
+      <aside id="scriptInspector" class="script-right"></aside>
+    </div>
+  </section>
+
+  <section id="historyModal" class="modal history-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>History</h3><p>Click any history point to restore it. New edits after Undo create a separate branch; old branches remain loadable. Entries show Name — timestamp.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div id="historyList" class="history-list"></div>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Close</button></div>
+  </section>
+
+  <section id="updatesModal" class="modal updates-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Updates</h3><p>Node2D changes and version history.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="updates-frame-wrap"><iframe id="updatesFrame" title="Node2D Updates"></iframe></div>
+  </section>
+
+  <section id="helpModal" class="modal help-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Help</h3><p>Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="help-frame-wrap"><iframe id="helpFrame" title="Node2D Help"></iframe></div>
+  </section>
+
+  <section id="expressionModal" class="modal expression-modal editor-fullscreen-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header expression-header"><div><h3 id="expressionTitle">Input</h3><p>Edit this input or expression.</p></div><div class="modal-header-actions"><button class="btn" type="button" data-action="open-expression-replace">Replace <span class="shortcut-hint-inline">Ctrl+R</span></button><button class="modal-close" data-action="close-modal">×</button></div></div>
+    <div class="expression-layout">
+      <div class="expression-main">
+        <label>Input</label><textarea id="expressionInput" spellcheck="false"></textarea>
+        <div class="expression-error" id="expressionError">No error.</div>
+        <div class="modal-actions"><button class="btn" data-action="clear-expression">Clear</button><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="apply-expression">Save</button></div>
+      </div>
+      <aside id="expressionSideLibrary" class="expression-side"></aside>
+    </div>
+  </section>
+
+  <section id="expressionReplaceModal" class="modal expression-replace-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Replace Expression Text</h3><p>Choose the matches to replace. The original expression stays editable in the Expression Editor.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="expression-replace-body">
+      <div class="replace-input-grid">
+        <label class="replace-field"><span>Target</span><input id="replaceTarget" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="replace-field"><span>Replace With</span><input id="replaceWith" type="text" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div class="replace-options"><label><input id="replaceCaseSensitive" type="checkbox" checked> Case sensitive</label><label><input id="replaceWholeWord" type="checkbox"> Whole word</label></div>
+      <div class="replace-toolbar"><strong id="replaceCount">0 matches</strong><div class="replace-toolbar-buttons"><button class="btn" type="button" id="replacePrevious">Previous</button><button class="btn" type="button" id="replaceNext">Next</button><button class="btn" type="button" id="replaceSelectAllButton">Select All</button><button class="btn" type="button" id="replaceClearSelectionButton">Clear</button></div></div>
+      <div id="replaceMatches" class="replace-matches"></div>
+    </div>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button class="btn" id="replaceSelectedButton" disabled>Replace Selected</button><button class="btn primary" id="replaceAllButton" disabled>Replace All</button></div>
+  </section>
+
+  <section id="editorSettingsModal" class="modal editor-settings-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>Editor Settings</h3><p>Change shortcuts used throughout Node2D.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="editor-settings-body">
+      <div class="editor-settings-toolbar"><span>Shortcut</span><div class="editor-settings-toolbar-actions"><button class="btn" data-action="download-preferences">Download Pref...</button><button class="btn" data-action="import-preferences">Import Pref...</button><button class="btn" data-action="reset-keybinds">Reset Defaults</button></div></div>
+      <div id="editorKeybindList" class="editor-keybind-list"></div>
+    </div>
+    <div class="modal-actions"><button class="btn primary" data-action="close-modal">Done</button></div>
+  </section>
+
+  <section id="confirmModal" class="modal confirmation-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3 id="confirmModalTitle">Confirm</h3><p id="confirmModalText"></p></div><button class="modal-close" data-action="cancel-confirm">×</button></div>
+    <div class="modal-actions"><button class="btn" data-action="cancel-confirm">Cancel</button><button id="confirmModalOk" class="btn danger">Delete</button></div>
+  </section>
+
+  <div id="floatingContextMenu" class="context-menu floating-context" data-close-outside="true" hidden></div>
+  <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.gif,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi" multiple hidden>
+  <input id="projectFileInput" type="file" accept=".ndc,application/x-ndc" hidden>
+  <script src="js/node.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/scriptNodes.js"></script>
+  <script src="js/uiComponents.js"></script>
+  <script src="js/gifConvert.js"></script>
+  <script src="js/spriteEditor.js"></script>
+  <script src="js/midiParser.js"></script>
+  <script src="js/midiEditor.js"></script>
+  <script src="js/ndcCodec.js"></script>
+  <script src="js/runtimeEngine.js"></script>
+  <script src="js/projectExporter.js"></script>
+  <script src="js/keyBinds.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

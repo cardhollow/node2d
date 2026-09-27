@@ -1,0 +1,20 @@
+{
+  "name": "Node2D Game Engine",
+  "short_name": "Node2D",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "theme_color": "#111111",
+  "background_color": "#111111",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "description": "Node2D Game Engine — 2D game creation and visual scripting for the web",
+  "version": "31.0.9"
+}
