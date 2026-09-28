@@ -1,10 +1,12 @@
-const CACHE_NAME='uix-node2d-vfix63-physics-mobile-angular';
+const CACHE_NAME='uix-node2d-vfix65-peerjs-multiplayer';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[
   './help/help.json',
   './help/index.html',
   './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
   './index.html',
   './js/app.js',
   './js/assets.js',
@@ -18,6 +20,7 @@ const STATIC_ASSETS=[
   './js/ndcSaveWorker.js',
   './js/node.js',
   './js/projectExporter.js',
+  './js/network.js',
   './js/runtimeEngine.js',
   './js/scriptNodes.js',
   './js/spriteEditor.js',
@@ -168,7 +171,7 @@ self.addEventListener('fetch',event=>{
       }
       return fresh;
     }catch{
-      const cached=await cache.match(request) || (request.mode==='navigate'?await cache.match(ROOT.href):null);
+      const cached=await cache.match(request) || (request.mode==='navigate'?await cache.match(ROOT.href):null) || (request.mode==='navigate'?await cache.match(new URL('./index.html',ROOT.href).href):null);
       if(cached){
         if(request.mode==='navigate'){event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(cs=>cs.forEach(c=>c.postMessage({type:'uix-offline-mode'}))).catch(()=>{}));}
         return cached;
