@@ -1246,7 +1246,7 @@
     state.assetManagerSelectMode=false;
     state.localAssetImportSelection=new Set();
     assetImageCache.clear();
-    imageSizeCache.clear();
+    imageSizeCache=new WeakMap();
     colliderAlphaCache.clear();
     state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;
   }
@@ -3233,7 +3233,7 @@
     return {minX,minY,maxX,maxY,w:Math.max(1,maxX-minX),h:Math.max(1,maxY-minY)};
   }
   function getNodeVisualSize(node,ctx){const b=getNodeVisualBounds(node,ctx);return {w:b.w,h:b.h};}
-  const imageSizeCache=new WeakMap();
+  let imageSizeCache=new WeakMap();
   function constrainImageSize(img){
     if(!img||!img.complete||!img.naturalWidth||!img.naturalHeight)return null;
     const cached=imageSizeCache.get(img);if(cached)return cached;
