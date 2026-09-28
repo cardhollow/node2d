@@ -104,7 +104,7 @@
       },
       {
         "subtitle": "Scale gizmo",
-        "contents": "<h2>Scale gizmo</h2><p>The Scale gizmo appears around the selected Node when Scale or All mode is active. Its small boxes are resize handles.</p><ul><li><strong>Corner handles</strong> resize in both directions while preserving the object's starting width-to-height ratio.</li><li><strong>Left / right handles</strong> resize horizontally.</li><li><strong>Top / bottom handles</strong> resize vertically.</li></ul><p>When a scale handle is being dragged, the active handle is given an additional outline so you can see exactly which resize point is being used.</p><p>The scale operation still follows your Move / Scale Snap setting. A snap value of <code>0.1</code> prevents tiny floating-point changes from producing values such as <code>1.0000000001</code> during normal gizmo editing.</p>",
+        "contents": "<h2>Scale gizmo</h2><p>The Scale gizmo changes the size of the selected Node or selection.</p><p><strong>Arrow</strong> is the default style. It uses the same screen-relative half-cross as the Move gizmo: the red X control points right and the green Y control points point up from the center. The only difference is that the endpoint pointers are boxes instead of arrowheads.</p><p><strong>Full</strong> shows box handles around the selected bounds. Corner handles change both dimensions, while side handles change one dimension.</p><p>The selected Nodes use the same Scale Gizmo style whether one Node or several Nodes are selected.</p>",
         "id": "editor-layout-and-controls--scale-gizmo"
       },
       {
@@ -176,6 +176,11 @@
         "subtitle": "Selection and Components panels",
         "contents": "<h2>Selection and Components panels</h2><p>The editor keeps the <strong>Selection panel on the left</strong> and the <strong>Components panel on the right</strong>, with the Workspace between them.</p><p>Both panels behave like the ScriptNode modal side panels: each is independently resizable and collapsible. Collapsing a panel shrinks it to its side tab and gives the released width to the Workspace. Expanding it restores its stored width, and resizing one side does not move the other side unexpectedly.</p>",
         "id": "ui-layout-panels-and-fullscreen--selection-and-components-panels"
+      },
+      {
+        "subtitle": "Joystick group",
+        "contents": "<h2>Joystick group</h2><p>Created Joysticks are grouped under the <strong>Joystick</strong> header in the Components panel. Press the header to expand or collapse all created Joysticks. Each Joystick can also be collapsed independently.</p>",
+        "id": "ui-layout-panels-and-fullscreen--joystick-group"
       }
     ]
   },
@@ -378,13 +383,13 @@
         "id": "components--text"
       },
       {
-        "subtitle": "Sprite",
-        "contents": "<h2>Sprite Component</h2><p>Sprite displays an imported image asset.</p><table><thead><tr><th>Property</th><th>What it does</th></tr></thead><tbody><tr><td>Type</td><td>Use a normal Sprite or use an <a class=\"help-ref\" href=\"#\" data-help-topic=\"components--animation-sprite\">Animation Sprite</a> source.</td></tr><tr><td>Sprite</td><td>Select the image asset.</td></tr><tr><td>Animation</td><td>Select the animation when the Sprite is using Animation mode.</td></tr><tr><td>Opacity</td><td>Controls Sprite transparency from 0–100.</td></tr><tr><td>Pixelated</td><td>Disables canvas smoothing so the image is drawn with hard pixel edges.</td></tr><tr><td>Position X/Y</td><td>Offsets the Sprite inside the Node.</td></tr><tr><td>Size X/Y</td><td>Sets the local Sprite size. Zero uses the asset's natural/constrained size.</td></tr></tbody></table><p>The Asset Manager can create a new Node directly from a Sprite asset.</p><p>GIF files can be imported, but the editor converts the GIF into individual PNG images with transparent pixels and frame positioning preserved, one image per GIF frame (for example Apple.gif becomes Apple1.png, Apple2.png, and so on). Each resulting PNG is a static image. GIF transparency/alpha is preserved in the generated PNG frames. The imported result is rendered as static images, not as an animated GIF.</p>",
+        "subtitle": "Sprite Component",
+        "contents": "<h2>Sprite Component</h2><p>Sprite displays an image asset. A Sprite can also use an <strong>Animation Sprite</strong> as its source by setting its Type to <strong>Animation</strong>.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Type</td><td>Use a normal Sprite asset or use an Animation Sprite as the source.</td></tr><tr><td>Sprite</td><td>Select the image asset used by a normal Sprite.</td></tr><tr><td>Animation</td><td>Select which Animation Sprite animation is displayed when Type is Animation.</td></tr><tr><td>Opacity</td><td>Controls transparency.</td></tr><tr><td>Pixelated</td><td>Uses hard pixel edges when enabled.</td></tr><tr><td>Position X/Y</td><td>Moves the Sprite inside the Node.</td></tr><tr><td>Size X/Y</td><td>Sets the local Sprite size. Zero uses the asset's natural size.</td></tr></tbody></table><p>An Animation Sprite component by itself does not display anything. Its frames are used for animation only when the Node's Sprite component is set to <strong>Animation</strong>.</p>",
         "id": "components--sprite"
       },
       {
-        "subtitle": "Animation Sprite",
-        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite stores frame-based animations made from Sprite assets.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>The animation's name.</td></tr><tr><td>FPS</td><td>Frames played per second.</td></tr><tr><td>Frames</td><td>Sprite assets used as frames.</td></tr><tr><td>Active Animation</td><td>The animation used by the Sprite when Sprite Type is Animation.</td></tr></tbody></table><p> Use Animation Sprite when you want explicit frame sequencing. GIF files are converted into individual PNG Sprite assets; use the resulting frames with Animation Sprite when you want frame-by-frame playback.</p><p><strong>Active animation controls:</strong> <code>stopAnimation</code>, <code>startAnimation</code>, and <code>stepAnimation</code> operate on the animation selected as active. When a Sprite component is set to Animation mode, that means its selected Animation; otherwise the Animation Sprite component uses its Active Animation.</p>",
+        "subtitle": "Animation Sprite Component",
+        "contents": "<h2>Animation Sprite Component</h2><p>Animation Sprite is the place where frame-based animations are created and stored.</p><table><thead><tr><th>Property</th><th>Meaning</th></tr></thead><tbody><tr><td>Animation Name</td><td>Name of the animation.</td></tr><tr><td>FPS</td><td>Playback speed in frames per second.</td></tr><tr><td>Frames</td><td>Sprite assets used as animation frames.</td></tr><tr><td>Active Animation</td><td>The animation available as the active animation.</td></tr></tbody></table><p>Adding Animation Sprite does not make the Node visible by itself. To display one of its animations, the Node also needs a Sprite component whose Type is <strong>Animation</strong>.</p>",
         "id": "components--animation-sprite"
       },
       {
@@ -568,8 +573,8 @@
         "id": "variables--scene-variable-lifetime"
       },
       {
-        "subtitle": "Live Global, Scene, and Local reads",
-        "contents": "<h2>Live variable reads</h2><p><code>ctx.global</code>, <code>ctx.sceneVariables</code>, and <code>ctx.local</code> are live runtime variable views rather than one-time copies. Local values resolve against the executing Node; Global values resolve against the runtime project; Scene values resolve against the active Scene.</p><p>Use <code>setVariable</code> when you intentionally want to write a value. The scope determines how widely the value is shared.</p>",
+        "subtitle": "Live variable reads",
+        "contents": "<h2>Live variable reads</h2><p><code>ctx.global</code>, <code>ctx.sceneVariables</code>, <code>ctx.local</code>, and <code>ctx.server</code> are live runtime variable views. Local values belong to the executing Node; Global values belong to the runtime project; Scene values belong to the active Scene; Server values come from the network host when multiplayer is running.</p><p>Server Variables are host-authoritative. The host can change them directly. A client cannot change its local copy; using <code>setVariable</code> with the <strong>Server</strong> type sends a request to the host. When the host accepts the change, the updated value is sent back to all clients.</p>",
         "id": "variables--live-runtime-variable-reads"
       }
     ]
@@ -726,6 +731,36 @@
         "subtitle": "Load Sample Flappy Bird",
         "contents": "<h2>Load Sample Flappy Bird</h2><p>Open <strong>File → Project → Load Local</strong> and use <strong>Load Sample Flappy Bird</strong>. Node2D fetches <code>samples/flappybird.ndc</code>, saves it using the same Local NDC storage as other projects, and opens it.</p><p>After a successful load, Node2D stores <code>flappybirdsample = true</code> in browser local storage so the sample loader is not offered again on that device.</p>",
         "id": "asset-manager--load-sample-flappy-bird"
+      },
+      {
+        "subtitle": "Selecting and removing several assets",
+        "contents": "<h2>Multi-selection</h2><p>Press <strong>Select</strong> in the Asset Manager to enter selection mode. Tap or click assets to add them to the selection, and tap again to remove them. This works with touchscreens as well as a mouse.</p><p>When assets are selected, <strong>Remove</strong> deletes them together. Sprite selections also show <strong>Edit Selected</strong> so several Sprite images can be edited as a group.</p>",
+        "id": "asset-manager--multi-selection"
+      },
+      {
+        "subtitle": "Editing several Sprites together",
+        "contents": "<h2>Edit Selected Sprites</h2><p>Select several Sprite assets and choose <strong>Edit Selected</strong>. The first Sprite you selected becomes the base name for the frames. For example, a selection beginning with <code>Player</code> can be saved as <code>Player1.png</code>, <code>Player2.png</code>, <code>Player3.png</code>, and so on.</p><p>The selected images open as separate frames, so they can be reordered, edited, removed, or combined with additional Sprite frames.</p>",
+        "id": "asset-manager--edit-selected-sprites"
+      },
+      {
+        "subtitle": "Importing assets from another Local Project",
+        "contents": "<h2>Import Assets from Local Projects</h2><p>Choose <strong>Import Assets from Local Projects</strong> to browse projects saved on this device. Select a project to open its asset list, then select any number of Sprites, Audio files, or MIDI files and choose <strong>Import Selected</strong>.</p><p>The imported files are added to the project that is currently open. Selecting assets works by touch as well as mouse input.</p>",
+        "id": "asset-manager--local-project-import"
+      },
+      {
+        "subtitle": "Assets when creating or loading a project",
+        "contents": "<h2>Project asset lists</h2><p>Each project has its own Sprite, Audio, and MIDI asset lists. Creating or loading a different project replaces the visible Asset Manager contents with that project's assets, so assets from the previous project do not remain in the new project.</p>",
+        "id": "asset-manager--project-switching"
+      },
+      {
+        "subtitle": "Selection order",
+        "contents": "<h2>Selection order</h2><p>Asset Manager multi-selection keeps the order in which you selected assets. A numbered badge appears at the bottom-left of each selected asset, so <strong>1</strong> is the first selected asset, <strong>2</strong> is the second, and so on.</p><p>The Sprite selector uses the same ordered selection behavior for multi-select Sprite workflows.</p>",
+        "id": "asset-manager--selection-order"
+      },
+      {
+        "subtitle": "Animation Sprite data",
+        "contents": "<h2>Animation Sprite</h2><p>Animation Sprite stores animation data and is used for creating/editing animation definitions. It does not render an animation by itself. A Sprite component must be configured to use the animation mode for the animation to be displayed.</p>",
+        "id": "asset-manager--animation-sprite-data"
       }
     ]
   },
@@ -756,6 +791,21 @@
         "subtitle": "Zoom and grid",
         "contents": "<h2>Zoom and grid</h2><p>Use zoom and grid controls for pixel-level work. The editing view can be enlarged for precise drawing.</p>",
         "id": "sprite-editor--zoom-and-grid"
+      },
+      {
+        "subtitle": "Frames and Add Sprite(s)",
+        "contents": "<h2>Frames</h2><p>A Sprite can contain multiple image frames. Use <strong>+ Add Sprite(s)</strong> to select one or more existing Sprite assets and add them as frames. Use <strong>Import Sprite</strong> when you want to add one Sprite as a new frame.</p><p>Frames can be copied, reordered, previewed, and removed. When several source Sprites were opened together, the first selected Sprite supplies the base name used when the edited frames are saved.</p>",
+        "id": "sprite-editor--frames"
+      },
+      {
+        "subtitle": "Importing a Sprite that is larger than the current canvas",
+        "contents": "<h2>Large Sprite imports</h2><p>When an imported Sprite is larger than the current frame, choose how it should fit:</p><ul><li><strong>Crop</strong> keeps the current canvas size and cuts off parts outside it.</li><li><strong>Shrink (Keep Aspect Ratio)</strong> scales the imported image down until it fits without changing its proportions.</li><li><strong>Expand Canvas</strong> increases the frame canvas to fit the entire imported image. Only the dimension that needs more space is enlarged.</li></ul>",
+        "id": "sprite-editor--large-import-options"
+      },
+      {
+        "subtitle": "Sprite Editor header controls",
+        "contents": "<h2>Sprite Editor controls</h2><p><strong>Undo</strong>, <strong>Redo</strong>, and <strong>Center</strong> are in the Sprite Editor header so they remain easy to reach while editing. The same controls can be used with touch input.</p><p>The Edit section contains Grid, Flip X, Flip Y, Rotate, and Clear.</p>",
+        "id": "sprite-editor--header-controls"
       }
     ]
   },
@@ -859,7 +909,7 @@
       },
       {
         "subtitle": "setVariable",
-        "contents": "<h2>setVariable</h2><p>Changes a variable.</p><p>Inputs: <code>Type</code> (Global, Local, or Scene), <code>Name</code>, <code>Value</code>. Output: <code>out</code>.</p>",
+        "contents": "<h2>setVariable</h2><p>Changes a variable.</p><p>Inputs: <code>Type</code> (Global, Local, Scene, or Server), <code>Name</code>, and <code>Value</code>. Output: <code>out</code>.</p><p><strong>Server:</strong> the host changes the Server Variable directly. A client sends a change request to the host instead of changing its own copy. The host-authoritative value is then synchronized to every client.</p>",
         "id": "scriptnodes-actions--setvariable"
       },
       {
@@ -1549,7 +1599,7 @@
     "items": [
       {
         "subtitle": "Editor Settings",
-        "contents": "<h2>Editor Settings</h2><p>Editor Settings control shortcuts, snapping, saving behavior, and multiselection behavior. These preferences are stored locally on the device rather than inside the project.</p><p>The settings include <strong>Move / Scale Snap</strong>, <strong>Rotate Snap</strong>, <strong>Auto Save</strong>, <strong>Auto Save Interval</strong>, <strong>Multiselection Unified Editing</strong>, and <strong>Create New Missing Component</strong>.</p>",
+        "contents": "<h2>Editor Settings</h2><p>Editor Settings control how the editor behaves on this device. These preferences are stored locally and are separate from the project.</p><p>Available settings include <strong>Move / Scale Snap</strong>, <strong>Rotate Snap</strong>, <strong>Scale Gizmo</strong>, <strong>Multiselection Unified Editing</strong>, <strong>Create New Missing Component</strong>, and Auto Save options.</p>",
         "id": "editor-settings--editor-settings"
       },
       {
@@ -1599,7 +1649,7 @@
       },
       {
         "subtitle": "Multiselection Unified Editing",
-        "contents": "<h2>Multiselection Unified Editing</h2><p><strong>Multiselection Unified Editing</strong> is a Bool editor setting and is <strong>True</strong> by default.</p><p>When True, multiple selected Nodes behave like one object for Move, Scale, and Rotate. Scaling changes the group as a whole while preserving each Node's relative position and size. Rotating turns the group around its combined center.</p><p>The selection gets one large yellow outline covering the whole group.</p><p>When False, each selected Node gets its own yellow outline. Scale changes each Node individually, and Rotate changes each Node's own angle without orbiting its position around the group center.</p><h3>Transform gizmo interaction</h3><p>With multiple Nodes selected, the Move gizmo uses the same axis behavior as a single Node: drag the red arrow to move only on X, drag the green arrow to move only on Y, and drag the center square to move freely. The same group behavior is applied to keyboard nudging.</p>",
+        "contents": "<h2>Multiselection Unified Editing</h2><p><strong>Multiselection Unified Editing</strong> is enabled by default. When it is on, multiple selected Nodes behave like one group for Move, Scale, and Rotate. Their relative layout is kept while the group is transformed.</p><p>When it is off, each selected Node keeps its own transform behavior for Scale and Rotate instead of using one unified group transform.</p><p>The Move and Scale gizmos keep their X/Y controls when several Nodes are selected. The <strong>Scale Gizmo</strong> setting chooses between the Move-style box pointers (<strong>Arrow</strong>) and the full box-handle version (<strong>Full</strong>).</p>",
         "id": "editor-settings--multiselection-unified-editing"
       },
       {
@@ -1621,6 +1671,11 @@
         "subtitle": "Component Value Editing",
         "contents": "<h2>Component Value Editing</h2><p>Component string and numeric properties are edited directly through their normal inputs. Double-click and double-tap are not part of the Component property editing model.</p><p>In multi-selection, these same inputs participate in per-field <code>&lt;&gt;</code> mixed values and MUE propagation. Editing a value commits it to all selected Nodes without changing unrelated properties.</p>",
         "id": "editor-settings--component-value-editing"
+      },
+      {
+        "subtitle": "Scale Gizmo",
+        "contents": "<h2>Scale Gizmo</h2><p><strong>Arrow</strong> is the default. It uses the same screen-relative half-cross style as the Move gizmo: a red X control extends to the right and a green Y control extends upward from the center. The controls use square/box pointers instead of arrowheads.</p><p><strong>Full</strong> uses the larger box-handle scale gizmo with corner, edge, and side handles.</p><p>The setting also applies when several Nodes are selected. With <strong>Multiselection Unified Editing</strong> enabled, the group is scaled together while keeping the Nodes' relative layout.</p>",
+        "id": "editor-settings--scale-gizmo"
       }
     ]
   },
@@ -1689,12 +1744,12 @@
     "items": [
       {
         "subtitle": "Components",
-        "contents": "<h2>Components</h2><p><code>Node</code> — object identity. <code>Script</code> — visual script graph. <code>Transform</code> — position, scale, rotation. <code>Text</code> — displayed text. <code>Sprite</code> — images and animated presentation. <code>Animation Sprite</code> — collections of sprite frames. <code>Physics</code> — physical movement. <code>Collider</code> — collision shape. <code>Progress Bar</code> — value meter. <code>Joystick</code> — touch control.</p>",
+        "contents": "<h2>Components</h2><p><code>Node</code> — object identity. <code>Script</code> — visual script graph. <code>Transform</code> — position, scale, rotation. <code>Text</code> — displayed text. <code>Sprite</code> — image display and animation presentation when its Type is Animation. <code>Animation Sprite</code> — animation frame data used by a Sprite. <code>Physics</code> — physical movement. <code>Collider</code> — collision shape. <code>Progress Bar</code> — value meter. <code>Joystick</code> — touch control.</p>",
         "id": "quick-reference--components"
       },
       {
         "subtitle": "Events",
-        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onInputFocus</code>, <code>onInputBlur</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, <code>onUnload</code>.</p>",
+        "contents": "<h2>Events</h2><p><code>onLoad</code>, <code>onTick</code>, <code>onKeybind</code>, <code>onTouch</code>, <code>onMouse</code>, <code>onScreenInput</code>, <code>onJoystick</code>, <code>onAudioPickup</code>, <code>onInputFocus</code>, <code>onInputBlur</code>, <code>onInputChange</code>, <code>onConnectionChange</code>, <code>onCollideWith</code>, and <code>onUnload</code>.</p><p><code>onInputChange</code> sends its <code>out</code> signal when an Input component's text changes while the game is running.</p>",
         "id": "quickref-events"
       },
       {
@@ -1734,7 +1789,7 @@
       },
       {
         "subtitle": "Editor Settings defaults",
-        "contents": "<h2>Editor Settings defaults</h2><table><thead><tr><th>Setting</th><th>Default</th></tr></thead><tbody><tr><td>Move / Scale Snap</td><td>1</td></tr><tr><td>Rotate Snap</td><td>0° / Off</td></tr><tr><td>Multiselection Unified Editing</td><td>True</td></tr><tr><td>Create New Missing Component</td><td>False</td></tr><tr><td>Auto Save</td><td>Off</td></tr><tr><td>Auto Save Interval</td><td>30 seconds</td></tr></tbody></table><p>Reset Defaults restores these values and the default keyboard shortcuts.</p>",
+        "contents": "<h2>Editor Settings defaults</h2><table><thead><tr><th>Setting</th><th>Default</th></tr></thead><tbody><tr><td>Move / Scale Snap</td><td>1</td></tr><tr><td>Rotate Snap</td><td>0° / Off</td></tr><tr><td>Scale Gizmo</td><td>Arrow</td></tr><tr><td>Multiselection Unified Editing</td><td>True</td></tr><tr><td>Create New Missing Component</td><td>False</td></tr><tr><td>Auto Save</td><td>Off</td></tr><tr><td>Auto Save Interval</td><td>30 seconds</td></tr></tbody></table><p>Reset Defaults restores these values and the default keyboard shortcuts.</p>",
         "id": "quick-reference--editor-settings-defaults"
       },
       {
@@ -1872,6 +1927,26 @@
         "subtitle": "Show Joints",
         "contents": "<h2>Show Joints</h2><p><strong>Editor Settings → Debugging → Show Joints</strong> controls joint visualization during Debug Play. When enabled, Debug Play draws joint links, anchors, axes, pulley ground anchors, and joint labels using the same visual style as the editor joint display.</p>",
         "id": "debugging--show-joints"
+      }
+    ]
+  },
+  {
+    "title": "Editor Layout, Panels, and Fullscreen",
+    "items": [
+      {
+        "subtitle": "Documentation links",
+        "contents": "<h2>Documentation links</h2><p>Use <strong>? Documentation</strong> in an editor context menu to open the Help panel with that subject already searched. It stays inside Node2D instead of opening a new browser tab.</p>",
+        "id": "editor-layout-and-controls--documentation-links"
+      }
+    ]
+  },
+  {
+    "title": "Offline and Installation",
+    "items": [
+      {
+        "subtitle": "Offline app icon",
+        "contents": "<h2>Offline app icon</h2><p>Installed Node2D uses dedicated PNG app icons for the PWA manifest and browser install surfaces. This gives the installed app its Node2D icon instead of relying on a generic browser icon.</p><p>The editor also keeps its cached app shell available for offline launches after the Service Worker has cached the editor.</p>",
+        "id": "offline-and-installation--offline-app-icon"
       }
     ]
   }
