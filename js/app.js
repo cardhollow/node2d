@@ -16,6 +16,7 @@
     nextNodeId: 1,
     nextVariableId: 1,
     globalVariables: [],
+    serverVariables: [],
     sceneVariablesByScene: Object.create(null),
     localVarsByNode: Object.create(null),
     uiComponentsByScene: Object.create(null),
@@ -27,6 +28,9 @@
     color: null,
     animationEdit: null,
     assetSelection: null,
+    assetManagerSelection: new Set(),
+    assetManagerSelectMode: false,
+    localAssetImportSelection: new Set(),
     componentClipboard: null,
     nodeClipboard: null,
     selectedIds: [],
@@ -50,11 +54,12 @@
       editingInput: null, clipboard: null, panelWidths:{left:260,right:250}, leftCollapsed:false, rightCollapsed:false
     },
     dragTree: null,
-    runtime: { running: false, debug: false, bodies: [], physicsBodies: [], renderBodies: [], renderOrderDirty: false, nodeEntries: [], nodeList: [], nodeById: new Map(), bodyById: new Map(), parentById: new Map(), numericIds: new Set(), nextNumericId: 1, scriptById: new Map(), scriptOwnerById: new Map(), eventScriptsByName: new Map(), eventScriptsByNode: new Map(), routesByScriptOutput: new Map(), defByName: new Map(), shared: null, pendingOnLoad: [], renderCtx: null, renderCanvas: null, camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
+    runtime: { running: false, debug: false, serverVariables: [], bodies: [], physicsBodies: [], renderBodies: [], renderOrderDirty: false, nodeEntries: [], nodeList: [], nodeById: new Map(), bodyById: new Map(), parentById: new Map(), numericIds: new Set(), nextNumericId: 1, scriptById: new Map(), scriptOwnerById: new Map(), eventScriptsByName: new Map(), eventScriptsByNode: new Map(), routesByScriptOutput: new Map(), defByName: new Map(), shared: null, pendingOnLoad: [], renderCtx: null, renderCanvas: null, camera: null, timers: [], intervalStates: Object.create(null), audio: [], lastError: '', events: { key: Object.create(null), lastKey: '' }, mic: { enabled: false, decibel: -100, speech: '', stream: null, audioContext: null, source: null, analyser: null, buffer: null, speechRecognition: null, speechActive: false, pickupActive: false } },
     game: { preferredSceneId: '', screenType: 'Windowboxing', requirements: { 'Use Mic': false }, mic: { speechLanguage: 'en-US', continuous: true, interimResults: true } },
     ui: {
       componentCollapsed: Object.create(null),
       globalVariablesCollapsed: false,
+      serverVariablesCollapsed: false,
       sceneVariablesCollapsed: false,
       localVariablesCollapsed: false,
       scriptGroupCollapsed: Object.create(null),
@@ -86,6 +91,8 @@
   let workspaceContext = null;
   const editorVisualCache = new WeakMap();
   const subCameraSurfaceCache = new WeakMap();
+  const runtimeCameraSurfaceCache = new WeakMap();
+  const runtimeSubCameraStack = new Set();
   const textMetricsCache = new WeakMap();
   const colorCssCache = new Map();
   const EDITOR_SETTINGS_STORE='uix.editor.settings.v1';
@@ -94,7 +101,7 @@
   const FLAPPY_BIRD_SAMPLE_FLAG='flappybirdsample';
   const FLAPPY_BIRD_SAMPLE_RELATIVE='./samples/flappybird.ndc';
   const FLAPPY_BIRD_SAMPLE_ROOT='/samples/flappybird.ndc';
-  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30,createNewMissingComponent:false,showCollider:true,showJoints:true};
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,scaleGizmo:'Arrow',multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30,createNewMissingComponent:false,showCollider:true,showJoints:true};
   let editorSettingsCache=null;
   function openUpdates(){
     const frame=$('#updatesFrame');
@@ -119,6 +126,7 @@
     if(raw&&typeof raw==='object'){Object.keys(DEFAULT_EDITOR_SETTINGS).forEach(k=>{if(Object.prototype.hasOwnProperty.call(raw,k))out[k]=raw[k];});}
     out.moveScaleSnap=Number.isFinite(Number(out.moveScaleSnap))?Math.max(0,Number(out.moveScaleSnap)):DEFAULT_EDITOR_SETTINGS.moveScaleSnap;
     out.rotateSnap=Number.isFinite(Number(out.rotateSnap))?Math.max(0,Number(out.rotateSnap)):DEFAULT_EDITOR_SETTINGS.rotateSnap;
+    out.scaleGizmo=out.scaleGizmo==='Full'?'Full':'Arrow';
     out.multiSelectionUnifiedEditing=out.multiSelectionUnifiedEditing!==false;
     out.autoSave=!!out.autoSave;
     out.autoSaveIntervalSec=Number.isFinite(Number(out.autoSaveIntervalSec))?clamp(Number(out.autoSaveIntervalSec),1,86400):DEFAULT_EDITOR_SETTINGS.autoSaveIntervalSec;
@@ -167,6 +175,7 @@
   const SCREEN_TYPES=['Stretch','Windowboxing','Crop','Smart Camera'];
   function normalizeScreenType(v){ return SCREEN_TYPES.includes(v)?v:'Windowboxing'; }
   function defaultCamera(){ return { enabled:true, followId:'this', horizontal:0, vertical:0, animation:'Smooth', speed:300, bgColor:'#202020', scale:1, transform:{position:[0,0],angle:[0]} }; }
+  const CAMERA_ANIMATIONS=['Quick','Smooth','Linear','Ease In','Ease Out','Ease In Out','Sine In','Sine Out','Sine In Out','Back In Out'];
   function ensureSceneCamera(scene){ if(!scene)return defaultCamera(); if(!scene.camera) scene.camera=defaultCamera(); return scene.camera; }
   function syncSceneCamera(){ const scene=currentScene(); if(scene){ state.camera=ensureSceneCamera(scene); } }
   function makeScene(name) {
@@ -318,6 +327,7 @@
         bodies:bodyStates,
         camera:clone(rt.camera),
         globalVariables:clone(rt.globalVariables||[]),
+        serverVariables:clone(rt.serverVariables||[]),
         sceneVariablesByScene:clone(rt.sceneVariablesByScene||{}),
         localVarsByNode,
         dynamicScriptsByNode,
@@ -425,6 +435,7 @@
       rt.scene=restoredScene;
       rt.sceneId=snapshot.sceneId||restoredScene.id||rt.sceneId;
       rt.globalVariables=snapshot.globalVariables||[];
+      rt.serverVariables=snapshot.serverVariables||[];
       rt.sceneVariablesByScene=snapshot.sceneVariablesByScene||{};
       rt.localVarsByNode=snapshot.localVarsByNode||{};
       rt.dynamicScriptsByNode=snapshot.dynamicScriptsByNode||{};
@@ -550,18 +561,28 @@
         const rad=delta*Math.PI/180;
         nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};if(unified){const q=rotatePoint(sp.x,sp.y,rad);t.position=[Number((b.x+q.x).toFixed(12)),Number((b.y+q.y).toFixed(12))];}else t.position=[Number(st.position?.[0]||0),Number(st.position?.[1]||0)];t.angle=[Number((Number(st.angle?.[0]||0)+delta).toFixed(12))];});
       }else if(d.type==='scale'){
+        let localDx=dx,localDy=dy;
+        if(getEditorSettings().scaleGizmo==='Arrow'){
+          const local=rotatePoint(dx,dy,-Number(d.gizmoAngle||0));localDx=local.x;localDy=local.y;
+        }
         const left=['left','tl','bl'].includes(d.corner),right=['right','tr','br'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),bottom=['bottom','bl','br'].includes(d.corner);
         let fx=1,fy=1;
-        if(left||right)fx=1+(dx/b.w)*(right?1:-1)*2;
-        if(top||bottom)fy=1+(dy/b.h)*(bottom?1:-1)*2;
-        if(!left&&!right&&!top&&!bottom){fx=1+dx/b.w*2;fy=1+dy/b.h*2;}
-        else if(left||right){if(!(top||bottom))fy=1;}
-        else if(top||bottom)fx=1;
-        if(['tl','tr','bl','br'].includes(d.corner)){const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;fx=factor;fy=factor;}
+        if(d.corner==='center'){
+          const useX=Math.abs(localDx/b.w)>=Math.abs(localDy/b.h);
+          const factor=1+(useX?(localDx/b.w):(localDy/b.h))*2;
+          fx=factor;fy=factor;
+        }else{
+          if(left||right)fx=1+(localDx/b.w)*(right?1:-1)*2;
+          if(top||bottom)fy=1+(localDy/b.h)*(bottom?1:-1)*2;
+          if(!left&&!right&&!top&&!bottom){fx=1+localDx/b.w*2;fy=1+localDy/b.h*2;}
+          else if(left||right){if(!(top||bottom))fy=1;}
+          else if(top||bottom)fx=1;
+          if(['tl','tr','bl','br'].includes(d.corner)){const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;fx=factor;fy=factor;}
+        }
         fx=Math.max(.01,fx);fy=Math.max(.01,fy);
         const newW=b.w*fx,newH=b.h*fy;
         if(snap>0){if(['tl','tr','bl','br'].includes(d.corner)){const w=snapEditorValue(newW,snap),h=snapEditorValue(newH,snap),sx=w/b.w,sy=h/b.h,fac=Math.abs(sx-1)>=Math.abs(sy-1)?sx:sy;fx=Math.max(.01,fac);fy=fx;}else{if(left||right)fx=Math.max(.01,snapEditorValue(newW,snap)/b.w);if(top||bottom)fy=Math.max(.01,snapEditorValue(newH,snap)/b.h);}}
-        nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;let sx=(Number(st.scale?.[0]??1))*fx,sy=(Number(st.scale?.[1]??1))*fy;if(unified){const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};t.position=[Number((b.x+sp.x*fx).toFixed(12)),Number((b.y+sp.y*fy).toFixed(12))];}t.scale=[Number(Math.max(.01,sx).toFixed(12)),Number(Math.max(.01,sy).toFixed(12))];});
+        nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;let sx=(Number(st.scale?.[0]??1))*fx,sy=(Number(st.scale?.[1]??1))*fy;if(unified){const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};const localSp=rotatePoint(sp.x,sp.y,-Number(d.gizmoAngle||0));const scaledLocal={x:localSp.x*fx,y:localSp.y*fy};const worldSp=rotatePoint(scaledLocal.x,scaledLocal.y,Number(d.gizmoAngle||0));t.position=[Number((b.x+worldSp.x).toFixed(12)),Number((b.y+worldSp.y).toFixed(12))];}t.scale=[Number(Math.max(.01,sx).toFixed(12)),Number(Math.max(.01,sy).toFixed(12))];});
       }
       requestWorkplaceDraw();
     }
@@ -865,6 +886,7 @@
     selectedIds:state.selectedIds,
     selectionAnchorId:state.selectionAnchorId,
     globalVariables:state.globalVariables,
+    serverVariables:state.serverVariables,
     sceneVariablesByScene:state.sceneVariablesByScene,
     localVarsByNode:state.localVarsByNode,
     uiComponentsByScene:state.uiComponentsByScene,
@@ -894,6 +916,7 @@
     state.selectedIds=clone(snap.selectedIds||[]);
     state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;
     state.globalVariables=clone(snap.globalVariables||[]);
+    state.serverVariables=clone(snap.serverVariables||[]);
     state.sceneVariablesByScene=clone(snap.sceneVariablesByScene||{});
     state.localVarsByNode=clone(snap.localVarsByNode||{});
     state.uiComponentsByScene=clone(snap.uiComponentsByScene||{});
@@ -1217,6 +1240,29 @@
   function showScriptRequirementPrompt(def){const req=String(def?.require||'').trim();if(!req)return;askConfirm('ScriptNode Disabled',`“${def.name}” requires “${req}”. Go to Game Settings and enable it?`,()=>openGameSettings(),'Game Settings');}
   function enableScriptNodeRequirement(req,enabled){ensureGameSettings();state.game.requirements[req]=!!enabled;renderScriptLibrary();renderScriptCanvas();resetAutoSaveTimer();status(`${req}: ${enabled?'Enabled':'Disabled'}`);}
 
+  function clearProjectAssets(){
+    Object.keys(state.assets).forEach(k=>{state.assets[k].length=0;});
+    state.assetManagerSelection=new Set();
+    state.assetManagerSelectMode=false;
+    state.localAssetImportSelection=new Set();
+    assetImageCache.clear();
+    imageSizeCache.clear();
+    colliderAlphaCache.clear();
+    state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;
+  }
+  function assetKey(asset){return String(asset?.id||asset?.value||asset?.filename||asset?.name||'');}
+  function ensureAssetIds(){
+    const seen=new Set();
+    allProjectAssets().forEach((asset,i)=>{
+      let id=String(asset?.id||'').trim();
+      if(!id||seen.has(id)){
+        const seed=String(asset?.filename||asset?.name||'asset').replace(/[^a-z0-9_-]+/gi,'-').slice(0,48)||'asset';
+        id=`asset-${seed}-${i}-${Math.random().toString(36).slice(2,8)}`;
+      }
+      asset.id=id;seen.add(id);
+    });
+  }
+
   function ensureProject() {
     ensureGameSettings();
     if (!state.scenes.length) {
@@ -1242,7 +1288,8 @@
     state.project.localNdcId = null;
     state.project.name = String(name||'Untitled Node2D').trim()||'Untitled Node2D';
     state.scenes = [scene]; state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; state.game = { preferredSceneId: scene.id, screenType: 'Windowboxing', requirements:{'Use Mic':false}, mic:{speechLanguage:'en-US',continuous:true,interimResults:true} }; ensureGameSettings(); syncSceneCamera();
-    state.nextNodeId = 1; state.nextVariableId = 1; state.globalVariables = [];
+    state.nextNodeId = 1; state.nextVariableId = 1; state.globalVariables = []; state.serverVariables = [];
+    clearProjectAssets();
     state.sceneVariablesByScene = Object.create(null);
     state.localVarsByNode = Object.create(null);
     state.uiComponentsByScene = Object.create(null);
@@ -1822,7 +1869,7 @@
       field('Follow', cameraFollowLabel(), 'custom-select', v => { setCameraFollow(v); drawWorkplace(); }, cameraFollowOptions()),
       field('Horizontal', state.camera.horizontal, 'number', v => { state.camera.horizontal=Number(v)||0; drawWorkplace(); }),
       field('Vertical', state.camera.vertical, 'number', v => { state.camera.vertical=Number(v)||0; drawWorkplace(); }),
-      field('Animation', state.camera.animation, 'custom-select', v => { state.camera.animation=v; }, ['Quick','Smooth']),
+      field('Animation', state.camera.animation, 'custom-select', v => { state.camera.animation=v; drawWorkplace(); }, CAMERA_ANIMATIONS),
       field('Speed', state.camera.speed, 'number', v => { state.camera.speed=Math.max(0,Number(v)||0); }),
       field('Scale', state.camera.scale, 'number', v => { state.camera.scale=Math.max(0.01,Number(v)||0.01); drawWorkplace(); }),
       colorField('BG Color', state.camera.bgColor, v => { state.camera.bgColor=v; drawWorkplace(); })
@@ -1851,6 +1898,40 @@
     if (other) { const old = node.numericId; node.numericId = value; other.numericId = old; status(`Id ${old} ↔ ${value}`); }
     else { node.numericId = value; state.nextNodeId = Math.max(state.nextNodeId, value + 1); }
     renderSelectionTree(); renderComponentPanel(); drawWorkplace();
+  }
+
+  function validateSubCameraName(node,value){
+    const name=String(value??'').trim();
+    const normalized=name.toLowerCase().replace(/\s+/g,'');
+    if(!name)return 'Sub Camera name is required';
+    if(['none','maincam','maincamera'].includes(normalized))return 'None and Main Cam are reserved names';
+    const duplicate=allNodes().find(({node:other})=>other.id!==node?.id&&String(component(other,'subcamera')?.name||'').trim().toLowerCase()===name.toLowerCase());
+    return duplicate?'Sub Camera name already exists':'';
+  }
+  function createSubCameraNameField(node,comp){
+    const row=document.createElement('div');row.className='property-row';
+    const label=document.createElement('span');label.className='property-label';label.textContent='Name';
+    const control=document.createElement('div');control.className='property-control';
+    const input=document.createElement('input');input.type='text';input.value=String(comp.name||'Sub Camera');
+    const refresh=()=>{
+      const error=validateSubCameraName(node,input.value);
+      row.classList.toggle('uix-invalid-field',!!error);
+      input.title=error||'';
+      input.setAttribute('aria-invalid',error?'true':'false');
+      return !error;
+    };
+    bindValueCommit(input,()=>input.value.trim(),value=>{
+      if(validateSubCameraName(node,value))return;
+      comp.name=value;
+      renderSelectionTree();drawWorkplace();
+    },'Sub Camera Name',null,{live:true});
+    input.addEventListener('input',refresh);
+    refresh();
+    control.append(input);row.append(label,control);return row;
+  }
+  function makeUniqueSubCameraName(){
+    const used=new Set(allNodes().map(({node})=>String(component(node,'subcamera')?.name||'').trim().toLowerCase()).filter(Boolean));
+    let n=1,name='Sub Camera';while(used.has(name.toLowerCase()))name=`Sub Camera ${++n}`;return name;
   }
 
   function renderComponentCard(node, comp) {
@@ -1900,16 +1981,35 @@
       case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic']), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
       case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'])]; break;
       case 'joints': rows = renderJointsRows(node, comp); break;
+      case 'canvas': {
+        const cameraOptions=[['None',''],['Main Cam','main']];
+        allNodes().forEach(({node:other})=>{
+          const sub=component(other,'subcamera');
+          if(!sub)return;
+          cameraOptions.push([sub.name||`Sub Camera ${other.numericId}`,String(other.id)]);
+        });
+        const optionLabels=cameraOptions.map(x=>x[0]);
+        const optionValues=new Map(cameraOptions.map(x=>[x[0],x[1]]));
+        const currentLabel=cameraOptions.find(x=>x[1]===String(comp.source||''))?.[0]||'None';
+        rows=[
+          field('Sub Camera',currentLabel,'custom-select',v=>{comp.source=optionValues.get(v)||'';drawWorkplace();},optionLabels),
+          field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),
+          field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),
+          axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[Number(x)||0,Number(y)||0];drawWorkplace();}),
+          axisVectorField('Scale',comp.scale||[1,1],(x,y)=>{comp.scale=[Number(x)||1,Number(y)||1];drawWorkplace();}),
+          colorField('Background',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),
+          field('Rendering',({stretch:'Stretch',crop:'Crop',windowboxing:'Windowboxing'}[String(comp.render||'windowboxing').toLowerCase()]||'Windowboxing'),'custom-select',v=>{comp.render=String(v).toLowerCase();drawWorkplace();},['Stretch','Crop','Windowboxing']),
+          checkboxField('Pixelated',comp.pixelated!==false,v=>{comp.pixelated=!!v;drawWorkplace();})
+        ];
+        break;
+      }
       case 'subcamera': {
         rows=[
+          createSubCameraNameField(node,comp),
           field('Cam X',comp.camX,'number',v=>{comp.camX=Number(v)||0;drawWorkplace();}),
           field('Cam Y',comp.camY,'number',v=>{comp.camY=Number(v)||0;drawWorkplace();}),
           axisVectorField('Cam Size',[comp.camSizeX,comp.camSizeY],(x,y)=>{comp.camSizeX=Math.max(1,Number(x)||1);comp.camSizeY=Math.max(1,Number(y)||1);drawWorkplace();}),
-          field('Cam Angle',comp.camAngle,'number',v=>{comp.camAngle=Number(v)||0;drawWorkplace();}),
-          axisVectorField('Canvas',[comp.canvasX,comp.canvasY],(x,y)=>{comp.canvasX=Number(x)||0;comp.canvasY=Number(y)||0;drawWorkplace();}),
-          axisVectorField('Canvas Scale',[comp.canvasScaleX,comp.canvasScaleY],(x,y)=>{comp.canvasScaleX=Number.isFinite(Number(x))?Number(x):1;comp.canvasScaleY=Number.isFinite(Number(y))?Number(y):1;drawWorkplace();}),
-          field('Render',({stretch:'Stretch',crop:'Crop',windowboxing:'Windowboxing'}[String(comp.render||'windowboxing').toLowerCase()]||'Windowboxing'),'custom-select',v=>{comp.render=String(v).toLowerCase();drawWorkplace();},['Stretch','Crop','Windowboxing']),
-          checkboxField('Pixelated',comp.pixelated!==false,v=>{comp.pixelated=!!v;drawWorkplace();})
+          field('Cam Angle',comp.camAngle,'number',v=>{comp.camAngle=Number(v)||0;drawWorkplace();})
         ];
         break;
       }
@@ -2066,7 +2166,7 @@
   function renderAnimationRows(node, comp) {
     normalizeNode(node);
     if(!Array.isArray(comp.animations)) comp.animations=[];
-    if(!comp.animations.length) comp.animations.push({name:'Default',fps:8,sprites:[]});
+    if(!comp.animations.length) comp.animations=[{name:'Default',fps:8,sprites:[]}];
     const rows=[];
     const activeName=comp.activeAnimation||comp.animations[0].name;
     comp.activeAnimation=activeName;
@@ -2074,21 +2174,21 @@
       const block=document.createElement('div');block.className='animation-block';
       const title=document.createElement('div');title.className='animation-block-head';
       const nameInput=document.createElement('input');nameInput.type='text';nameInput.value=anim.name;nameInput.className='animation-name-input';
-      nameInput.addEventListener('change',()=>{const next=nameInput.value.trim()||`Animation ${index+1}`;const old=anim.name;anim.name=next;if(comp.activeAnimation===old)comp.activeAnimation=next;renderComponentPanel();});
+      nameInput.addEventListener('change',()=>{const next=nameInput.value.trim()||`Animation ${index+1}`;const old=anim.name;if(next===old)return;pushHistory('Rename Animation');anim.name=next;if(comp.activeAnimation===old)comp.activeAnimation=next;renderComponentPanel();drawWorkplace();});
       const del=document.createElement('button');del.type='button';del.className='mini-action danger';del.textContent='×';del.title='Delete Animation';
-      del.addEventListener('click',()=>{if(comp.animations.length===1)return status('At least one animation is required');askConfirm('Delete Animation',`Delete “${anim.name}”?`,()=>{comp.animations.splice(index,1);if(comp.activeAnimation===anim.name)comp.activeAnimation=comp.animations[0].name;renderComponentPanel();});});
+      del.addEventListener('click',()=>{if(comp.animations.length===1)return status('At least one animation is required');askConfirm('Delete Animation',`Delete “${anim.name}”?`,()=>{pushHistory('Delete Animation');comp.animations.splice(index,1);if(comp.activeAnimation===anim.name)comp.activeAnimation=comp.animations[0].name;renderComponentPanel();drawWorkplace();});});
       title.append(nameInput,del);block.append(title);
-      block.append(field('FPS',anim.fps||8,'number',v=>{anim.fps=Math.max(1,Number(v)||1);}));
+      block.append(field('FPS',anim.fps||8,'number',v=>{const next=Math.max(1,Number(v)||1);if(next===Number(anim.fps||8))return;pushHistory('Edit Animation FPS');anim.fps=next;drawWorkplace();}));
       (Array.isArray(anim.sprites)?anim.sprites:[]).forEach((sprite,si)=>{
-        const row=assetField(`Sprite ${si+1}`,sprite.src,'Sprite',asset=>{sprite.name=asset.name;sprite.src=asset.value;renderComponentPanel();drawWorkplace();});
-        const remove=document.createElement('button');remove.type='button';remove.className='mini-action danger animation-sprite-remove';remove.textContent='×';remove.title='Remove Sprite';remove.onclick=()=>{anim.sprites.splice(si,1);renderComponentPanel();};
+        const row=assetField(`Sprite ${si+1}`,sprite.src,'Sprite',asset=>{if(!asset||sprite.src===asset.value)return;pushHistory('Edit Animation Sprite');sprite.name=asset.name;sprite.src=asset.value;renderComponentPanel();drawWorkplace();});
+        const remove=document.createElement('button');remove.type='button';remove.className='mini-action danger animation-sprite-remove';remove.textContent='×';remove.title='Remove Sprite';remove.onclick=()=>{pushHistory('Remove Animation Sprite');anim.sprites.splice(si,1);renderComponentPanel();drawWorkplace();};
         row.querySelector('.property-control')?.append(remove);block.append(row);
       });
-      const add=document.createElement('button');add.className='small-action';add.type='button';add.textContent='＋ Add Sprite';add.addEventListener('click',()=>openAssetSelector('Sprite',asset=>{anim.sprites.push({name:asset.name,src:asset.value});renderComponentPanel();drawWorkplace();}));block.append(add);
+      const add=document.createElement('button');add.className='small-action';add.type='button';add.textContent='＋ Add Sprite(s)';add.addEventListener('click',()=>openAssetSelector('Sprite',assets=>{const selected=(Array.isArray(assets)?assets:[assets]).filter(Boolean);if(!selected.length)return;pushHistory(`Add ${selected.length} Animation Sprite${selected.length===1?'':'s'}`);selected.forEach(asset=>anim.sprites.push({name:asset.name,src:asset.value}));renderComponentPanel();drawWorkplace();},{isMulti:true}));block.append(add);
       const activate=document.createElement('button');activate.className='small-action';activate.type='button';activate.textContent=comp.activeAnimation===anim.name?'Active':'Use Animation';activate.disabled=comp.activeAnimation===anim.name;activate.addEventListener('click',()=>{pushHistory('Use Animation');comp.activeAnimation=anim.name;renderComponentPanel();drawWorkplace();});block.append(activate);
       rows.push(block);
     });
-    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.textContent='＋ New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');pushHistory('Add Animation');comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();}));
+    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.textContent='＋ New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');pushHistory('Add Animation');comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();drawWorkplace();}));
     rows.push(addAnim);return rows;
   }
 
@@ -2101,7 +2201,7 @@
       const existing=targets.filter(n=>component(n,comp.type));
       if(!existing.length)return;
       askConfirm('Delete Component',`Delete ${COMPONENT_LABELS[comp.type]} from all ${targets.length} selected Nodes?`,()=>{
-        pushHistory('Delete Component');
+        pushHistory(`Delete ${COMPONENT_LABELS[comp.type]} from Selection`);
         existing.forEach(target=>{
           target.components=nodeComponents(target).filter(c=>c.type!==comp.type);
           if(comp.type==='script'){
@@ -2117,7 +2217,7 @@
       return;
     }
     askConfirm('Delete Component', `Delete ${COMPONENT_LABELS[comp.type]} from “${node.name}”?`, () => {
-      pushHistory('Delete Component');
+      pushHistory(`Delete ${COMPONENT_LABELS[comp.type]}`);
       node.components = nodeComponents(node).filter(c => c !== comp);
       if(comp.type==='script'){delete state.script.nodesByNode[node.id];delete state.script.connectionsByNode[node.id];}
       renderComponentPanel(); drawWorkplace(); status(`${COMPONENT_LABELS[comp.type]} removed`);
@@ -2360,6 +2460,9 @@
           try{onChange(value);}finally{if(multiCtx)multiCtx.suppressHistory=false;}
         }
 
+        // Repaint immediately after any inspector mutation.
+        state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;
+        scheduleLiveWorkplaceRender();
         const after=historySnapshot();
         if(state.history.pending){
           // A component-specific callback may have opened its own history transaction.
@@ -2493,7 +2596,7 @@
     else if(type==='custom-select') c.append(customSelect(value,options,onChange,activeMultiComponentContext,path,label));
     else {
       const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';
-      bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label,path,type==='text'?{live:true}:null);
+      bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label,path,{live:true});
       c.append(i);
     }
     row.append(l,c);
@@ -2526,7 +2629,7 @@
         else next[index]=normalized;
         onChange(next[0],next[1]);
       };
-      bindValueCommit(input,()=>Number(input.value)||0,applyAxisValue,`${label} ${name}`,inputPath);
+      bindValueCommit(input,()=>Number(input.value)||0,applyAxisValue,`${label} ${name}`,inputPath,{live:true});
       row.append(l,input);
       if(inputPath)multiMarkerFor(input,row,inputPath);
       axis.append(row);
@@ -2537,10 +2640,10 @@
     value = Array.isArray(value) ? value : [0,0];
     const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent=label;wrap.append(title);
     const axes=document.createElement('div');axes.className='axis-grid';
-    ['X','Y'].forEach((axis,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${axis}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(value[index]??0);cell.append(i);axes.append(cell);i.addEventListener('change',()=>{pushHistory();onChange(Number(axes.children[0].querySelector('input').value)||0,Number(axes.children[1].querySelector('input').value)||0);});});wrap.append(axes);return wrap;
+    ['X','Y'].forEach((axis,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${axis}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(value[index]??0);cell.append(i);axes.append(cell);i.addEventListener('change',()=>{pushHistory();onChange(Number(axes.children[0].querySelector('input').value)||0,Number(axes.children[1].querySelector('input').value)||0);state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;scheduleLiveWorkplaceRender();});});wrap.append(axes);return wrap;
   }
   function cornerRadiusFields(radius,onChange){
-    const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent='Corner Radius';wrap.append(title);const grid=document.createElement('div');grid.className='corner-stack';['TL','TR','BR','BL'].forEach((name,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${name}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(radius[index]||0);i.addEventListener('change',()=>{pushHistory();radius[index]=Math.max(0,Number(i.value)||0);onChange([...radius]);});cell.append(i);grid.append(cell);});wrap.append(grid);return wrap;
+    const wrap=document.createElement('div');wrap.className='property-stack';const title=document.createElement('div');title.className='property-label';title.textContent='Corner Radius';wrap.append(title);const grid=document.createElement('div');grid.className='corner-stack';['TL','TR','BR','BL'].forEach((name,index)=>{const cell=document.createElement('div');cell.className='axis-cell';cell.innerHTML=`<span>${name}</span>`;const i=document.createElement('input');i.type='number';i.value=Number(radius[index]||0);i.addEventListener('change',()=>{pushHistory();radius[index]=Math.max(0,Number(i.value)||0);onChange([...radius]);state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;scheduleLiveWorkplaceRender();});cell.append(i);grid.append(cell);});wrap.append(grid);return wrap;
   }
   function checkboxField(label,value,onChange){
     const multiCtx=activeMultiComponentContext||null;
@@ -2633,6 +2736,7 @@
   function variableList(scope){
     if(scope==='Local') return (state.localVarsByNode[state.script.nodeId] ||= []);
     if(scope==='Scene') return sceneVariableList();
+    if(scope==='Server') return state.serverVariables ||= [];
     return state.globalVariables ||= [];
   }
   function sanitizeVariableName(name){
@@ -2686,6 +2790,7 @@
       return list;
     };
     fixList(state.globalVariables);
+    fixList(state.serverVariables);
     Object.values(state.sceneVariablesByScene||{}).forEach(fixList);
     Object.values(state.localVarsByNode||{}).forEach(fixList);
   }
@@ -2712,6 +2817,7 @@
   function renderVariables(host, globalSelection) {
     host.innerHTML='';
     renderVariableSection(host,'Global Variables','Global','globalVariablesCollapsed');
+    renderVariableSection(host,'Server Variables','Server','serverVariablesCollapsed');
     renderVariableSection(host,'Scene Variables','Scene','sceneVariablesCollapsed');
   }
   function flashValidationError(el){
@@ -2724,6 +2830,7 @@
   }
   function variableExpressionPrefix(scope){
     if(scope==='Global')return 'ctx.global';
+    if(scope==='Server')return 'ctx.server';
     if(scope==='Scene')return 'ctx.sceneVariables';
     return null;
   }
@@ -2782,7 +2889,6 @@
     status(`${v.name} moved to ${toScope} Variables`);
   }
   function variableEditor(v,scope){
-    const global=scope==='Global';
     const card=document.createElement('div');card.className='variable-block';
     const head=document.createElement('div');head.className='variable-head';
     const title=document.createElement('strong');title.textContent=v.name||'Variable';
@@ -2801,7 +2907,7 @@
       if(!next){flashValidationError(input);if(input)input.value=previous;return status('Variable names must start with a letter and contain only letters and numbers');}
       if(variableExists(scope,next,v)){flashValidationError(input);if(input)input.value=previous;return status('A variable with that name already exists in this scope');}
       v.name=next;
-      if(scope==='Global'||scope==='Scene')rewriteVariableReferences(scope,scope,previous,next);
+      if(scope==='Global'||scope==='Server'||scope==='Scene')rewriteVariableReferences(scope,scope,previous,next);
       title.textContent=next;
       input?.classList.remove('uix-validation-error-flash');
       renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();
@@ -2839,8 +2945,13 @@
       const items=[];
       if(scope==='Scene'){
         items.push({label:'Set as Global Var',icon:'◆',action:()=>confirmVariableScopeMove(v,'Scene','Global')});
+        items.push({label:'Set as Server Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Scene','Server')});
       }else if(scope==='Global'){
         items.push({label:'Set as Scene Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Global','Scene')});
+        items.push({label:'Set as Server Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Global','Server')});
+      }else if(scope==='Server'){
+        items.push({label:'Set as Global Var',icon:'◆',action:()=>confirmVariableScopeMove(v,'Server','Global')});
+        items.push({label:'Set as Scene Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Server','Scene')});
       }
       items.push({label:'Delete',icon:'×',action:()=>del.click()});
       showContextMenu(items,e.clientX,e.clientY);
@@ -2853,7 +2964,7 @@
     const node=selectedNodes[0]||selectedNode();
     if(!node)return status('Select a Node first');
     const grid=$('#componentGrid');if(!grid)return;grid.innerHTML='';
-    const icons={text:'T',sprite:'▧',animationsprite:'◫',physics:'◌',collider:'□',joints:'↔',subcamera:'▣',input:'▭',progressbar:'▥'};
+    const icons={text:'T',sprite:'▧',animationsprite:'◫',physics:'◌',collider:'□',joints:'↔',subcamera:'▣',canvas:'▤',input:'▭',progressbar:'▥'};
     Object.keys(NodeSettings).filter(type=>!['node','script','transform'].includes(type)).forEach(type=>{
       const existsAll=selectedNodes.length>1?selectedNodes.every(n=>!!component(n,type)):!!component(node,type);
       const existsSome=selectedNodes.length>1?selectedNodes.some(n=>!!component(n,type)):existsAll;
@@ -2872,14 +2983,14 @@
       const missing=nodes.filter(node=>!component(node,type));
       if(!missing.length)return status(`${COMPONENT_LABELS[type]} is already present on all selected Nodes`);
       pushHistory(`Add ${COMPONENT_LABELS[type]} to ${missing.length} Nodes`);
-      missing.forEach(node=>{node.components=Array.isArray(node.components)?node.components:[];node.components.push(createComponent(type));normalizeNode(node);});
+      missing.forEach(node=>{node.components=Array.isArray(node.components)?node.components:[];const created=createComponent(type);if(type==='subcamera')created.name=makeUniqueSubCameraName();node.components.push(created);normalizeNode(node);});
       closeModal();renderSelectionTree();renderComponentPanel();drawWorkplace();
       status(`${COMPONENT_LABELS[type]} added to ${missing.length} selected Node${missing.length===1?'':'s'}`);
       return;
     }
     const node=selectedNode();if(!node)return;
     if(component(node,type))return status(`${COMPONENT_LABELS[type]} is already added`);
-    pushHistory();node.components.push(createComponent(type));normalizeNode(node);closeModal();renderComponentPanel();drawWorkplace();status(`${COMPONENT_LABELS[type]} added`);
+    pushHistory();const created=createComponent(type);if(type==='subcamera')created.name=makeUniqueSubCameraName();node.components.push(created);normalizeNode(node);closeModal();renderComponentPanel();drawWorkplace();status(`${COMPONENT_LABELS[type]} added`);
   }
 
   function syncPanelWidths(){
@@ -3074,17 +3185,14 @@
   }
   function nodeVisualSource(node,now=performance.now()){
     const sprite=component(node,'sprite');
-    const anim=getAnimationForNode(node);
-    if(sprite?.sourceType==='Animation' && anim){
+    if(!sprite)return {src:'',pixelated:true,animated:false};
+    const anim=sprite.sourceType==='Animation'?getAnimationForNode(node):null;
+    if(sprite.sourceType==='Animation' && anim){
       const current=getAnimationFrame(anim,now);
       return {src:current?.frame?.src||'',pixelated:sprite.pixelated!==false,animated:!!current?.frames?.length};
     }
-    if(sprite?.src) return {src:sprite.src,pixelated:sprite.pixelated!==false,animated:false};
-    if(anim){
-      const current=getAnimationFrame(anim,now);
-      return {src:current?.frame?.src||'',pixelated:true,animated:!!current?.frames?.length};
-    }
-    return {src:'',pixelated:true,animated:false};
+    if(sprite.src) return {src:sprite.src,pixelated:sprite.pixelated!==false,animated:false};
+    return {src:'',pixelated:sprite.pixelated!==false,animated:false};
   }
   function spriteLocalGeometry(node,now=performance.now()){
     const sprite=component(node,'sprite'),visual=nodeVisualSource(node,now);
@@ -3120,6 +3228,7 @@
       }
     }
     const progress=component(node,'progressbar');if(progress){const p=progress.position||[0,0];add(p[0],p[1],Math.max(1,Number(progress.width)||1),Math.max(1,Number(progress.height)||1));}
+    const canvas=component(node,'canvas');if(canvas){const p=canvas.position||[0,0],s=canvas.scale||[1,1];add(p[0],p[1],(Number(canvas.width)||320)*Math.abs(Number(s[0])||1),(Number(canvas.height)||180)*Math.abs(Number(s[1])||1));}
     if(!Number.isFinite(minX))return {minX:-45,minY:-27,maxX:45,maxY:27,w:90,h:54};
     return {minX,minY,maxX,maxY,w:Math.max(1,maxX-minX),h:Math.max(1,maxY-minY)};
   }
@@ -3135,7 +3244,7 @@
   function nodeVisualCacheKey(node){
     if(!node)return '';
     const parts=[];
-    for(const type of ['text','input','sprite','animationsprite','progressbar']){
+    for(const type of ['canvas','text','input','sprite','animationsprite','progressbar']){
       const comp=component(node,type);if(!comp)continue;
       try{parts.push(type,JSON.stringify(comp));}catch{parts.push(type,String(comp));}
     }
@@ -3151,6 +3260,7 @@
       const input=component(node,'input');if(input)r=Math.max(r,Math.hypot(Number(input.width)||260,Number(input.height)||48)*.6);
       const sprite=component(node,'sprite');if(sprite)r=Math.max(r,Math.hypot(Number(sprite.size?.[0])||220,Number(sprite.size?.[1])||160)*.55);
       const progress=component(node,'progressbar');if(progress)r=Math.max(r,Math.hypot(Number(progress.width)||1,Number(progress.height)||1)*.6);
+      const canvas=component(node,'canvas');if(canvas)r=Math.max(r,Math.hypot(Number(canvas.width)||320,Number(canvas.height)||180)*.6);
       cached={rev,base:r};
       editorCullRadiusCache.set(node,cached);
     }
@@ -3357,10 +3467,43 @@
     }
   }
   function roundRectPath(ctx,x,y,w,h,r){r=Array.isArray(r)?r:[r,r,r,r];const [tl,tr,br,bl]=r.map(v=>Math.max(0,Number(v)||0));const max=Math.min(Math.abs(w)/2,Math.abs(h)/2);const a=Math.min(tl,max),b=Math.min(tr,max),c=Math.min(br,max),d=Math.min(bl,max);ctx.beginPath();ctx.moveTo(x+a,y);ctx.lineTo(x+w-b,y);ctx.quadraticCurveTo(x+w,y,x+w,y+b);ctx.lineTo(x+w,y+h-c);ctx.quadraticCurveTo(x+w,y+h,x+w-c,y+h);ctx.lineTo(x+d,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-d);ctx.lineTo(x,y+a);ctx.quadraticCurveTo(x,y,x+a,y);ctx.closePath();}
+  function findCanvasSource(canvasComp){
+    const source=String(canvasComp?.source||'');
+    if(source==='main')return {type:'main',key:'main',node:null,sub:null};
+    if(!source)return null;
+    const found=allNodes().find(({node})=>String(node.id)===source&&component(node,'subcamera'));
+    if(!found)return null;
+    return {type:'subcamera',key:String(found.node.id),node:found.node,sub:component(found.node,'subcamera')};
+  }
+  function drawCanvasFrame(ctx,canvasComp,sourceSurface=null){
+    const p=canvasComp.position||[0,0],w=Math.max(1,Number(canvasComp.width)||320),h=Math.max(1,Number(canvasComp.height)||180),sx=Math.abs(Number(canvasComp.scale?.[0]??1)||1),sy=Math.abs(Number(canvasComp.scale?.[1]??1)||1);
+    const x=Number(p[0]||0),y=Number(p[1]||0);
+    ctx.save();ctx.translate(x,y);ctx.scale(sx,sy);
+    const bg=colorCss(canvasComp.bgCol,'#101010');ctx.fillStyle=bg;ctx.fillRect(-w/2,-h/2,w,h);
+    if(sourceSurface){
+      const sw=Math.max(1,sourceSurface.width||w),sh=Math.max(1,sourceSurface.height||h);
+      const mode=String(canvasComp.render||'windowboxing').toLowerCase();
+      const fit=mode==='stretch'?0:mode==='crop'?Math.max(w/sw,h/sh):Math.min(w/sw,h/sh);
+      let dw=w,dh=h,dx=-w/2,dy=-h/2;
+      if(mode!=='stretch'){dw=sw*fit;dh=sh*fit;dx=-dw/2;dy=-dh/2;}
+      ctx.save();ctx.beginPath();ctx.rect(-w/2,-h/2,w,h);ctx.clip();ctx.imageSmoothingEnabled=canvasComp.pixelated!==false?false:true;ctx.imageSmoothingQuality=canvasComp.pixelated!==false?'nearest':'low';ctx.drawImage(sourceSurface,dx,dy,dw,dh);ctx.restore();
+    }
+    ctx.strokeStyle=sourceSurface?'rgba(255,255,255,.72)':'rgba(255,255,255,.32)';ctx.lineWidth=1/Math.max(1,Math.abs(sx));ctx.strokeRect(-w/2,-h/2,w,h);
+    if(!sourceSurface){
+      ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='12px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      const source=String(canvasComp.source||'');ctx.fillText(source==='main'?'Main Cam':source?'Sub Camera':'Canvas',0,0);
+    }
+    ctx.restore();
+  }
   function drawNodeVisual(ctx,node,x,y,sx,sy,angle){
     if(!runtimeNodeVisible(node))return;
     ctx.save();ctx.translate(x,y);ctx.rotate(angle*Math.PI/180);ctx.scale(sx,sy);
-    const text=component(node,'text'),sprite=component(node,'sprite'),anim=component(node,'animationsprite'),progress=component(node,'progressbar');
+    const canvas=component(node,'canvas'),text=component(node,'text'),sprite=component(node,'sprite'),anim=component(node,'animationsprite'),progress=component(node,'progressbar');
+    if(canvas){
+      let surface=null;
+      if(state.runtime?.running&&!runtimeSubCameraStack.has(String(canvas.source||''))){try{surface=runtimeCameraSurfaceForCanvas(canvas);}catch{surface=null;}}
+      drawCanvasFrame(ctx,canvas,surface);
+    }
     if(text){
       const p=text.position||[0,0];ctx.save();ctx.translate(Number(p[0]||0),Number(p[1]||0));
       const m=getTextMetrics(node,text,ctx);ctx.font=`${Number(text.fontSize)||32}px ${text.fontFamily||'sans-serif'}`;ctx.textAlign='center';ctx.textBaseline='middle';const left=-m.w/2,top=-m.h/2;
@@ -3431,31 +3574,32 @@
   }
 
   function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d'));return {kind:'node',node,component:t,transform:t,center:[Number(t.position?.[0]||0),Number(t.position?.[1]||0)],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
-  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'||state.mode==='select'){const handle=66/state.zoom;drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.type==='scale'&&workspace.gizmoDrag.corner===id){const s=(12/state.zoom);ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-s/2-2/state.zoom,y-s/2-2/state.zoom,s+4/state.zoom,s+4/state.zoom);}});}if(state.mode==='rotate'||state.mode==='all'){const r=58/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
+  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'){const handle=66/state.zoom;drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>drawScaleHandle(ctx,x,y,id));drawCenter(ctx,'#e4ca4e');}else{const handle=66/state.zoom;drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');}}if(state.mode==='rotate'||state.mode==='all'){const r=58/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
 
   function drawArrow(ctx,x1,y1,x2,y2,color){ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const ang=Math.atan2(y2-y1,x2-x1);const s=7/state.zoom;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-Math.cos(ang-.55)*s,y2-Math.sin(ang-.55)*s);ctx.lineTo(x2-Math.cos(ang+.55)*s,y2-Math.sin(ang+.55)*s);ctx.closePath();ctx.fill();ctx.restore();}
   function drawScaleHandle(ctx,x,y){const s=11/state.zoom;ctx.fillStyle='#e4ca4e';ctx.fillRect(x-s/2,y-s/2,s,s);}
+  function drawScaleArrowHandle(ctx,x,y,id,color){const s=12/state.zoom;const c=color||'#e4ca4e';ctx.save();ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(x,y);ctx.stroke();ctx.strokeRect(x-s/2,y-s/2,s,s);ctx.fillRect(x-s/3,y-s/3,2*s/3,2*s/3);ctx.restore();}
   function drawCenter(ctx,color){ctx.fillStyle=color;ctx.fillRect(-3/state.zoom,-3/state.zoom,6/state.zoom,6/state.zoom);}
 
   function drawMultiSelectionGizmo(ctx,nodes){
     const b=selectionBounds(nodes);if(!b)return;
     const mode=state.mode;
     ctx.save();ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.setLineDash([6/state.zoom,4/state.zoom]);ctx.strokeRect(b.left,b.top,b.w,b.h);ctx.setLineDash([]);
-    if(mode==='move'||mode==='all'||mode==='select'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}
-    if(mode==='scale'||mode==='all'){[[b.left,b.top,'tl'],[b.x,b.top,'top'],[b.right,b.top,'tr'],[b.left,b.y,'left'],[b.right,b.y,'right'],[b.left,b.bottom,'bl'],[b.x,b.bottom,'bottom'],[b.right,b.bottom,'br']].forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.multi&&workspace.gizmoDrag.type==='scale'&&workspace.gizmoDrag.corner===id){const z=12/state.zoom;ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-z/2-2/state.zoom,y-z/2-2/state.zoom,z+4/state.zoom,z+4/state.zoom);}});}
+    if(mode==='move'||mode==='all'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}
+    if(mode==='scale'||mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){[[b.left,b.top,'tl'],[b.x,b.top,'top'],[b.right,b.top,'tr'],[b.left,b.y,'left'],[b.right,b.y,'right'],[b.left,b.bottom,'bl'],[b.x,b.bottom,'bottom'],[b.right,b.bottom,'br']].forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.multi&&workspace.gizmoDrag.type==='scale'&&workspace.gizmoDrag.corner===id){const z=12/state.zoom;ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-z/2-2/state.zoom,y-z/2-2/state.zoom,z+4/state.zoom,z+4/state.zoom);}});drawCenterAt(ctx,b.x,b.y,'#e4ca4e');}else{const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}}
     if(mode==='rotate'||mode==='all'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,r=58/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();ctx.restore();}
     ctx.restore();
   }
   function drawCenterAt(ctx,x,y,color){ctx.save();ctx.fillStyle=color;ctx.fillRect(x-3/state.zoom,y-3/state.zoom,6/state.zoom,6/state.zoom);ctx.restore();}
   function getSelectionGizmoHit(nodes,world){
     const b=selectionBounds(nodes);if(!b)return null;const mode=state.mode,hit=10/state.zoom,active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,local=rotatePoint(world.x-b.x,world.y-b.y,-ga);
-    if(mode==='scale'||mode==='all')for(const p of [[-b.w/2,-b.h/2,'tl'],[0,-b.h/2,'top'],[b.w/2,-b.h/2,'tr'],[-b.w/2,0,'left'],[b.w/2,0,'right'],[-b.w/2,b.h/2,'bl'],[0,b.h/2,'bottom'],[b.w/2,b.h/2,'br']])if(Math.hypot(local.x-p[0],local.y-p[1])<hit)return {type:'scale',corner:p[2],gizmoAngle:ga};
+    if(mode==='scale'||mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-b.w/2,-b.h/2,'tl'],[0,-b.h/2,'top'],[b.w/2,-b.h/2,'tr'],[-b.w/2,0,'left'],[b.w/2,0,'right'],[-b.w/2,b.h/2,'bl'],[0,b.h/2,'bottom'],[b.w/2,b.h/2,'br']])if(Math.hypot(local.x-p[0],local.y-p[1])<hit)return {type:'scale',corner:p[2],gizmoAngle:ga};}else{const handle=66/state.zoom;if(Math.hypot(local.x-handle,local.y)<hit*1.5)return {type:'scale',corner:'right',gizmoAngle:ga};if(Math.hypot(local.x,local.y+handle)<hit*1.5)return {type:'scale',corner:'top',gizmoAngle:ga};}if(mode==='scale'&&Math.hypot(local.x,local.y)<hit*1.5)return {type:'scale',corner:'center',gizmoAngle:ga};}
     if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(local.x,local.y)-r)<hit&&local.y<0)return {type:'rotate',gizmoAngle:ga};}
-    if(mode==='move'||mode==='all'||mode==='select'){const mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(local.x,local.y)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:ga};if(Math.abs(local.y)<hit&&local.x>8/state.zoom&&local.x<mx+hit)return {type:'move',axis:'x',gizmoAngle:ga};if(Math.abs(local.x)<hit&&local.y<-8/state.zoom&&local.y>-my-hit)return {type:'move',axis:'y',gizmoAngle:ga};}
+    if(mode==='move'||mode==='all'){const mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(local.x,local.y)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:ga};if(Math.abs(local.y)<hit&&local.x>8/state.zoom&&local.x<mx+hit)return {type:'move',axis:'x',gizmoAngle:ga};if(Math.abs(local.x)<hit&&local.y<-8/state.zoom&&local.y>-my-hit)return {type:'move',axis:'y',gizmoAngle:ga};}
     return null;
   }
 
-  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate',gizmoAngle:g.angle};}if(mode==='move'||mode==='all'){const hit=12/state.zoom,mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:g.angle};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x',gizmoAngle:g.angle};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y',gizmoAngle:g.angle};}return null;}
+  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}else{const handle=66/state.zoom;if(Math.hypot(lx-handle,ly)<hit*1.5)return {type:'scale',corner:'right'};if(Math.hypot(lx,ly+handle)<hit*1.5)return {type:'scale',corner:'top'};}if(mode==='scale'&&Math.hypot(lx,ly)<hit*1.5)return {type:'scale',corner:'center'};}if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate',gizmoAngle:g.angle};}if(mode==='move'||mode==='all'){const hit=12/state.zoom,mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:g.angle};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x',gizmoAngle:g.angle};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y',gizmoAngle:g.angle};}return null;}
 
   function nodeAt(world){
     const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;let dx=world.x-t.position[0],dy=world.y-t.position[1],rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
@@ -3627,11 +3771,15 @@
     }else if(d.type==='scale'){
       const a=g.angle,L=rotatePoint(dx,dy,-a),baseX=Math.max(1,g.baseW),baseY=Math.max(1,g.baseH),left=['left','tl','bl'].includes(d.corner),right=['right','tr','br'].includes(d.corner),top=['top','tl','tr'].includes(d.corner),bottom=['bottom','bl','br'].includes(d.corner),sx=Number(d.startTransform.scale?.[0]??1),sy=Number(d.startTransform.scale?.[1]??1);
       let nx=sx,ny=sy;
-      if(d.corner==='left'||d.corner==='right') nx=sx+(L.x/baseX)*(right?1:-1)*2;
+      if(d.corner==='center'){
+        const currentW=Math.max(1,g.w),currentH=Math.max(1,g.h);
+        const useX=Math.abs(L.x/currentW)>=Math.abs(L.y/currentH);
+        const factor=1+(useX?(L.x/currentW):(L.y/currentH))*2;
+        nx=sx*factor;ny=sy*factor;
+      }else if(d.corner==='left'||d.corner==='right') nx=sx+(L.x/baseX)*(right?1:-1)*2;
       else if(d.corner==='top'||d.corner==='bottom') ny=sy+(L.y/baseY)*(bottom?1:-1)*2;
       else {
         const rawX=sx+(L.x/baseX)*(right?1:-1)*2,rawY=sy+(L.y/baseY)*(bottom?1:-1)*2;
-        const bx=Math.max(1e-6,Math.abs(sx)),by=Math.max(1e-6,Math.abs(sy));
         const fx=rawX/sx,fy=rawY/sy;
         const factor=Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy;
         nx=sx*factor;ny=sy*factor;
@@ -3692,9 +3840,13 @@
   function positionSubMenu(menu,anchor){menu.style.position='fixed';menu.style.visibility='hidden';menu.style.display='block';const ar=anchor.getBoundingClientRect(),mr=menu.getBoundingClientRect(),pad=6;let left=ar.right+2,top=ar.top;if(left+mr.width>innerWidth-pad)left=ar.left-mr.width-2;if(top+mr.height>innerHeight-pad)top=innerHeight-mr.height-pad;if(top<pad)top=pad;menu.style.left=`${Math.max(pad,left)}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function openDocumentation(query=''){
     const value=String(query??'').trim();
+    const frame=$('#helpFrame');
+    if(!frame)return;
     const url=new URL('./help/index.html',location.href);
-    if(value)url.searchParams.set('search',value);
-    window.open(url.href,'_blank','noopener');
+    if(value)url.searchParams.set('search',value); else url.searchParams.delete('search');
+    url.searchParams.delete('topic');
+    frame.src=url.href;
+    showModal($('#helpModal'));
   }
 
   function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
@@ -3710,9 +3862,10 @@
     hideAllModals(); closeMenus(); stopRuntime();
     state.project={name:'Untitled Node2D',created:false};
     state.scenes=[]; state.currentSceneId=''; state.selectedId='scene-camera'; state.selectedIds=[]; state.selectionAnchorId=null;
-    state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
+    state.nextNodeId=1; state.nextVariableId=1; state.globalVariables=[]; state.serverVariables=[]; state.sceneVariablesByScene=Object.create(null); state.localVarsByNode=Object.create(null); state.uiComponentsByScene=Object.create(null);
     state.pan={x:0,y:0}; state.zoom=1; state.camera=defaultCamera(); state.game={preferredSceneId:'',screenType:'Windowboxing',requirements:{'Use Mic':false},mic:{speechLanguage:'en-US',continuous:true,interimResults:true}};
     state.script={nodeId:null,selectedNodeId:null,selectedNodeIds:[],selectionAnchorId:null,pan:{x:0,y:0},zoom:1,nodesByNode:Object.create(null),connectionsByNode:Object.create(null),viewsByNode:Object.create(null),editingInput:null,clipboard:null};
+    clearProjectAssets();
     state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     $('#appShell').classList.add('exited');
     clearCurrentProjectSession();
@@ -3728,6 +3881,7 @@
     const makeRow=(label,value,options={})=>{const row=document.createElement('div');row.className='editor-snap-row';const name=document.createElement('div');name.className='keybind-name';name.textContent=label;const control=document.createElement('div');control.className='editor-snap-control';if(options.select){const select=document.createElement('select');select.className='editor-snap-input';options.select.forEach(v=>{const opt=document.createElement('option');opt.value=String(v);opt.textContent=v===0?'0° (Off)':`${v}°`;opt.selected=Number(v)===Number(value);select.append(opt);});select.addEventListener('change',()=>{const next=getEditorSettings();next.rotateSnap=Math.max(0,Number(select.value)||0);saveEditorSettings(next);});control.append(select);}else{const input=document.createElement('input');input.className='editor-snap-input';input.type='number';input.min='0';input.step='0.01';input.value=String(value);input.addEventListener('change',()=>{const next=getEditorSettings();next.moveScaleSnap=Math.max(0,Number(input.value)||0);input.value=String(next.moveScaleSnap);saveEditorSettings(next);});control.append(input);}row.append(name,control);settingsWrap.append(row);};
     makeRow('Move / Scale Snap',settings.moveScaleSnap);
     makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
+    const gizmoRow=document.createElement('div');gizmoRow.className='editor-snap-row';const gizmoName=document.createElement('div');gizmoName.className='keybind-name';gizmoName.textContent='Scale Gizmo';const gizmoControl=document.createElement('div');gizmoControl.className='editor-snap-control';const gizmoSelect=document.createElement('select');gizmoSelect.className='editor-snap-input';['Full','Arrow'].forEach(v=>{const opt=document.createElement('option');opt.value=v;opt.textContent=v;opt.selected=settings.scaleGizmo===v;gizmoSelect.append(opt);});gizmoSelect.addEventListener('change',()=>{const next=getEditorSettings();next.scaleGizmo=gizmoSelect.value==='Full'?'Full':'Arrow';saveEditorSettings(next);drawWorkplace();});gizmoControl.append(gizmoSelect);gizmoRow.append(gizmoName,gizmoControl);settingsWrap.append(gizmoRow);
     const multiRow=document.createElement('div');multiRow.className='editor-snap-row';const multiLabel=document.createElement('label');multiLabel.className='game-setting-check';const multiCheck=document.createElement('input');multiCheck.type='checkbox';multiCheck.checked=settings.multiSelectionUnifiedEditing!==false;const multiText=document.createElement('span');multiText.textContent='Multiselection Unified Editing';multiLabel.append(multiCheck,multiText);multiRow.append(multiLabel);settingsWrap.append(multiRow);
     const missingRow=document.createElement('div');missingRow.className='editor-snap-row';const missingLabel=document.createElement('label');missingLabel.className='game-setting-check';const missingCheck=document.createElement('input');missingCheck.type='checkbox';missingCheck.checked=!!settings.createNewMissingComponent;const missingText=document.createElement('span');missingText.textContent='Create New Missing Component';missingLabel.append(missingCheck,missingText);missingRow.append(missingLabel);settingsWrap.append(missingRow);missingCheck.addEventListener('change',()=>{const next=getEditorSettings();next.createNewMissingComponent=missingCheck.checked;saveEditorSettings(next);});
     multiCheck.addEventListener('change',()=>{const next=getEditorSettings();next.multiSelectionUnifiedEditing=multiCheck.checked;saveEditorSettings(next);drawWorkplace();});
@@ -3927,6 +4081,7 @@
       nextNodeId:state.nextNodeId,
       nextVariableId:state.nextVariableId,
       globalVariables:state.globalVariables,
+      serverVariables:state.serverVariables,
       sceneVariablesByScene:state.sceneVariablesByScene,
       localVarsByNode:state.localVarsByNode,
       uiComponentsByScene:state.uiComponentsByScene,
@@ -3984,6 +4139,7 @@
     state.nextNodeId=Number(data.nextNodeId)||1;
     state.nextVariableId=Number(data.nextVariableId)||1;
     state.globalVariables=clone(data.globalVariables||[]);
+    state.serverVariables=clone(data.serverVariables||[]);
     state.sceneVariablesByScene=Object.create(null);
     state.scenes.forEach(scene=>{state.sceneVariablesByScene[scene.id]=scene.variables;});
     state.localVarsByNode=clone(data.localVarsByNode||{});
@@ -3998,6 +4154,10 @@
     const savedAssets=data.assets||{};
     ['Sprite','Audio','MIDI'].forEach(k=>{if(Array.isArray(savedAssets[k])) state.assets[k].push(...clone(savedAssets[k]));});
     normalizeAssetFilenames();
+    ensureAssetIds();
+    state.assetManagerSelection=new Set();
+    state.assetManagerSelectMode=false;
+    assetImageCache.clear();
     state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0};
     state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     if(!window.__UIX_STANDALONE__){
@@ -4089,7 +4249,7 @@
         onProgress?.(4,'Preparing project data…');
         const parts=[
           ['project',data.project],['scenes',data.scenes],['currentSceneId',data.currentSceneId],['selectedId',data.selectedId],['mode',data.mode],
-          ['nextNodeId',data.nextNodeId],['nextVariableId',data.nextVariableId],['globalVariables',data.globalVariables],
+          ['nextNodeId',data.nextNodeId],['nextVariableId',data.nextVariableId],['globalVariables',data.globalVariables],['serverVariables',data.serverVariables],
           ['sceneVariablesByScene',data.sceneVariablesByScene],['localVarsByNode',data.localVarsByNode],['uiComponentsByScene',data.uiComponentsByScene],
           ['game',data.game],['camera',data.camera]
         ];
@@ -4423,47 +4583,243 @@
     const close=()=>{try{audio.pause();audio.currentTime=0;}catch{}closeModal(modal);modal.remove();};$('.modal-close',modal).onclick=close;$('.modal-actions .btn',modal).onclick=close;
     showModal(modal);
   }
-  function openAssetManager(){renderAssetManager();showModal($('#assetModal'));}
+  function openAssetManager(){state.assetManagerSelection=new Set();state.assetManagerSelectionAnchorKey='';state.assetManagerSelectMode=false;renderAssetManager();showModal($('#assetModal'));}
+  function updateAssetManagerSelectionUI(){
+    const modal=$('#assetModal');if(!modal)return;
+    const set=state.assetManagerSelection instanceof Set?state.assetManagerSelection:new Set();
+    const order=new Map([...set].map((k,i)=>[k,i+1]));
+    modal.querySelectorAll('.asset-card[data-asset-key]').forEach(card=>{
+      const selected=set.has(card.dataset.assetKey);card.classList.toggle('asset-selected',selected);
+      const preview=card.querySelector('.asset-preview');if(!preview)return;
+      let badge=preview.querySelector('.selection-order-badge');
+      if(selected){if(!badge){badge=document.createElement('span');badge.className='selection-order-badge';preview.append(badge);}badge.textContent=String(order.get(card.dataset.assetKey)||'');badge.hidden=false;}
+      else if(badge)badge.remove();
+      const mark=preview.querySelector('.asset-selection-mark');if(mark)mark.textContent=selected?'✓':'+';
+      card.title=selected?`Selected ${order.get(card.dataset.assetKey)}`:'Tap or drag to select';
+    });
+    const title=modal.querySelector('.asset-section-title .selection-count');if(title)title.textContent=`${set.size} selected`;
+  }
+  function selectAssetManagerAsset(asset,e={},dragAdd=false){
+    const list=state.assets[state.activeAssetTab]||[],key=assetKey(asset),keys=list.map(assetKey),set=state.assetManagerSelection instanceof Set?state.assetManagerSelection:new Set(),mods=resolvedEditorModifiers(e);
+    const anchor=state.assetManagerSelectionAnchorKey;
+    if(dragAdd){set.add(key);}
+    else if(mods.shiftKey&&anchor&&keys.includes(anchor)){
+      const a=keys.indexOf(anchor),b=keys.indexOf(key),lo=Math.min(a,b),hi=Math.max(a,b);state.assetManagerSelection=new Set(keys.slice(lo,hi+1));
+    }else if(mods.ctrlKey||mods.metaKey){
+      set.has(key)?set.delete(key):set.add(key);state.assetManagerSelection=set;
+    }else{state.assetManagerSelection=new Set([key]);}
+    state.assetManagerSelectionAnchorKey=key;
+    updateAssetManagerSelectionUI();
+  }
+  function toggleAssetManagerSelection(asset){selectAssetManagerAsset(asset,{},false);renderAssetManager();}
+  function selectedAssetManagerAssets(type=state.activeAssetTab){
+    const set=state.assetManagerSelection instanceof Set?state.assetManagerSelection:new Set();
+    const order=new Map([...set].map((k,i)=>[k,i]));
+    return (state.assets[type]||[]).filter(a=>set.has(assetKey(a))).sort((a,b)=>(order.get(assetKey(a))??0)-(order.get(assetKey(b))??0));
+  }
+  function setAssetManagerSelectMode(enabled){
+    state.assetManagerSelectMode=!!enabled;
+    if(!enabled){state.assetManagerSelection=new Set();state.assetManagerSelectionAnchorKey='';}
+    renderAssetManager();
+  }
+  function importSelectedAssetManager(){
+    const selected=selectedAssetManagerAssets();
+    if(!selected.length)return status('Select assets first');
+    if(state.activeAssetTab==='Sprite'){
+      setAssetManagerSelectMode(false);
+      window.UIXSpriteEditor?.openEditMany?.(selected);
+      return;
+    }
+    removeSelectedAssets(false);
+  }
+  function removeSelectedAssets(withConfirm=true){
+    const selected=selectedAssetManagerAssets();if(!selected.length)return status('Select assets first');
+    const remove=()=>{
+      const values=new Set(selected.map(a=>a.value));
+      if(state.activeAssetTab==='Sprite'){
+        const list=state.assets.Sprite;selected.forEach(old=>{
+          const idx=list.findIndex(a=>a===old||a.value===old.value);if(idx>=0)list.splice(idx,1);
+          for(const {node} of allNodes()){
+            const sprite=component(node,'sprite');if(sprite&&sprite.src===old.value)sprite.src='';
+            const anim=component(node,'animationsprite');if(anim?.animations)anim.animations.forEach(a=>{if(a?.sprites)a.sprites=a.sprites.filter(x=>!values.has(x.src));});
+          }
+        });
+      }else if(state.activeAssetTab==='MIDI'){
+        state.assets.MIDI=state.assets.MIDI.filter(a=>!values.has(a.value));
+      }else{
+        state.assets.Audio=state.assets.Audio.filter(a=>!values.has(a.value));
+      }
+      state.assetManagerSelection=new Set();state.assetManagerSelectionAnchorKey='';state.assetManagerSelectMode=false;renderAssetManager();drawWorkplace();status(`${selected.length} asset${selected.length===1?'':'s'} removed`);
+    };
+    if(withConfirm)askConfirm('Remove Selected Assets',`Remove ${selected.length} selected ${state.activeAssetTab.toLowerCase()} asset${selected.length===1?'':'s'}?`,remove,'Remove');else remove();
+  }
   function renderAssetManager(){
+    ensureAssetIds();
     $$('.asset-tab').forEach(tab=>tab.classList.toggle('active',tab.dataset.assetTab===state.activeAssetTab));
     const host=$('#assetContent'); host.innerHTML=''; const type=state.activeAssetTab; const list=state.assets[type]||[];
-    const title=document.createElement('div'); title.className='asset-section-title'; title.textContent=type==='Sprite'?'Sprites':type==='MIDI'?'MIDI':'Audio'; host.append(title);
+    const selected=new Set(state.assetManagerSelection||[]);
+    const selectionOrder=new Map([...selected].map((key,index)=>[key,index+1]));
+    const toolbarActions=document.querySelector('#assetModal .asset-actions');
+    if(toolbarActions){
+      toolbarActions.innerHTML='';
+      const left=document.createElement('div');left.className='asset-toolbar-group asset-toolbar-group-left';
+      const importButton=document.createElement('button');importButton.className='btn';importButton.type='button';importButton.dataset.action='import-assets';importButton.textContent='Import';
+      const createButton=document.createElement('button');createButton.className='btn';createButton.type='button';createButton.dataset.action='create-asset';createButton.textContent='Create';
+      const hint=document.createElement('span');hint.id='assetDropHint';hint.className='asset-drop-hint';hint.textContent='Drag & Drop your file';
+      left.append(importButton,createButton,hint);
+      const center=document.createElement('div');center.className='asset-toolbar-group asset-toolbar-group-center';
+      const select=document.createElement('button');select.className='btn';select.type='button';select.dataset.action='asset-multiselect-toggle';select.textContent=state.assetManagerSelectMode?'Done':'Select';
+      center.append(select);
+      const right=document.createElement('div');right.className='asset-toolbar-group asset-toolbar-group-right';
+      const local=document.createElement('button');local.className='btn';local.type='button';local.dataset.action='asset-import-local-projects';local.textContent='Import Assets from Local Projects';
+      right.append(local);
+      if(state.assetManagerSelectMode&&selected.size){
+        if(type==='Sprite'){const edit=document.createElement('button');edit.className='btn';edit.type='button';edit.dataset.action='asset-edit-selected';edit.textContent=`Edit Selected (${selected.size})`;right.append(edit);}
+        const rem=document.createElement('button');rem.className='btn';rem.type='button';rem.dataset.action='asset-remove-selected';rem.textContent=`Remove (${selected.size})`;right.append(rem);
+      }
+      toolbarActions.append(left,center,right);
+    }
+    const title=document.createElement('div'); title.className='asset-section-title'; title.innerHTML=`<span>${type==='Sprite'?'Sprites':type==='MIDI'?'MIDI':'Audio'}</span>${state.assetManagerSelectMode?`<span class="selection-count">${selected.size} selected</span>`:''}`; host.append(title);
     if(!list.length){host.append(Object.assign(document.createElement('div'),{className:'asset-empty',textContent:`No ${type.toLowerCase()} assets imported yet.`}));return;}
     const grid=document.createElement('div'); grid.className='asset-grid';
     list.forEach(asset=>{
-      const card=document.createElement('article'); card.className='asset-card';
+      const key=assetKey(asset),isSelected=selected.has(key);
+      const card=document.createElement('article'); card.className=`asset-card${isSelected?' asset-selected':''}`; card.dataset.assetKey=key;
       const preview=document.createElement('div'); preview.className=`asset-preview ${type==='Audio'?'audio-preview':''} ${type==='MIDI'?'midi-preview':''}`;
-      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);}
-      else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol">♫</span><span class="midi-asset-meta">MIDI</span>';}
-      else preview.textContent='◉';
-      if(type==='Audio'){
-        card.title='Click to preview this audio';
-        card.addEventListener('click',e=>{if(e.target.closest('.asset-edit'))return;openAudioPreview(asset);});
+      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);} else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol">♫</span><span class="midi-asset-meta">MIDI</span>';} else preview.textContent='◉';
+      if(state.assetManagerSelectMode){
+        const mark=document.createElement('span');mark.className='asset-selection-mark';mark.textContent=isSelected?'✓':'+';preview.append(mark);
+        if(isSelected){const order=document.createElement('span');order.className='selection-order-badge';order.textContent=String(selectionOrder.get(key)||'');preview.append(order);}
+        card.title=isSelected?`Selected ${selectionOrder.get(key)}`:'Tap to select';
       }
       const actions=document.createElement('div'); actions.className='asset-card-actions';
       const edit=document.createElement('button'); edit.type='button'; edit.className='asset-edit'; edit.title='Edit'; edit.setAttribute('aria-label','Edit asset'); edit.textContent='✎';
-      edit.onclick=e=>{e.stopPropagation();if(type==='Sprite')window.UIXSpriteEditor?.openEdit(asset);else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);else if(type==='Audio'){
-        promptModal('Rename Audio','Audio name',asset.name||asset.filename||'Audio',value=>{
-          const raw=String(value||'').trim();if(!raw)return;
-          const currentExt=(String(asset.filename||'').match(/\.[^.]+$/)||[''])[0];
-          const filename=uniqueAssetFilename(`${raw}${currentExt}`,asset);
-          asset.filename=filename;asset.name=splitAssetFilename(filename).base;renderAssetManager();status(`Audio renamed to ${asset.name}`);
-        });
-      }};
+      edit.onclick=e=>{e.stopPropagation();if(type==='Sprite')window.UIXSpriteEditor?.openEdit(asset);else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);else if(type==='Audio')promptModal('Rename Audio','Audio name',asset.name||asset.filename||'Audio',value=>{const raw=String(value||'').trim();if(!raw)return;const currentExt=(String(asset.filename||'').match(/\.[^.]+$/)||[''])[0];const filename=uniqueAssetFilename(`${raw}${currentExt}`,asset);asset.filename=filename;asset.name=splitAssetFilename(filename).base;renderAssetManager();status(`Audio renamed to ${asset.name}`);});};
       const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); del.textContent='×';
-      del.onclick=e=>{e.stopPropagation();if(type==='Sprite')deleteSpriteAsset(asset);else if(type==='MIDI')deleteMIDIAsset(asset);}; actions.append(edit,del); preview.append(actions);
+      del.onclick=e=>{e.stopPropagation();if(type==='Sprite')deleteSpriteAsset(asset);else if(type==='MIDI')deleteMIDIAsset(asset);};
+      actions.append(edit,del);preview.append(actions);
       const name=document.createElement('div'); name.className='asset-name'; name.textContent=asset.filename||`${asset.name||type}.asset`;
-      if(type==='Sprite'){
-        card.title='Click to create a Node with this Sprite';
-        card.addEventListener('click',e=>{if(e.target.closest('.asset-edit'))return;addNodeFromSprite(asset);});
-      }
       card.append(preview,name); grid.append(card);
+      if(state.assetManagerSelectMode){
+        let dragState=null;
+        card.addEventListener('pointerdown',e=>{
+          if(e.target.closest('.asset-edit'))return;
+          e.preventDefault();
+          dragState={pointerId:e.pointerId,lastKey:key,moved:false,startX:e.clientX,startY:e.clientY};
+          selectAssetManagerAsset(asset,e,false);
+          card.setPointerCapture?.(e.pointerId);
+        },{passive:false});
+        card.addEventListener('pointermove',e=>{
+          if(!dragState||dragState.pointerId!==e.pointerId)return;
+          const dist=Math.hypot(e.clientX-dragState.startX,e.clientY-dragState.startY);
+          if(dist>4)dragState.moved=true;
+          const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('.asset-card[data-asset-key]');
+          if(!el||el===card||el.dataset.assetKey===dragState.lastKey)return;
+          const target=(state.assets[state.activeAssetTab]||[]).find(a=>assetKey(a)===el.dataset.assetKey);
+          if(target){dragState.lastKey=el.dataset.assetKey;selectAssetManagerAsset(target,e,true);}
+        },{passive:false});
+        const finish=e=>{
+          if(!dragState||dragState.pointerId!==e.pointerId)return;
+          dragState=null;card._selectStartX=card._selectStartY=undefined;renderAssetManager();
+        };
+        card.addEventListener('pointerup',finish,{passive:false});card.addEventListener('pointercancel',finish,{passive:false});
+      }else{
+        card.addEventListener('pointerup',e=>{
+          if(e.target.closest('.asset-edit'))return;
+          e.preventDefault();
+          if(type==='Audio')openAudioPreview(asset); else if(type==='Sprite'){closeModal($('#assetModal'));addNodeFromSprite(asset);}
+        });
+      }
     });
     host.append(grid);
   }
+
   function allProjectAssets(){
     return ['Sprite','Audio','MIDI'].flatMap(type=>Array.isArray(state.assets[type])?state.assets[type]:[]);
   }
+  async function openAssetImportFromLocalProjects(){
+    const existing=$('#assetLocalProjectsModal');if(existing)existing.remove();
+    const modal=document.createElement('section');modal.id='assetLocalProjectsModal';modal.className='modal asset-local-projects-modal';modal.dataset.closeOutside='true';modal.innerHTML=`<div class="modal-header"><div><h3>Import Assets from Local Projects</h3><p>Select a local project to browse its assets.</p></div><button class="modal-close" type="button">×</button></div><div class="asset-local-project-list"></div>`;document.body.append(modal);showModal(modal);
+    const host=modal.querySelector('.asset-local-project-list');host.innerHTML='<div class="local-ndc-empty">Loading local projects…</div>';
+    modal.querySelector('.modal-close').onclick=()=>{closeModal(modal);modal.remove();};
+    try{
+      const list=await window.UIXNDCCodec.listLocal();host.innerHTML='';
+      if(!list.length){host.innerHTML='<div class="local-ndc-empty">No Local NDC projects saved yet.</div>';return;}
+      list.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+      list.forEach(record=>{
+        const row=document.createElement('button');row.type='button';row.className='local-ndc-name asset-local-project-row';row.textContent=record.name||'Untitled Node2D';
+        row.onclick=async()=>{
+          try{const saved=await window.UIXNDCCodec.loadLocal(record.id);if(!saved)throw new Error('Project not found');showLocalProjectAssetPicker(modal,saved);}catch(err){status(`Could not open local project: ${err.message||err}`);}
+        };host.append(row);
+      });
+    }catch(err){host.innerHTML=`<div class="local-ndc-empty">Could not read Local NDC: ${esc(err.message||err)}</div>`;}
+  }
+  function showLocalProjectAssetPicker(parentModal,saved){
+    const data=window.UIXNDCCodec.decode(saved.bytes), assets=data?.assets||{};
+    parentModal.hidden=true;
+    const picker=document.createElement('section');picker.id='assetLocalProjectPicker';picker.className='modal asset-local-picker-modal';picker.dataset.closeOutside='true';picker.innerHTML=`<div class="modal-header"><div><h3>${esc(saved.name||'Local Project')} Assets</h3><p>Select assets to import into the current project.</p></div><button class="modal-close" type="button">×</button></div><div class="asset-local-picker-tabs"><button type="button" class="asset-local-picker-tab active" data-type="Sprite">Sprites</button><button type="button" class="asset-local-picker-tab" data-type="Audio">Audio</button><button type="button" class="asset-local-picker-tab" data-type="MIDI">MIDI</button></div><div class="asset-local-picker-grid"></div><div class="modal-actions"><button class="btn" type="button" data-local-back>Back</button><button class="btn" type="button" data-local-close>Cancel</button><button class="btn primary" type="button" data-local-import>Import Selected</button></div>`;document.body.append(picker);showModal(picker);
+    const selection=new Map([['Sprite',new Set()],['Audio',new Set()],['MIDI',new Set()]]);
+    const selectionAnchor=new Map([['Sprite',''],['Audio',''],['MIDI','']]);
+    const selectionOrder=new Map();let nextSelectionOrder=1;let type='Sprite';
+    const key=a=>String(a?.id||a?.value||a?.filename||a?.name||'');
+    const selectionKey=(t,k)=>`${t}::${k}`;
+    const grid=picker.querySelector('.asset-local-picker-grid');
+    const render=()=>{
+      grid.innerHTML='';
+      const list=Array.isArray(assets[type])?assets[type]:[];
+      if(!list.length){grid.innerHTML='<div class="asset-empty">No assets of this type in this project.</div>';return;}
+      const set=selection.get(type);
+      list.forEach(asset=>{
+        const k=key(asset),sk=selectionKey(type,k),chosen=set.has(k),b=document.createElement('button');
+        b.type='button';b.className=`asset-selector-item${chosen?' selected':''}`;b.dataset.assetKey=k;
+        const p=document.createElement('div');p.className='asset-selector-preview';
+        if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value||'';p.append(img);}else p.textContent=type==='MIDI'?'♫':'◉';
+        const order=document.createElement('span');order.className='selection-order-badge asset-selector-order';order.hidden=!chosen;order.textContent=chosen?String(selectionOrder.get(sk)||''):'';p.append(order);
+        const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.filename||asset.name||type;b.append(p,n);
+        const selectLocalAsset=(ev,targetAsset=asset,forceAdd=false,refresh=true)=>{
+          const targetKey=key(targetAsset),targetSelectionKey=selectionKey(type,targetKey),mods=resolvedEditorModifiers(ev||{}),anchor=selectionAnchor.get(type),keys=list.map(key);
+          if(forceAdd){if(!set.has(targetKey)){set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}}
+          else if(mods.shiftKey&&anchor&&keys.includes(anchor)){
+            const a=keys.indexOf(anchor),z=keys.indexOf(targetKey),lo=Math.min(a,z),hi=Math.max(a,z);
+            keys.slice(lo,hi+1).forEach(itemKey=>{if(!set.has(itemKey)){set.add(itemKey);selectionOrder.set(selectionKey(type,itemKey),nextSelectionOrder++);}});
+          }else if(mods.ctrlKey||mods.metaKey){
+            if(set.has(targetKey)){set.delete(targetKey);selectionOrder.delete(targetSelectionKey);}else{set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}
+          }else{
+            selection.forEach((otherSet,otherType)=>{if(otherType===type)return;});
+            set.clear();list.forEach(item=>selectionOrder.delete(selectionKey(type,key(item))));
+            set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);
+          }
+          selectionAnchor.set(type,targetKey);if(refresh)render();
+        };
+        let dragState=null;
+        b.addEventListener('pointerdown',e=>{e.preventDefault();dragState={pointerId:e.pointerId,lastKey:k,startX:e.clientX,startY:e.clientY};selectLocalAsset(e,asset,false,false);b.dataset.pointerActivated='1';b.setPointerCapture?.(e.pointerId);},{passive:false});
+        b.addEventListener('pointermove',e=>{
+          if(!dragState||dragState.pointerId!==e.pointerId)return;
+          if(Math.hypot(e.clientX-dragState.startX,e.clientY-dragState.startY)<=4)return;
+          const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('.asset-selector-item[data-asset-key]');
+          if(!el||el.dataset.assetKey===dragState.lastKey)return;
+          const target=list.find(a=>key(a)===el.dataset.assetKey);
+          if(target){dragState.lastKey=el.dataset.assetKey;selectLocalAsset({},target,true,false);}
+        },{passive:false});
+        const finish=e=>{if(!dragState||dragState.pointerId!==e.pointerId)return;dragState=null;render();setTimeout(()=>{delete b.dataset.pointerActivated;},0);};
+        b.addEventListener('pointerup',finish,{passive:false});b.addEventListener('pointercancel',finish,{passive:false});
+        b.onclick=e=>{if(b.dataset.pointerActivated){delete b.dataset.pointerActivated;return;}selectLocalAsset(e);};
+        grid.append(b);
+      });
+    };
+    picker.querySelectorAll('[data-type]').forEach(tab=>tab.onclick=()=>{type=tab.dataset.type;picker.querySelectorAll('[data-type]').forEach(x=>x.classList.toggle('active',x===tab));render();});
+    const close=()=>{closeModal(picker);picker.remove();parentModal.hidden=false;showModal(parentModal);};
+    picker.querySelector('[data-local-back]').onclick=close;
+    picker.querySelector('[data-local-close]').onclick=()=>{closeModal(picker);picker.remove();closeModal(parentModal);parentModal.remove();};
+    picker.querySelector('.modal-close').onclick=()=>{closeModal(picker);picker.remove();closeModal(parentModal);parentModal.remove();};
+    picker.querySelector('[data-local-import]').onclick=()=>{
+      let count=0;
+      ['Sprite','Audio','MIDI'].forEach(t=>{const source=Array.isArray(assets[t])?assets[t]:[];const chosen=selection.get(t);source.forEach(asset=>{if(!chosen.has(key(asset)))return;const copy=clone(asset);copy.id='';copy.filename=uniqueAssetFilename(copy.filename||`${copy.name||t}${t==='MIDI'?'.mid':t==='Audio'?'.uixaudio':'.png'}`);copy.name=splitAssetFilename(copy.filename).base;state.assets[t].push(copy);count++;});});
+      ensureAssetIds();state.assetManagerSelection=new Set();state.assetManagerSelectMode=false;renderAssetManager();drawWorkplace();status(`${count} asset${count===1?'':'s'} imported from ${saved.name||'Local Project'}`);closeModal(picker);picker.remove();closeModal(parentModal);parentModal.remove();
+    };
+    render();
+  }
+
   function splitAssetFilename(value){
     const raw=String(value||'Asset').trim()||'Asset';
     const m=raw.match(/^(.*?)(\.[^.]+)?$/);
@@ -4502,6 +4858,7 @@
   }
   function addSpriteAsset(asset){
     const next={...asset,type:asset.type||'image/png',kind:asset.kind||((asset.type||'').includes('svg')?'SVG':'Raster'),editable:asset.editable!==false};
+    next.id=next.id||`asset-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     next.filename=uniqueAssetFilename(next.filename||`${next.name||'Sprite'}.${next.kind==='SVG'?'svg':'png'}`);
     next.name=splitAssetFilename(next.filename).base;
     state.assets.Sprite.push(next); renderAssetManager(); return next;
@@ -4509,12 +4866,15 @@
   function replaceSpriteAsset(oldAsset,nextAsset){
     const list=state.assets.Sprite,idx=list.findIndex(a=>a===oldAsset||a.value===oldAsset?.value);
     const replacement={...nextAsset,type:nextAsset.type||'image/png',kind:nextAsset.kind||((nextAsset.type||'').includes('svg')?'SVG':'Raster'),editable:nextAsset.editable!==false};
+    replacement.id=replacement.id||list[idx]?.id||`asset-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     replacement.filename=uniqueAssetFilename(nextAsset.filename||nextAsset.name||list[idx]?.filename||oldAsset?.filename||'Sprite.png',idx>=0?list[idx]:null);
     replacement.name=splitAssetFilename(replacement.filename).base;
     if(idx>=0)list[idx]=replacement; else list.push(replacement);
     for(const {node} of allNodes()){
       const sprite=component(node,'sprite'); if(sprite&&sprite.src===oldAsset?.value)sprite.src=replacement.value;
-      const anim=component(node,'animationsprite'); if(anim?.sprites)anim.sprites.forEach(x=>{if(x.src===oldAsset?.value)x.src=replacement.value;});
+      const anim=component(node,'animationsprite');
+      if(anim?.sprites)anim.sprites.forEach(x=>{if(x.src===oldAsset?.value)x.src=replacement.value;});
+      if(anim?.animations)anim.animations.forEach(a=>{if(a?.sprites)a.sprites.forEach(x=>{if(x.src===oldAsset?.value)x.src=replacement.value;});});
     }
     renderAssetManager();drawWorkplace();return replacement;
   }
@@ -4524,9 +4884,11 @@
       if(idx<0)return; const old=list[idx]; list.splice(idx,1);
       for(const {node} of allNodes()){
         const sprite=component(node,'sprite'); if(sprite&&sprite.src===old.value)sprite.src='';
-        const anim=component(node,'animationsprite'); if(anim?.sprites)anim.sprites=anim.sprites.filter(x=>x.src!==old.value);
+        const anim=component(node,'animationsprite');
+        if(anim?.sprites)anim.sprites=anim.sprites.filter(x=>x.src!==old.value);
+        if(anim?.animations)anim.animations.forEach(a=>{if(a?.sprites)a.sprites=a.sprites.filter(x=>x.src!==old.value);});
       }
-      renderAssetManager();drawWorkplace();
+      state.assetManagerSelection?.delete?.(assetKey(asset));renderAssetManager();drawWorkplace();
     },'Delete');
   }
   function deleteMIDIAsset(asset){
@@ -4539,7 +4901,76 @@
     renderAssetManager();drawWorkplace();
   }
 
-  function openAssetSelector(type,onSelect){state.assetSelection={type,onSelect};$('#assetSelectorTitle').textContent=`Select ${type}`;const host=$('#assetSelectorGrid');host.innerHTML='';const list=state.assets[type]||[];if(!list.length)host.append(Object.assign(document.createElement('div'),{className:'asset-empty',textContent:`No ${type.toLowerCase()} assets available.`}));list.forEach(asset=>{const b=document.createElement('button');b.className='asset-selector-item';const p=document.createElement('div');p.className='asset-selector-preview';if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;p.append(img);}else p.textContent='◉';const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.name;b.append(p,n);b.onclick=()=>{const fn=state.assetSelection?.onSelect;state.assetSelection=null;closeModal();fn?.(asset);renderComponentPanel();drawWorkplace();};host.append(b);});showModal($('#assetSelectorModal'));}
+  function openAssetSelector(type,onSelect,options={}){
+    const isMulti=options===true||!!options.isMulti;
+    state.assetSelection={type,onSelect,isMulti,selected:new Set(),anchorKey:''};
+    $('#assetSelectorTitle').textContent=`Select ${type}${isMulti?'s':''}`;
+    $('#assetSelectorSubtitle').textContent=isMulti?'Tap assets in order, then press Select.':'Select an imported asset.';
+    const modal=$('#assetSelectorModal'),header=modal.querySelector('.modal-header'),host=$('#assetSelectorGrid');
+    header?.querySelector('[data-asset-selector-select]')?.remove();
+    if(isMulti&&header){
+      const select=document.createElement('button');
+      select.type='button';select.className='btn primary';select.dataset.assetSelectorSelect='true';select.textContent='Select';
+      select.onclick=()=>{
+        const sel=state.assetSelection?.selected?Array.from(state.assetSelection.selected):[];
+        const fn=state.assetSelection?.onSelect;state.assetSelection=null;closeModal(modal);
+        const byKey=new Map((state.assets[type]||[]).map(asset=>[assetKey(asset),asset]));
+        const list=sel.map(key=>byKey.get(key)).filter(Boolean);
+        fn?.(list);renderComponentPanel();drawWorkplace();
+      };
+      header.querySelector('.modal-close')?.before(select);
+    }
+    host.innerHTML='';
+    const list=state.assets[type]||[];
+    if(!list.length)host.append(Object.assign(document.createElement('div'),{className:'asset-empty',textContent:`No ${type.toLowerCase()} assets available.`}));
+    list.forEach(asset=>{
+      const key=assetKey(asset);
+      const b=document.createElement('button');b.type='button';b.className='asset-selector-item';b.dataset.assetKey=key;
+      const p=document.createElement('div');p.className='asset-selector-preview';
+      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;p.append(img);}else p.textContent='◉';
+      if(isMulti){const order=document.createElement('span');order.className='selection-order-badge asset-selector-order';order.hidden=true;p.append(order);}
+      const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.name;b.append(p,n);
+      const updateSelectorUI=()=>{
+        const set=state.assetSelection?.selected||new Set();const orderMap=new Map([...set].map((k,index)=>[k,index+1]));
+        host.querySelectorAll('.asset-selector-item').forEach(item=>{
+          const selected=orderMap.has(item.dataset.assetKey);item.classList.toggle('selected',selected);
+          const badge=item.querySelector('.asset-selector-order');
+          if(badge){badge.hidden=!selected;badge.textContent=selected?String(orderMap.get(item.dataset.assetKey)):'';}
+        });
+      };
+      const selectAsset=(ev,targetAsset=asset,forceAdd=false)=>{
+        const targetKey=assetKey(targetAsset);
+        if(!isMulti){const fn=state.assetSelection?.onSelect;state.assetSelection=null;closeModal(modal);fn?.(targetAsset);renderComponentPanel();drawWorkplace();return;}
+        const current=state.assetSelection;if(!current)return;
+        const listKeys=(state.assets[type]||[]).map(assetKey),set=current.selected,mods=resolvedEditorModifiers(ev||{}),anchor=current.anchorKey;
+        if(forceAdd){set.add(targetKey);}
+        else if(mods.shiftKey&&anchor&&listKeys.includes(anchor)){
+          const a=listKeys.indexOf(anchor),bIndex=listKeys.indexOf(targetKey),lo=Math.min(a,bIndex),hi=Math.max(a,bIndex);current.selected=new Set(listKeys.slice(lo,hi+1));
+        }else if(mods.ctrlKey||mods.metaKey){
+          set.has(targetKey)?set.delete(targetKey):set.add(targetKey);
+        }else{current.selected=new Set([targetKey]);}
+        current.anchorKey=targetKey;updateSelectorUI();
+      };
+      let dragState=null;
+      if(isMulti){
+        b.addEventListener('pointerdown',e=>{e.preventDefault();dragState={pointerId:e.pointerId,lastKey:key,startX:e.clientX,startY:e.clientY,moved:false};selectAsset(e);b.dataset.pointerActivated='1';b.setPointerCapture?.(e.pointerId);},{passive:false});
+        b.addEventListener('pointermove',e=>{
+          if(!dragState||dragState.pointerId!==e.pointerId)return;
+          if(Math.hypot(e.clientX-dragState.startX,e.clientY-dragState.startY)>4)dragState.moved=true;
+          const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('.asset-selector-item[data-asset-key]');
+          if(!el||el.dataset.assetKey===dragState.lastKey)return;
+          const target=(state.assets[type]||[]).find(a=>assetKey(a)===el.dataset.assetKey);
+          if(target){dragState.lastKey=el.dataset.assetKey;selectAsset({shiftKey:false,ctrlKey:false,metaKey:false},target,true);}
+        },{passive:false});
+        const finish=e=>{if(!dragState||dragState.pointerId!==e.pointerId)return;dragState=null;setTimeout(()=>{delete b.dataset.pointerActivated;},0);};
+        b.addEventListener('pointerup',finish,{passive:false});b.addEventListener('pointercancel',finish,{passive:false});
+      }
+      b.onclick=e=>{if(b.dataset.pointerActivated){delete b.dataset.pointerActivated;return;}selectAsset(e);};
+      host.append(b);
+    });
+    showModal(modal);
+  }
+
   async function importAssets(files){
     const accepted=[],rejected=[];
     [...files].forEach(file=>{
@@ -4553,8 +4984,9 @@
     if(rejected.length)status(`Rejected: ${rejected.join(', ')}`);
     if(!accepted.length)return;
     try{
-      const results=await Promise.all(accepted.map(fileToDataUrl));
       let importedCount=0,gifCount=0,gifFrameCount=0;
+      const results=[];
+      for(const file of accepted) results.push(await fileToDataUrl(file));
       for(const result of results){
         const {file,value,gifFrames}=result;
         const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);
@@ -4573,7 +5005,7 @@
         }
         const filename=uniqueAssetFilename(file.name);
         const name=splitAssetFilename(filename).base;
-        state.assets[type].push({name,value:value||'',type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml'?'SVG':'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name),width:result.width,height:result.height});
+        state.assets[type].push({id:`asset-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,name,value:value||'',type:file.type|| (type==='MIDI'?'audio/midi':'application/octet-stream'),filename,kind:type==='Sprite' ? (/\.svg$/i.test(file.name)||file.type==='image/svg+xml'?'SVG':'Raster') : type,editable:type==='Sprite'||type==='MIDI'||/\.uixaudio$/i.test(file.name),width:result.width,height:result.height});
         importedCount++;
       }
       renderAssetManager();
@@ -4583,6 +5015,18 @@
       status(err?.message||'Could not import assets');
     }
   }
+  let gifImportProgressModal=null;
+  function ensureGifImportProgressModal(){
+    if(gifImportProgressModal&&document.contains(gifImportProgressModal))return gifImportProgressModal;
+    const modal=document.createElement('section');modal.className='modal gif-import-progress-modal';modal.hidden=true;modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');
+    modal.innerHTML='<div class="modal-header"><div><h3>Importing GIF</h3><p class="gif-import-progress-label">Preparing…</p></div></div><div class="gif-import-progress-track"><div class="gif-import-progress-bar"></div></div><div class="gif-import-progress-percent">0%</div>';
+    document.body.append(modal);gifImportProgressModal=modal;return modal;
+  }
+  function updateGifImportProgress(name,percent,label){
+    const modal=ensureGifImportProgressModal();modal.hidden=false;modal.querySelector('h3').textContent=`Importing GIF: ${name||'GIF'}`;modal.querySelector('.gif-import-progress-label').textContent=label||'Decoding frames…';const p=clamp(Number(percent)||0,0,100);modal.querySelector('.gif-import-progress-bar').style.width=`${p}%`;modal.querySelector('.gif-import-progress-percent').textContent=`${Math.round(p)}%`;
+  }
+  function closeGifImportProgress(){if(!gifImportProgressModal)return;gifImportProgressModal.hidden=true;gifImportProgressModal.querySelector('.gif-import-progress-bar').style.width='0%';}
+
   function fileToDataUrl(file){
     return new Promise((resolve,reject)=>{
       const r=new FileReader();
@@ -4600,11 +5044,15 @@
             return;
           }
           if(!window.UIXGifConvert?.convertDataUrlToPngFrames)throw new Error('GIF converter is unavailable');
-          const frames=await window.UIXGifConvert.convertDataUrlToPngFrames(value);
+          updateGifImportProgress(file.name,0,'Decoding GIF frames…');
+          const frames=await window.UIXGifConvert.convertDataUrlToPngFrames(value,(percent,label)=>updateGifImportProgress(file.name,percent,label));
+          updateGifImportProgress(file.name,100,`Finished ${frames.length} frame${frames.length===1?'':'s'}`);
+          await new Promise(requestAnimationFrame);
+          closeGifImportProgress();
           resolve({file,value,gifFrames:frames,width:frames[0]?.width,height:frames[0]?.height});
-        }catch(err){reject(err);}
+        }catch(err){closeGifImportProgress();reject(err);}
       };
-      r.onerror=reject;
+      r.onerror=err=>{closeGifImportProgress();reject(err);};
       r.readAsDataURL(file);
     });
   }
@@ -5227,8 +5675,8 @@
     if(source){
       try{
         const value=inferExpressionValue(source);
-        const pathRegex=/\bctx\.(local|global|sceneVariables)\.([A-Za-z_$][\w$]*)/g;let m;
-        while((m=pathRegex.exec(source))){const list=m[1]==='local'?(state.localVarsByNode[state.script.nodeId]||[]):m[1]==='global'?state.globalVariables:sceneVariableList();if(!list.some(v=>v.name===m[2])){message=String(edit?.entry?.type||'').toLowerCase()==='str'?'String literal fallback will be used.':`Undefined variable: ${m[2]}`;break;}}
+        const pathRegex=/\bctx\.(local|global|server|sceneVariables)\.([A-Za-z_$][\w$]*)/g;let m;
+        while((m=pathRegex.exec(source))){const list=m[1]==='local'?(state.localVarsByNode[state.script.nodeId]||[]):m[1]==='global'?state.globalVariables:m[1]==='server'?state.serverVariables:sceneVariableList();if(!list.some(v=>v.name===m[2])){message=String(edit?.entry?.type||'').toLowerCase()==='str'?'String literal fallback will be used.':`Undefined variable: ${m[2]}`;break;}}
         if(message==='No error.'&&edit){const typeError=expressionTypeError(edit.entry,value);if(typeError)message=typeError;}
       }catch(err){
         const isString=String(edit?.entry?.type||'').toLowerCase()==='str';
@@ -5283,8 +5731,11 @@
     return {
       local:Object.fromEntries((state.localVarsByNode[state.script.nodeId]||[]).map(v=>[v.name,v.value])),
       global:Object.fromEntries(state.globalVariables.map(v=>[v.name,v.value])),
+      server:Object.fromEntries(state.serverVariables.map(v=>[v.name,v.value])),
+      serverClient:(window.UIXNetwork?.getClients?.()||[]),
       sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
       variableNames:(state.globalVariables||[]).map(v=>v.name),
+      serverVariableNames:(state.serverVariables||[]).map(v=>v.name),
       sceneVariableNames:sceneVars.map(v=>v.name),
       localVariableNames:(state.localVarsByNode[state.script.nodeId]||[]).map(v=>v.name),
       transform:node?component(node,'transform')||{}:{},
@@ -5334,6 +5785,7 @@
       Input:[{label:'Value',value:'ctx.input.value',title:'Current Input Component text value.'}],
       sceneVariables:sceneVariableList().map(v=>({label:v.name,value:`ctx.sceneVariables.${v.name}`})),
       globalVariables:state.globalVariables.map(v=>({label:v.name,value:`ctx.global.${v.name}`})),
+      serverVariables:state.serverVariables.map(v=>({label:v.name,value:`ctx.server.${v.name}`})),
       Events:keybindOptions().map(k=>({label:k,value:/^\d$/.test(k)?`ctx.events.key[\"${k}\"]`:`ctx.events.key.${k}`})),
       Touch:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Touch${k}`,value:`ctx.Touch${k}`})),
       Mouse:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
@@ -5348,6 +5800,7 @@
         {label:'Number(value)',value:'Number(value)',title:'Convert a value to a number.'},
         {label:'String(value)',value:'String(value)',title:'Convert a value to a string.'},
         {label:'Boolean(value)',value:'Boolean(value)',title:'Convert a value to a boolean.'},
+        {label:'ctx.serverClient[x]',value:'ctx.serverClient[x]',title:'Client/peer IDs in the current room. x starts at 0.'},
         {label:'parseInt(value)',value:'parseInt(value)',title:'Parse an integer from text.'},
         {label:'parseFloat(value)',value:'parseFloat(value)',title:'Parse a floating-point number from text.'},
         {label:'isNaN(value)',value:'isNaN(value)',title:'Check whether a value is NaN after numeric coercion.'},
@@ -6069,14 +6522,28 @@
     const tx=(target?Number(target.position?.[0]||0):baseX)+Number(cam.horizontal||0);
     const ty=(target?Number(target.position?.[1]||0):baseY)+Number(cam.vertical||0);
     const speed=Math.max(0,Number(cam.speed)||0);
-    if((cam.followAnimation||'Smooth')==='Quick'||speed<=0){cam.x=tx;cam.y=ty;}
-    else {const k=1-Math.exp(-speed*Math.max(0,dt)/100);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k;}
+    const mode=CAMERA_ANIMATIONS.includes(cam.followAnimation)?cam.followAnimation:'Smooth';
+    if(mode==='Quick'||speed<=0){cam.x=tx;cam.y=ty;}
+    else {
+      const raw=clamp(1-Math.exp(-speed*Math.max(0,dt)/100),0,1);
+      const eased=mode==='Linear'?raw
+        :mode==='Ease In'?raw*raw
+        :mode==='Ease Out'?1-(1-raw)*(1-raw)
+        :mode==='Ease In Out'?raw*raw*(3-2*raw)
+        :mode==='Sine In'?1-Math.cos((raw*Math.PI)/2)
+        :mode==='Sine Out'?Math.sin((raw*Math.PI)/2)
+        :mode==='Sine In Out'?-(Math.cos(Math.PI*raw)-1)/2
+        :mode==='Back In Out'?(raw<.5?((Math.pow(2*raw,2)*((1.70158*1.525+1)*2*raw-1.70158*1.525))/2):((Math.pow(2*raw-2,2)*((1.70158*1.525+1)*(raw*2-2)+1.70158*1.525)+2)/2))
+        :raw;
+      cam.x+=(tx-cam.x)*eased;cam.y+=(ty-cam.y)*eased;
+    }
     cam.angle=Number(cam.baseAngle||0);
   }
   function hydrateRuntimeVariables(sceneId){
     const scene=state.scenes.find(s=>s.id===sceneId)||currentScene();
     return {
       globalVariables:runtimeClone(state.globalVariables||[]),
+      serverVariables:runtimeClone(state.serverVariables||[]),
       sceneVariablesByScene:Object.fromEntries(state.scenes.map(s=>[s.id,runtimeClone(sceneVariableList(s))])),
       localVarsByNode:runtimeLocalVariablesForScene(scene)
     };
@@ -6175,6 +6642,7 @@
   function runtimeBodyForNode(node){return state.runtime?.bodyById?.get(node?.id)||null;}
   function runtimeVariableArray(scope,node){
     if(scope==='Global')return state.runtime.globalVariables||[];
+    if(scope==='Server')return state.runtime.serverVariables||[];
     if(scope==='Scene'){
       const overlay=state.runtime?.activeSceneVariableOverlay;
       if(Array.isArray(overlay))return overlay;
@@ -6230,7 +6698,7 @@
     return {key:variableStorageKey(scope,name,node),scope:String(scope),name:String(name),dataType:String(v?.dataType||'String'),value:runtimeClone(v?.value),savedAt:Date.now()};
   }
   async function runtimeSaveVariable(scope,name,storageType,node){
-    const allowed=['Global','Local','Scene'];
+    const allowed=['Global','Local','Scene','Server'];
     if(!allowed.includes(String(scope))||!name)return false;
     const list=runtimeVariableArray(String(scope),node),v=list.find(x=>String(x.name)===String(name));
     if(!v)return false;
@@ -6247,7 +6715,7 @@
   function parseStoredVariable(raw){
     try{return raw&&typeof raw==='object'&&Object.prototype.hasOwnProperty.call(raw,'value')?raw:JSON.parse(String(raw||''));}catch{return null;}}
   async function runtimeLoadVariable(scope,name,storageType,node){
-    const allowed=['Global','Local','Scene'];
+    const allowed=['Global','Local','Scene','Server'];
     if(!allowed.includes(String(scope))||!name)return false;
     const list=runtimeVariableArray(String(scope),node),v=list.find(x=>String(x.name)===String(name));
     if(!v)return false;
@@ -6264,6 +6732,7 @@
   }
   function runtimeSetVariable(scope,name,value,node){
     if(name===null||name===undefined||value===null||value===undefined)return false;
+    if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(name,value);
     const actual=scope==='Scene'?runtimeSceneVariables(state.runtime.sceneId):runtimeVariableArray(scope,node);
     const v=actual.find(x=>x.name===name);if(!v)return false;
     if(v.dataType==='Bool')v.value=!!value;
@@ -6404,21 +6873,50 @@ function updateRuntimeAnimations(dt){
       ctx.restore();
     }
   }
+  function runtimeSubCameraNameError(node,value){
+    const name=String(value??'').trim();
+    const normalized=name.toLowerCase().replace(/\s+/g,'');
+    if(!name)return 'Sub Camera name is required';
+    if(['none','maincam','maincamera'].includes(normalized))return 'None and Main Cam are reserved names';
+    const duplicate=runtimeAllNodes().find(({node:other})=>other.id!==node?.id&&String(component(other,'subcamera')?.name||'').trim().toLowerCase()===name.toLowerCase());
+    return duplicate?'Sub Camera name already exists':'';
+  }
   function runtimeSetSubCamera(node,values={}){
     const c=runtimeSetComponent(node,'subcamera',sub=>{
-      if(values.camX!==undefined)sub.camX=Number(values.camX)||0;
-      if(values.camY!==undefined)sub.camY=Number(values.camY)||0;
-      if(values.camSizeX!==undefined)sub.camSizeX=Math.max(1,Number(values.camSizeX)||1);
-      if(values.camSizeY!==undefined)sub.camSizeY=Math.max(1,Number(values.camSizeY)||1);
-      if(values.camAngle!==undefined)sub.camAngle=Number(values.camAngle)||0;
-      if(values.canvasX!==undefined)sub.canvasX=Number(values.canvasX)||0;
-      if(values.canvasY!==undefined)sub.canvasY=Number(values.canvasY)||0;
-      if(values.canvasScaleX!==undefined)sub.canvasScaleX=Number.isFinite(Number(values.canvasScaleX))?Number(values.canvasScaleX):1;
-      if(values.canvasScaleY!==undefined)sub.canvasScaleY=Number.isFinite(Number(values.canvasScaleY))?Number(values.canvasScaleY):1;
-      if(values.render!==undefined)sub.render=String(values.render).toLowerCase();
-      if(values.pixelated!==undefined)sub.pixelated=!!values.pixelated;
+      if(values.Name!==undefined){const err=runtimeSubCameraNameError(node,values.Name);if(!err)sub.name=String(values.Name).trim();}
+      if(values.camX!==undefined||values.CamX!==undefined)sub.camX=Number(values.camX??values.CamX)||0;
+      if(values.camY!==undefined||values.CamY!==undefined)sub.camY=Number(values.camY??values.CamY)||0;
+      if(values.camSizeX!==undefined||values.CamSizeX!==undefined)sub.camSizeX=Math.max(1,Number(values.camSizeX??values.CamSizeX)||1);
+      if(values.camSizeY!==undefined||values.CamSizeY!==undefined)sub.camSizeY=Math.max(1,Number(values.camSizeY??values.CamSizeY)||1);
+      if(values.camAngle!==undefined||values.CamAngle!==undefined)sub.camAngle=Number(values.camAngle??values.CamAngle)||0;
     });
-    if(c)subCameraSurfaceCache.delete(c);
+    return !!c;
+  }
+  function runtimeSetCanvas(node,values={}){
+    const c=runtimeSetComponent(node,'canvas',canvas=>{
+      const sourceValue=values.source??values.Source??values['Sub Camera'];
+      if(sourceValue!==undefined){
+        let source=String(sourceValue||'');
+        if(source==='None')source='';
+        else if(source==='Main Cam'||source==='main')source='main';
+        else {
+          const match=runtimeAllNodes().find(({node:other})=>String(other.id)===source||`${component(other,'subcamera')?.name||''} [${other.numericId}]`===source);
+          if(match&&component(match.node,'subcamera'))source=match.node.id; else source='';
+        }
+        canvas.source=source;
+      }
+      const num=(...keys)=>{for(const key of keys){if(values[key]!==undefined)return Number(values[key]);}return undefined;};
+      const width=num('Width','width'),height=num('Height','height'),px=num('PosX','positionX'),py=num('PosY','positionY'),sx=num('ScaleX','scaleX'),sy=num('ScaleY','scaleY');
+      if(width!==undefined&&Number.isFinite(width))canvas.width=Math.max(1,width);
+      if(height!==undefined&&Number.isFinite(height))canvas.height=Math.max(1,height);
+      if(px!==undefined&&Number.isFinite(px))canvas.position[0]=px;
+      if(py!==undefined&&Number.isFinite(py))canvas.position[1]=py;
+      if(sx!==undefined&&Number.isFinite(sx))canvas.scale[0]=sx;
+      if(sy!==undefined&&Number.isFinite(sy))canvas.scale[1]=sy;
+      if(values.Render!==undefined||values.render!==undefined)canvas.render=String(values.Render??values.render).toLowerCase();
+      if(values.Pixelated!==undefined||values.pixelated!==undefined)canvas.pixelated=!!(values.Pixelated??values.pixelated);
+      if(values['BG Color']!==undefined||values.bgCol!==undefined)canvas.bgCol=values['BG Color']??values.bgCol;
+    });
     return !!c;
   }
   function runtimeSetComponent(node,type,mutator){
@@ -6474,6 +6972,7 @@ function updateRuntimeAnimations(dt){
         if(typeof prop!=='string')return false;
         const rec=runtimeVariableArray(scope,node).find(v=>String(v.name)===prop);
         if(!rec)return false;
+        if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(prop,value);
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
         else rec.value=String(value);
@@ -6483,7 +6982,7 @@ function updateRuntimeAnimations(dt){
   }
   function runtimeContext(node){
     const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,input=node?component(node,'input'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
-    const locals=runtimeVariableProxy('Local',node),globals=runtimeVariableProxy('Global',node),sceneVars=runtimeVariableProxy('Scene',node);
+    const locals=runtimeVariableProxy('Local',node),globals=runtimeVariableProxy('Global',node),serverVars=runtimeVariableProxy('Server',node),sceneVars=runtimeVariableProxy('Scene',node);
     const joy=state.runtime.shared?.joystickObject||Object.create(null);
     const expressionColorHelpers={
       rgb:(r,g,b)=>rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,1]),
@@ -6506,7 +7005,7 @@ function updateRuntimeAnimations(dt){
       angular_velocity:{enumerable:true,get:()=>Number(body?.omega||0)*180/Math.PI,set:setOmega}
     });
     const ctx={
-      local:locals,global:globals,scene:sceneVars,sceneVariables:sceneVars,
+      local:locals,global:globals,server:serverVars,serverClient:(window.UIXNetwork?.getClients?.()||[]),network:window.UIXNetwork||null,scene:sceneVars,sceneVariables:sceneVars,
       transform:body?.t||component(node,'transform')||{},col:expressionColorHelpers,velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');}},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
@@ -6530,6 +7029,7 @@ function updateRuntimeAnimations(dt){
       setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.vx=Number(x);if(y!==null&&y!==undefined)b.vy=Number(y);if(angular!==null&&angular!==undefined)b.omega=Number(angular)*Math.PI/180;}},
       setCamera:(v)=>{const c=state.runtime.camera||{};if(v.Enabled!==null&&v.Enabled!==undefined)c.enabled=!!v.Enabled;if(v.PosX!==null&&v.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v.PosY!==null&&v.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v.Angle!==null&&v.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v.Horizontal!==null&&v.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v.Vertical!==null&&v.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v.Animation!==null&&v.Animation!==undefined)c.followAnimation=v.Animation;if(v.Speed!==null&&v.Speed!==undefined)c.speed=Number(v.Speed);if(v.Scale!==null&&v.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v['BG Color']!==null&&v['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v.Follow!==null&&v.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}},
       setSubCam:(v)=>runtimeSetSubCamera(node,v||{}),
+      setCanvas:(v)=>runtimeSetCanvas(node,v||{}),
       followObject:(label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.followTargets[node.id]={targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
       chase:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t){const old=state.runtime.aiTargets[node.id];const next={...(old||{}),kind:'chase',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};if(old&& (old.map!==next.map||old.targetId!==next.targetId||old.speed!==next.speed)){next.path=null;next.pathIndex=0;}state.runtime.aiTargets[node.id]=next;}},
       avoid:(mapLabel,label,speed)=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(label));if(t)state.runtime.aiTargets[node.id]={kind:'avoid',map:String(mapLabel||''),targetId:t.node.id,speed:Math.max(0,Number(speed)||0)};},
@@ -7025,8 +7525,16 @@ function updateRuntimeAnimations(dt){
     if(!document.getElementById('uixRuntimeTextInputStyle')){
       const style=document.createElement('style');style.id='uixRuntimeTextInputStyle';style.textContent='.runtime-text-input-editor::placeholder{color:var(--uix-runtime-placeholder)!important;opacity:1;}';document.head.appendChild(style);
     }
-    el.addEventListener('input',commit);
-    el.addEventListener('change',commit);
+    let lastInputValue=String(el.value??'');
+    const handleInputChange=()=>{
+      commit();
+      const nextValue=String(el.value??'');
+      if(nextValue===lastInputValue)return;
+      lastInputValue=nextValue;
+      if(rt.running)dispatchRuntimeEvent('onInputChange','change',{value:nextValue},node.id);
+    };
+    el.addEventListener('input',handleInputChange);
+    el.addEventListener('change',handleInputChange);
     el.addEventListener('focus',()=>{if(rt.running)dispatchRuntimeEvent('onInputFocus','focus',{},node.id);});
     el.addEventListener('blur',()=>{commit();if(rt.running)dispatchRuntimeEvent('onInputBlur','blur',{},node.id);setTimeout(()=>{if(document.activeElement!==el){try{el.remove();}catch{}if(rt.textInputEditor?.el===el)rt.textInputEditor=null;}},0);});
     el.addEventListener('keydown',e=>{e.stopPropagation();});
@@ -7131,6 +7639,24 @@ function updateRuntimeAnimations(dt){
   }
   function capitalize(v){return String(v).charAt(0).toUpperCase()+String(v).slice(1);}
 
+  function configureRuntimeNetwork(){
+    window.UIXNetwork?.configure?.({
+      getServerVariableDefinitions:()=>state.runtime?.serverVariables||[],
+      onServerVariableChange:(name,value)=>{
+        const rec=(state.runtime?.serverVariables||[]).find(v=>String(v.name)===String(name));
+        if(!rec)return;
+        if(rec.dataType==='Bool')rec.value=!!value;
+        else if(rec.dataType==='Int')rec.value=Number(value);
+        else rec.value=String(value);
+      },
+      onClientJoined:id=>dispatchRuntimeEvent('onClientJoined','joined',{clientID:id}),
+      onClientLeft:id=>dispatchRuntimeEvent('onClientLeft','left',{clientID:id}),
+      onClientsChanged:()=>{},
+      onConnectionState:networkState=>{if(state.runtime?.running&&networkState==='Offline')runtimeOutput('warn','Network connection is offline.');},
+      onError:(message)=>{if(state.runtime?.running){state.runtime.lastError=String(message||'Network error');runtimeOutput('error',state.runtime.lastError);}}
+    });
+  }
+
   async function startRuntime(debug, sceneOverrideId = ''){
     ensureGameSettings();
     if(editorAnimationRAF){cancelAnimationFrame(editorAnimationRAF);editorAnimationRAF=0;}
@@ -7146,7 +7672,8 @@ function updateRuntimeAnimations(dt){
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);
     const hydrated=hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],animationStates:Object.create(null)};
+    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],animationStates:Object.create(null)};
+    configureRuntimeNetwork();
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
 
@@ -7167,7 +7694,7 @@ function updateRuntimeAnimations(dt){
     $('#runtimeOverlay')?.remove();
     const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){const rt=state.runtime;closeRuntimeTextInput();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.particles=[];rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.particles=[];rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running||state.runtime.runtimeFailed)return;
     try{
@@ -7181,7 +7708,7 @@ function updateRuntimeAnimations(dt){
       runtimeFail(error,'Runtime frame');
     }
   }
-  function renderRuntimeDebug(){if(!state.runtime.debug)return;const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
+  function renderRuntimeDebug(){if(!state.runtime.debug)return;const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.serverVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`server.${v.name}: ${v.value}`));(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
   function runtimeRenderContext(canvas){const rt=state.runtime;if(rt.renderCtx&&rt.renderCanvas===canvas)return rt.renderCtx;let ctx=null;try{ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:false});}catch{}if(!ctx)ctx=canvas.getContext('2d');rt.renderCanvas=canvas;rt.renderCtx=ctx||null;return ctx;}
   function runtimeViewportMetrics(canvas){
@@ -7214,10 +7741,10 @@ function updateRuntimeAnimations(dt){
     canvas?.style.setProperty('--uix-runtime-bg',bg);
   }
   function runtimeNodeIsAnimated(node){
+    const sprite=component(node,'sprite');
+    const canvas=component(node,'canvas');
     const visual=nodeVisualSource(node,0);
-    if(visual.animated)return true;
-    const anim=component(node,'animationsprite');
-    return !!(anim?.animations||[]).some(a=>(a?.sprites||[]).filter(f=>f?.src).length>1&&component(node,'sprite')?.sourceType==='Animation');
+    return !!(canvas|| (sprite?.sourceType==='Animation'&&visual.animated));
   }
   function runtimeBuildStaticVisualCache(body){
     if(!body?.node||!runtimeNodeVisible(body.node)||runtimeNodeIsAnimated(body.node))return null;
@@ -7233,57 +7760,50 @@ function updateRuntimeAnimations(dt){
     const bounds=getNodeVisualBounds(source,probe||null),pad=4,w=Math.max(1,Math.ceil(bounds.w+pad*2)),h=Math.max(1,Math.ceil(bounds.h+pad*2));
     temp.width=w;temp.height=h;const ctx=temp.getContext('2d');if(!ctx)return null;ctx.clearRect(0,0,w,h);ctx.translate(-bounds.minX+pad,-bounds.minY+pad);drawNodeVisual(ctx,source,0,0,1,1,0);return {canvas:temp,w,h,x:bounds.minX-pad,y:bounds.minY-pad};
   }
-  function runtimeSubCameraSurface(componentData){
-    let surface=subCameraSurfaceCache.get(componentData);
-    const w=Math.max(1,Math.min(4096,Math.round(Math.abs(Number(componentData.camSizeX)||320))));
-    const h=Math.max(1,Math.min(4096,Math.round(Math.abs(Number(componentData.camSizeY)||180))));
+  function findCanvasSourceRuntime(canvasComp){
+    const source=String(canvasComp?.source||'');
+    if(source==='main'){
+      const cam=state.runtime?.camera||{};
+      const zoom=Math.max(.01,Number(cam.scale)||1);
+      return {type:'main',key:'main',x:Number(cam.x)||0,y:Number(cam.y)||0,angle:Number(cam.angle)||0,viewW:RUNTIME_BASE_WIDTH/zoom,viewH:RUNTIME_BASE_HEIGHT/zoom};
+    }
+    if(!source)return null;
+    const found=state.runtime?.nodeById?.get(source);
+    const sub=found?component(found,'subcamera'):null;
+    if(!found||!sub)return null;
+    return {type:'subcamera',key:source,node:found,sub,x:Number(sub.camX)||0,y:Number(sub.camY)||0,angle:Number(sub.camAngle)||0,viewW:Math.max(1,Number(sub.camSizeX)||320),viewH:Math.max(1,Number(sub.camSizeY)||180)};
+  }
+  function runtimeCameraSurfaceForCanvas(canvasComp){
+    const source=findCanvasSourceRuntime(canvasComp);
+    if(!source||runtimeSubCameraStack.has(source.key))return null;
+    const w=Math.max(1,Math.min(4096,Math.round(Math.abs(Number(canvasComp.width)||320)))),h=Math.max(1,Math.min(4096,Math.round(Math.abs(Number(canvasComp.height)||180))));
+    const cache=runtimeCameraSurfaceCache;
+    let surface=cache.get(canvasComp);
     if(!surface){
       const canvas=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):document.createElement('canvas');
-      canvas.width=w;canvas.height=h;surface={canvas,ctx:canvas.getContext('2d')};subCameraSurfaceCache.set(componentData,surface);
+      canvas.width=w;canvas.height=h;surface={canvas,ctx:canvas.getContext('2d')};cache.set(canvasComp,surface);
     }else if(surface.canvas.width!==w||surface.canvas.height!==h){surface.canvas.width=w;surface.canvas.height=h;}
     const ctx=surface.ctx;if(!ctx)return null;
-    const bg=colorCss(state.runtime.camera?.bgColor||'#202020','#202020');
-    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
-    ctx.save();
-    ctx.translate(w/2,h/2);ctx.rotate(Number(componentData.camAngle||0)*Math.PI/180);ctx.translate(-Number(componentData.camX||0),-Number(componentData.camY||0));
-    const cam={x:Number(componentData.camX)||0,y:Number(componentData.camY)||0,angle:Number(componentData.camAngle)||0};
-    const halfWorldX=w/2,halfWorldY=h/2;
-    ctx.imageSmoothingEnabled=componentData.pixelated!==false?false:true;ctx.imageSmoothingQuality=componentData.pixelated!==false?'nearest':'low';
-    runtimeSortRenderBodies();
-    const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));
-    for(const b of renderBodies){
-      const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;
-      if(Math.abs(x-cam.x)>halfWorldX+r||Math.abs(y-cam.y)>halfWorldY+r)continue;
-      let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}
-      if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}
-      else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);
-    }
-    ctx.restore();
-    return surface.canvas;
-  }
-  function drawRuntimeSubCameras(ctx){
-    const bodies=state.runtime?.renderBodies||state.runtime?.bodies||[];
-    for(const body of bodies){
-      const node=body?.node;if(!node||!runtimeNodeVisible(node))continue;
-      const sub=component(node,'subcamera');if(!sub)continue;
-      const surface=runtimeSubCameraSurface(sub);if(!surface)continue;
-      const t=body.t||component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
-      const na=Number(t.angle?.[0]||0)*Math.PI/180,nsx=Number(t.scale?.[0]??1)||1,nsy=Number(t.scale?.[1]??1)||1;
-      const lx=Number(sub.canvasX)||0,ly=Number(sub.canvasY)||0,ca=Math.cos(na),sa=Math.sin(na);
-      const cx=(Number(t.position?.[0])||0)+lx*nsx*ca-ly*nsy*sa,cy=(Number(t.position?.[1])||0)+lx*nsx*sa+ly*nsy*ca;
-      const sourceW=Math.max(1,Math.abs(Number(sub.camSizeX)||320)),sourceH=Math.max(1,Math.abs(Number(sub.camSizeY)||180));
-      const targetW=sourceW*Math.abs(Number(sub.canvasScaleX??1)||1)*Math.abs(nsx),targetH=sourceH*Math.abs(Number(sub.canvasScaleY??1)||1)*Math.abs(nsy);
-      const mode=String(sub.render||'windowboxing').toLowerCase();
-      ctx.save();ctx.translate(cx,cy);ctx.rotate(na);
-      if(mode==='stretch'){
-        ctx.imageSmoothingEnabled=sub.pixelated===true?false:true;ctx.imageSmoothingQuality=sub.pixelated===true?'nearest':'low';ctx.drawImage(surface, -targetW/2,-targetH/2,targetW,targetH);
-      }else{
-        const sw=surface.width,sh=surface.height,fit=mode==='crop'?Math.max(targetW/sw,targetH/sh):Math.min(targetW/sw,targetH/sh);const dw=sw*fit,dh=sh*fit;
-        if(mode==='windowboxing'){ctx.fillStyle=colorCss(state.runtime.camera?.bgColor||'#202020','#202020');ctx.fillRect(-targetW/2,-targetH/2,targetW,targetH);}
-        ctx.imageSmoothingEnabled=sub.pixelated===true?false:true;ctx.imageSmoothingQuality=sub.pixelated===true?'nearest':'low';ctx.drawImage(surface,-dw/2,-dh/2,dw,dh);
+    runtimeSubCameraStack.add(source.key);
+    try{
+      ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.fillStyle=colorCss(canvasComp.bgCol||'#101010','#101010');ctx.fillRect(0,0,w,h);
+      const viewW=Math.max(1,source.viewW),viewH=Math.max(1,source.viewH);
+      ctx.save();ctx.translate(w/2,h/2);ctx.scale(w/viewW,h/viewH);ctx.rotate(Number(source.angle||0)*Math.PI/180);ctx.translate(-Number(source.x||0),-Number(source.y||0));
+      runtimeSortRenderBodies();
+      const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));
+      for(const b of renderBodies){
+        const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;
+        if(Math.abs(x-(Number(source.x)||0))>viewW/2+r||Math.abs(y-(Number(source.y)||0))>viewH/2+r)continue;
+        let cacheEntry=b._renderCache;if(!cacheEntry&&!runtimeNodeIsAnimated(b.node)){cacheEntry=runtimeBuildStaticVisualCache(b);b._renderCache=cacheEntry;}
+        if(cacheEntry){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cacheEntry.canvas,cacheEntry.x,cacheEntry.y);ctx.restore();}
+        else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);
       }
       ctx.restore();
-    }
+      return surface.canvas;
+    }finally{runtimeSubCameraStack.delete(source.key);}
+  }
+  function drawRuntimeSubCameras(){
+    // Sub Cameras are source components only. Canvas components display their feeds.
   }
 
   function runtimeJointWorldAnchor(body, local){
@@ -7354,7 +7874,6 @@ function updateRuntimeAnimations(dt){
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
     runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
     for(const b of renderBodies){const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
-    drawRuntimeSubCameras(ctx);
     drawRuntimeParticles(ctx,cam,halfWorldX,halfWorldY);
     drawRuntimeColliders(ctx);
     drawRuntimeJoints(ctx);
@@ -7403,7 +7922,7 @@ function updateRuntimeAnimations(dt){
       const mode=e.target.closest('[data-mode]');
       if(mode){ setMode(mode.dataset.mode); return; }
       const tab=e.target.closest('[data-asset-tab]');
-      if(tab){ state.activeAssetTab=tab.dataset.assetTab; renderAssetManager(); return; }
+      if(tab){ state.activeAssetTab=tab.dataset.assetTab; state.assetManagerSelection=new Set(); renderAssetManager(); return; }
     });
     $('#componentContent')?.addEventListener('pointerdown',e=>{const card=e.target.closest('.component-card[data-component-key]');if(!card||e.target.closest('.comp-actions'))return;state.ui.selectedComponentKey=card.dataset.componentKey;$$('.component-card.component-selected').forEach(el=>el.classList.remove('component-selected'));card.classList.add('component-selected');drawWorkplace();},{capture:true});
     window.addEventListener('online',()=>dispatchRuntimeEvent('onConnectionChange','Online',{connection:'Online'}));
@@ -7535,6 +8054,7 @@ function updateRuntimeAnimations(dt){
     $('#colorWheel').addEventListener('pointermove',e=>{if(e.buttons)pickWheel(e);});
     $('#colorTextInput').addEventListener('change',()=>{try{state.color.rgba=parseColor($('#colorTextInput').value);syncColorUI();}catch{status('Invalid color');}});
     $('#assetFileInput').addEventListener('change',e=>{if(e.target.files.length)importAssets(e.target.files);e.target.value='';});
+    $('#assetModal')?.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action==='asset-multiselect-toggle')setAssetManagerSelectMode(!state.assetManagerSelectMode);else if(action==='asset-remove-selected')removeSelectedAssets(true);else if(action==='asset-edit-selected')importSelectedAssetManager();else if(action==='asset-import-local-projects')openAssetImportFromLocalProjects();});
     const assetDropZone=$('#assetModal');
     assetDropZone?.addEventListener('dragover',e=>{if(e.dataTransfer?.files?.length){e.preventDefault();e.stopPropagation();assetDropZone.classList.add('asset-drag-over');}});
     assetDropZone?.addEventListener('dragleave',e=>{if(!assetDropZone.contains(e.relatedTarget))assetDropZone.classList.remove('asset-drag-over');});
@@ -7558,7 +8078,7 @@ function updateRuntimeAnimations(dt){
     document.addEventListener('gesturestart',e=>e.preventDefault());document.addEventListener('gesturechange',e=>e.preventDefault());document.addEventListener('gestureend',e=>e.preventDefault());
   }
 
-  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode};
+  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode,openAssetSelector};
   function ensureViewportNotice(){
     let notice=$('#uixViewportNarrowNotice');
     if(!notice){

@@ -117,6 +117,18 @@
     });
   }
 
+  async function openEditMany(assets) {
+    const list=Array.isArray(assets)?assets.filter(Boolean):[];
+    if(!list.length)return;
+    const frames=[];
+    for(const sourceAsset of list){
+      try{const p=await imageToPixels(sourceAsset.value);frames.push({name:assetStem(sourceAsset),width:p.width,height:p.height,pixels:p.pixels,sourceAsset});}
+      catch{frames.push({name:assetStem(sourceAsset),width:32,height:32,pixels:makePixels(32,32),sourceAsset});}
+    }
+    const normalized=normalizeFrameSizes(frames), first=list[0];
+    openEditor({name:assetStem(first),sourceAssets:list,frames:normalized,fps:8,width:normalized[0]?.width||32,height:normalized[0]?.height||32,pixelWidth:normalized[0]?.width||32,pixelHeight:normalized[0]?.height||32,multiSource:true});
+  }
+
   async function openEdit(asset) {
     const group = frameGroupFor(asset), frames=[];
     for(const sourceAsset of group){
@@ -138,7 +150,7 @@
     const modal=makeModal('sprite-paint-modal',`
       <div class="sprite-editor-header">
         <div class="sprite-editor-heading"><strong>Sprite Editor</strong><span data-editor-subtitle>Width and Height are pixel dimensions.</span></div>
-        <div class="sprite-editor-header-actions"><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
+        <div class="sprite-editor-header-actions"><button class="btn" type="button" data-sprite-action="undo">${glyph('undo')}Undo</button><button class="btn" type="button" data-sprite-action="redo">${glyph('redo')}Redo</button><button class="btn" type="button" data-sprite-action="center">${glyph('center')}Center</button><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
       </div>
       <div class="sprite-editor-layout">
         <aside class="sprite-tool-panel" data-sprite-panel="left">
@@ -171,8 +183,7 @@
           </section>
           <section class="sprite-tool-section">
             <div class="sprite-section-title">Edit</div>
-            <div class="sprite-action-row"><button class="btn" data-sprite-action="undo" type="button">${glyph('undo')}Undo</button><button class="btn" data-sprite-action="redo" type="button">${glyph('redo')}Redo</button></div>
-            <div class="sprite-action-row"><button class="btn" data-sprite-action="grid" type="button">${glyph('grid')}Grid</button><button class="btn" data-sprite-action="center" type="button">${glyph('center')}Center</button></div>
+            <div class="sprite-action-row"><button class="btn" data-sprite-action="grid" type="button">${glyph('grid')}Grid</button></div>
             <div class="sprite-action-row"><button class="btn" data-sprite-action="flipx" type="button">${glyph('flipx')}Flip X</button><button class="btn" data-sprite-action="flipy" type="button">${glyph('flipy')}Flip Y</button></div>
             <div class="sprite-action-row"><button class="btn" data-sprite-action="rotate" type="button">${glyph('rotate')}Rotate</button></div>
             <div class="sprite-action-row"><button class="btn" data-sprite-action="clear" type="button">Clear</button></div>
@@ -209,7 +220,7 @@
           <section class="sprite-inspector-section">
             <div class="sprite-frames-heading"><strong>Frames</strong><span data-frame-count>1</span></div>
             <div class="sprite-frame-list" data-frame-list></div>
-            <div class="sprite-frame-actions"><button class="btn" data-frame-action="copy" type="button">${glyph('copy')}Copy</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add</button></div>
+            <div class="sprite-frame-actions"><button class="btn" data-frame-action="copy" type="button">${glyph('copy')}Copy</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Sprite(s)</button><button class="btn" data-frame-action="import" type="button">＋ Import Sprite</button></div>
             <div class="sprite-play-row"><button class="btn" data-frame-action="prev" type="button" aria-label="Previous frame">${glyph('prev')}</button><button class="btn" data-frame-action="play" type="button">${glyph('play')}Play</button><button class="btn" data-frame-action="next" type="button" aria-label="Next frame">${glyph('next')}</button><label><span>FPS</span><input data-sprite-fps type="number" min="1" max="120" value="8"></label></div>
             <div class="sprite-frame-hint">Drag frames to reorder. Frames are saved as separate PNG files.</div>
           </section>
@@ -218,7 +229,7 @@
 
     const frames=(config.frames||[]).map(f=>({...f,pixels:clonePixels(f.pixels)}));
     const ed={
-      modal,name:config.name||'Sprite',sourceAssets:config.sourceAssets||[],frames:frames.length?frames:[{name:config.name||'Sprite',width:config.width||32,height:config.height||32,pixels:makePixels(config.width||32,config.height||32),sourceAsset:null}],
+      modal,name:config.name||'Sprite',sourceAssets:config.sourceAssets||[],multiSource:!!config.multiSource,frames:frames.length?frames:[{name:config.name||'Sprite',width:config.width||32,height:config.height||32,pixels:makePixels(config.width||32,config.height||32),sourceAsset:null}],
       frameIndex:0,fps:config.fps||8,playing:false,playTimer:null,tool:'pencil',brushSize:1,color:[255,255,255,255],showGrid:true,
       zoom:4,pan:{x:0,y:0},mirrorX:false,mirrorY:false,undo:[],redo:[],drawing:false,drawStart:null,lastCell:null,lastPaintCell:null,
       panelWidths:{left:190,right:235},leftCollapsed:false,rightCollapsed:false,
@@ -522,9 +533,55 @@
     if(a==='rotate'){if(ed.selection?.mask?.size)rotateSelection(ed);else{pushUndo(ed);const next=makePixels(f.height,f.width);for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++)next[x][f.height-1-y]=[...f.pixels[y][x]];f.pixels=next;[f.width,f.height]=[f.height,f.width];invalidateCache(f);syncFrameFields(ed);fitEditor(ed);}return render(ed);}
   }
 
+  function chooseImportMode(width,height,baseW,baseH){
+    return new Promise(resolve=>{
+      const modal=makeModal('sprite-import-choice-modal',`<div class="modal-header"><div><h3>Sprite is larger</h3><p>${width}×${height} is larger than the current ${baseW}×${baseH} frame.</p></div><button class="modal-close" type="button" data-import-choice-close>×</button></div><div class="modal-actions sprite-import-choice-actions"><button class="btn" type="button" data-import-choice="cancel">Cancel</button><button class="btn" type="button" data-import-choice="crop">Crop</button><button class="btn" type="button" data-import-choice="expand">Expand Canvas</button><button class="btn primary" type="button" data-import-choice="shrink">Shrink (Keep Aspect Ratio)</button></div>`);
+      const done=value=>{window.UIXApp?.closeModal?.(modal);modal.remove();resolve(value);};modal.querySelectorAll('[data-import-choice]').forEach(b=>b.onclick=()=>done(b.dataset.importChoice));modal.querySelector('[data-import-choice-close]').onclick=()=>done('cancel');
+    });
+  }
+  function fitPixelsToFrame(source,w,h,mode){
+    const out=makePixels(w,h),sw=source.width,sh=source.height;
+    let drawW=sw,drawH=sh,sx=0,sy=0;
+    if(mode==='shrink'){
+      const scale=Math.min(w/sw,h/sh,1);drawW=Math.max(1,Math.round(sw*scale));drawH=Math.max(1,Math.round(sh*scale));sx=Math.floor((sw-drawW)/2);sy=Math.floor((sh-drawH)/2);
+    }else if(mode==='crop'){
+      const cropW=Math.min(sw,w),cropH=Math.min(sh,h);sx=Math.floor((sw-cropW)/2);sy=Math.floor((sh-cropH)/2);drawW=cropW;drawH=cropH;
+    }else{drawW=Math.min(sw,w);drawH=Math.min(sh,h);sx=Math.floor((sw-drawW)/2);sy=Math.floor((sh-drawH)/2);}
+    const ox=Math.floor((w-drawW)/2),oy=Math.floor((h-drawH)/2);
+    if(mode==='shrink' || drawW===sw&&drawH===sh){for(let y=0;y<drawH;y++)for(let x=0;x<drawW;x++){const srcX=Math.min(sw-1,sx+Math.floor(x*(sw/drawW))),srcY=Math.min(sh-1,sy+Math.floor(y*(sh/drawH)));out[oy+y][ox+x]=[...source.pixels[srcY][srcX]];}}
+    else for(let y=0;y<drawH;y++)for(let x=0;x<drawW;x++)out[oy+y][ox+x]=[...source.pixels[sy+y][sx+x]];
+    return out;
+  }
+  async function importSpriteAssetIntoEditor(ed,asset,insertAt=ed.frameIndex+1){
+    if(!asset?.value)return;
+    try{
+      const source=await imageToPixels(asset.value),base=currentFrame(ed),baseW=base.width,baseH=base.height;
+      let mode='center',w=baseW,h=baseH;
+      if(source.width>baseW||source.height>baseH){
+        mode=await chooseImportMode(source.width,source.height,baseW,baseH);
+        if(mode==='cancel')return;
+        if(mode==='expand'){w=Math.max(baseW,source.width);h=Math.max(baseH,source.height);}
+      }
+      const pixels=fitPixelsToFrame(source,w,h,mode),frame={name:assetStem(asset),width:w,height:h,pixels,sourceAsset:null};
+      ed.frames.splice(insertAt,0,frame);ed.frameIndex=insertAt;ed.undo=[];ed.redo=[];fitEditor(ed);render(ed);
+    }catch(err){window.UIXApp?.status?.(`Could not import Sprite: ${err?.message||err}`);}
+  }
+  async function importSpriteAssetsIntoEditor(ed,assets){
+    const list=Array.isArray(assets)?assets.filter(a=>a?.value):[];
+    if(!list.length)return;
+    let index=ed.frameIndex+1;
+    for(const asset of list){
+      const before=ed.frames.length;
+      await importSpriteAssetIntoEditor(ed,asset,index);
+      if(ed.frames.length>before)index=ed.frameIndex+1;
+    }
+  }
+  function openSpriteImport(ed,isMulti=false){window.UIXApp?.openAssetSelector?.('Sprite',value=>isMulti?importSpriteAssetsIntoEditor(ed,value):importSpriteAssetIntoEditor(ed,value),{isMulti});}
+
   function frameAction(ed,a){
     if(a==='copy'){const f=currentFrame(ed);const copy={name:f.name,width:f.width,height:f.height,pixels:clonePixels(f.pixels),sourceAsset:null};ed.frames.splice(ed.frameIndex+1,0,copy);ed.frameIndex++;ed.undo=[];ed.redo=[];return render(ed);}
-    if(a==='add'){const f=currentFrame(ed);const blank={name:ed.name,width:f.width,height:f.height,pixels:makePixels(f.width,f.height),sourceAsset:null};ed.frames.splice(ed.frameIndex+1,0,blank);ed.frameIndex++;ed.undo=[];ed.redo=[];return render(ed);}
+    if(a==='add'){return openSpriteImport(ed,true);}
+    if(a==='import'){return openSpriteImport(ed,false);}
     if(a==='prev')return selectFrame(ed,ed.frameIndex-1<0?ed.frames.length-1:ed.frameIndex-1);
     if(a==='next')return selectFrame(ed,(ed.frameIndex+1)%ed.frames.length);
     if(a==='play'){ed.playing?stopPlayback(ed):startPlayback(ed);}
@@ -677,5 +734,5 @@
       case'escape':closeEditor(ed);break;
     }
   }
-  window.UIXSpriteEditor={openCreate,openEdit,handleShortcut};
+  window.UIXSpriteEditor={openCreate,openEdit,openEditMany,handleShortcut,importSpriteAsset:importSpriteAssetIntoEditor};
 })();

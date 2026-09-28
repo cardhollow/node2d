@@ -31,7 +31,7 @@
     return bytesToDataUrl(new Uint8Array(buffer),blob.type||'image/png');
   }
 
-  async function nativeDecode(buffer){
+  async function nativeDecode(buffer,onProgress){
     if(typeof ImageDecoder!=='function')return null;
 
     const decoder=new ImageDecoder({
@@ -44,6 +44,7 @@
       await decoder.tracks.ready;
       const track=decoder.tracks.selectedTrack;
       const frameCount=Number(track?.frameCount)||0;
+      onProgress?.(0, `Decoding ${frameCount} frame${frameCount===1?'':'s'}…`);
       if(frameCount<1)throw new Error('GIF contains no image frames');
 
       const first=await decoder.decode({frameIndex:0});
@@ -89,6 +90,8 @@
         });
 
         frame.close?.();
+        onProgress?.(((i+1)/frameCount)*100, `Decoded frame ${i+1} of ${frameCount}`);
+        await new Promise(requestAnimationFrame);
       }
 
       return frames;
@@ -108,20 +111,20 @@
     throw new Error('This browser does not support ImageDecoder for animated GIF import. Use a current Chromium/Edge browser or enable WebCodecs.');
   }
 
-  async function convertArrayBufferToPngFrames(buffer){
+  async function convertArrayBufferToPngFrames(buffer,onProgress){
     if(!buffer)throw new Error('No GIF data supplied');
-    const native=await nativeDecode(buffer);
+    const native=await nativeDecode(buffer,onProgress);
     if(native&&native.length)return native;
     return fallbackDecode(buffer);
   }
 
-  async function convertDataUrlToPngFrames(dataUrl){
+  async function convertDataUrlToPngFrames(dataUrl,onProgress){
     const bytes=dataUrlToBytes(dataUrl);
-    return convertArrayBufferToPngFrames(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+    return convertArrayBufferToPngFrames(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),onProgress);
   }
 
-  async function convertFileToPngFrames(file){
-    return convertArrayBufferToPngFrames(await file.arrayBuffer());
+  async function convertFileToPngFrames(file,onProgress){
+    return convertArrayBufferToPngFrames(await file.arrayBuffer(),onProgress);
   }
 
   window.UIXGifConvert={

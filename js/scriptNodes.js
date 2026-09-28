@@ -11,10 +11,13 @@
     { name:'onJoystick', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Variable',type:'selector',value:ctx=>(ctx?.joysticksList||[]).map(j=>j.variable),selected:''}], func:()=>({out:true}) },
     { name:'onAudioPickup', require:'Use Mic', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputFocus', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onInputChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputBlur', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
     { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onClientJoined', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onClientLeft', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     {
       name:'loadScene', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[{name:'Scene',type:'selector',value:ctx=>(ctx?.sceneList||[]).map(s=>s.name),selected:'Main'}],
@@ -27,7 +30,7 @@
     {
       name:'setVariable', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[
-        {name:'Type',type:'selector',value:()=>['Global','Local','Scene'],selected:'Global'},
+        {name:'Type',type:'selector',value:()=>['Global','Local','Scene','Server'],selected:'Global'},
         {name:'Name',type:'selector',value:ctx=>ctx?.variableNames||[],selected:null},
         {name:'Value',type:'str',value:null}
       ],
@@ -36,7 +39,7 @@
     {
       name:'saveVariable', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[
-        {name:'Scope',type:'selector',value:()=>['Global','Local','Scene'],selected:'Global'},
+        {name:'Scope',type:'selector',value:()=>['Global','Local','Scene','Server'],selected:'Global'},
         {name:'Name',type:'selector',value:ctx=>ctx?.variableNames||[],selected:null},
         {name:'StorageType',type:'selector',value:()=>['local','session','indexedDB'],selected:'local'}
       ],
@@ -45,11 +48,27 @@
     {
       name:'loadVariable', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[
-        {name:'Scope',type:'selector',value:()=>['Global','Local','Scene'],selected:'Global'},
+        {name:'Scope',type:'selector',value:()=>['Global','Local','Scene','Server'],selected:'Global'},
         {name:'Name',type:'selector',value:ctx=>ctx?.variableNames||[],selected:null},
         {name:'StorageType',type:'selector',value:()=>['local','session','indexedDB'],selected:'local'}
       ],
       func:async(ctx,v)=>({out:!!(await ctx.loadVariable?.(v.Scope,v.Name,v.StorageType))})
+    },
+    {
+      name:'createRoom', receiver:true, group:'Actions', output:[{id:'out'},{id:'success'},{id:'err'}],
+      editor:[{name:'room/clientID',type:'str',value:''}],
+      func:async(ctx,v)=>{
+        try{await ctx.network?.createRoom?.(v['room/clientID']);return {out:true,success:true};}
+        catch(error){ctx.network?.reportError?.(error);return {out:true,err:true};}
+      }
+    },
+    {
+      name:'joinRoom', receiver:true, group:'Actions', output:[{id:'out'},{id:'success'},{id:'err'}],
+      editor:[{name:'room',type:'str',value:''},{name:'clientID',type:'str',value:''}],
+      func:async(ctx,v)=>{
+        try{await ctx.network?.joinRoom?.(v.room,v.clientID);return {out:true,success:true};}
+        catch(error){ctx.network?.reportError?.(error);return {out:true,err:true};}
+      }
     },
     {name:'setVisible',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Visibility',type:'bool',value:true}],func:(ctx,v)=>{ctx.setVisible?.(!!v.Visibility);return {out:true};}},
     {
@@ -145,15 +164,25 @@
     {
       name:'setSubCam', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[
-        [{name:'camX',type:'int',value:null},{name:'camY',type:'int',value:null}],
-        [{name:'camSizeX',type:'int',value:null},{name:'camSizeY',type:'int',value:null}],
-        {name:'camAngle',type:'int',value:null},
-        [{name:'canvasX',type:'int',value:null},{name:'canvasY',type:'int',value:null}],
-        [{name:'canvasScaleX',type:'int',value:null},{name:'canvasScaleY',type:'int',value:null}],
-        {name:'render',type:'selector',value:['Stretch','Crop','Windowboxing'],selected:'Windowboxing'},
-        {name:'pixelated',type:'bool',value:null}
+        {name:'Name',type:'str',value:null},
+        [{name:'Cam X',type:'int',value:null},{name:'Cam Y',type:'int',value:null}],
+        [{name:'Cam Size X',type:'int',value:null},{name:'Cam Size Y',type:'int',value:null}],
+        {name:'Cam Angle',type:'int',value:null}
       ],
-      func:(ctx,v)=>{ctx.setSubCam?.(v);return {out:true};}
+      func:(ctx,v)=>{ctx.setSubCam?.({Name:v.Name,camX:v['Cam X'],camY:v['Cam Y'],camSizeX:v['Cam Size X'],camSizeY:v['Cam Size Y'],camAngle:v['Cam Angle']});return {out:true};}
+    },
+    {
+      name:'setCanvas', receiver:true, group:'Actions', output:[{id:'out'}],
+      editor:[
+        {name:'Sub Camera',type:'selector',value:ctx=>['None','Main Cam',...(ctx?.allNodes||[]).filter(n=>n?.type==='node' && n?.components?.some(c=>c?.type==='subcamera')).map(n=>`${n.components.find(c=>c.type==='subcamera')?.name||n.name} [${n.numericId}]`)],selected:'None'},
+        [{name:'Width',type:'int',value:null},{name:'Height',type:'int',value:null}],
+        [{name:'Pos X',type:'int',value:null},{name:'Pos Y',type:'int',value:null}],
+        [{name:'Scale X',type:'int',value:null},{name:'Scale Y',type:'int',value:null}],
+        {name:'Render',type:'selector',value:['Stretch','Crop','Windowboxing'],selected:'Windowboxing'},
+        {name:'BG Color',type:'col',value:null},
+        {name:'Pixelated',type:'bool',value:null}
+      ],
+      func:(ctx,v)=>{ctx.setCanvas?.(v);return {out:true};}
     },
     {
       name:'setCamera', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -162,7 +191,7 @@
         {name:'Follow',type:'selector',value:ctx=>['This',...(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`)],selected:null},
         {name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'Angle',type:'int',value:null},
         {name:'Horizontal',type:'int',value:null},{name:'Vertical',type:'int',value:null},
-        {name:'Animation',type:'selector',value:()=>['Quick','Smooth'],selected:null},
+        {name:'Animation',type:'selector',value:()=>['Quick','Smooth','Linear','Ease In','Ease Out','Ease In Out','Sine In','Sine Out','Sine In Out','Back In Out'],selected:null},
         {name:'Speed',type:'int',value:null},{name:'Scale',type:'int',value:null},{name:'BG Color',type:'col',value:null}
       ],
       func:(ctx,v)=>{ctx.setCamera?.(v);return {out:true};}
@@ -181,7 +210,7 @@
     {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,!!(v.applyByName??v['Apply By Name']));return {next:true,truth:yes,falsy:!yes};}}
   ];
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputBlur','onConnectionChange','onCollideWith','onUnload','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();

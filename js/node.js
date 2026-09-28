@@ -36,6 +36,15 @@
     joints: {
       default: false, removable: true, joints: []
     },
+    subcamera: {
+      default: false, removable: true,
+      name: 'Sub Camera', camX: 0, camY: 0, camSizeX: 320, camSizeY: 180, camAngle: 0
+    },
+    canvas: {
+      default: false, removable: true,
+      source: '', width: 320, height: 180, position: [0, 0], scale: [1, 1],
+      render: 'windowboxing', bgCol: '#101010FF', pixelated: true
+    },
     progressbar: {
       default: false, removable: true,
       width: 200, height: 24, value: 50, min: 0, max: 100,
@@ -48,7 +57,7 @@
 
   const COMPONENT_LABELS = {
     node: 'Node', script: 'Script', transform: 'Transform', text: 'Text', input: 'Input Component',
-    sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', joints: 'Joints', subcamera: 'Sub Camera', progressbar: 'Progress Bar'
+    sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', joints: 'Joints', subcamera: 'Sub Camera', canvas: 'Canvas', progressbar: 'Progress Bar'
   };
 
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -72,7 +81,7 @@
   function normalizeNode(node) {
     node.components = Array.isArray(node.components) ? node.components : [];
     const byType = new Map();
-    node.components.forEach(component => {
+    node.components.forEach((component, componentIndex) => {
       if (!component || !component.type || byType.has(component.type)) return;
       byType.set(component.type, component);
     });
@@ -84,7 +93,7 @@
       .concat([...byType.entries()]
         .filter(([type]) => !['node', 'script', 'transform'].includes(type))
         .map(([, component]) => component));
-    node.components.forEach(component => {
+    node.components.forEach((component, componentIndex) => {
       component.removable = ['node', 'script', 'transform'].includes(component.type)
         ? false : component.removable !== false;
       if (component.type === 'node') {
@@ -190,17 +199,34 @@
         });
       }
       if (component.type === 'subcamera') {
+        component.name = String(component.name || 'Sub Camera');
         component.camX = Number.isFinite(Number(component.camX)) ? Number(component.camX) : 0;
         component.camY = Number.isFinite(Number(component.camY)) ? Number(component.camY) : 0;
         component.camSizeX = Math.max(1, Number.isFinite(Number(component.camSizeX)) ? Number(component.camSizeX) : 320);
         component.camSizeY = Math.max(1, Number.isFinite(Number(component.camSizeY)) ? Number(component.camSizeY) : 180);
         component.camAngle = Number.isFinite(Number(component.camAngle)) ? Number(component.camAngle) : 0;
-        component.canvasX = Number.isFinite(Number(component.canvasX)) ? Number(component.canvasX) : 0;
-        component.canvasY = Number.isFinite(Number(component.canvasY)) ? Number(component.canvasY) : 0;
-        component.canvasScaleX = Number.isFinite(Number(component.canvasScaleX)) ? Number(component.canvasScaleX) : 1;
-        component.canvasScaleY = Number.isFinite(Number(component.canvasScaleY)) ? Number(component.canvasScaleY) : 1;
+      }
+      if (component.type === 'canvas') {
+        // Migrate the previous Canvas/Sub Camera pairing model. A Canvas now owns
+        // the output settings and points directly at the Sub Camera node id.
+        if (!Object.prototype.hasOwnProperty.call(component, 'source')) {
+          component.source = '';
+          const legacyPair = node.components.find(c => c?.type === 'subcamera' && String(c.canvasId || '') === String(component.canvasId || ''));
+          if (legacyPair) component.source = String(`subcamera:${node.id}`);
+        }
+        component.source = String(component.source || '');
+        if (component.source === `subcamera:${node.id}`) component.source = String(node.id);
+        component.width = Math.max(1, Number(component.width) || 320);
+        component.height = Math.max(1, Number(component.height) || 180);
+        component.position = Array.isArray(component.position) ? component.position : [0, 0];
+        component.scale = Array.isArray(component.scale) ? component.scale : [1, 1];
+        component.scale[0] = Number.isFinite(Number(component.scale[0])) ? Number(component.scale[0]) : 1;
+        component.scale[1] = Number.isFinite(Number(component.scale[1])) ? Number(component.scale[1]) : 1;
         component.render = ['stretch','crop','windowboxing'].includes(String(component.render||'').toLowerCase()) ? String(component.render).toLowerCase() : 'windowboxing';
+        component.bgCol = component.bgCol || '#101010FF';
         component.pixelated = component.pixelated !== false;
+        delete component.name;
+        delete component.canvasId;
       }
       if (component.type === 'progressbar') {
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
@@ -209,6 +235,24 @@
         component.direction = component.direction === 'right' ? 'right' : 'left';
       }
     });
+    node.components.forEach(component=>{
+      if(component?.type==='subcamera'){
+        delete component.canvasId;
+        delete component.canvasX;
+        delete component.canvasY;
+        delete component.canvasScaleX;
+        delete component.canvasScaleY;
+        delete component.render;
+        delete component.pixelated;
+      }
+      if(component?.type==='canvas'){
+        delete component.name;
+        delete component.canvasId;
+      }
+    });
+    const sameNodeCanvas=node.components.find(c=>c?.type==='canvas');
+    const sameNodeSubCamera=node.components.find(c=>c?.type==='subcamera');
+    if(sameNodeCanvas&&sameNodeSubCamera&&!sameNodeCanvas.source) sameNodeCanvas.source=String(node.id);
     return node;
   }
 

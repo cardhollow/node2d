@@ -106,7 +106,7 @@
     const name=String(o.name||'My Project').trim()||'My Project',version=String(o.version||'1.0.0').trim()||'1.0.0',pwa=!!o.pwa,needMidi=!!o.needMidi,screenType=normalizeScreenType(o.screenType),splash=o.splash||{enabled:true,title:'Node2D'};
     o.onProgress?.(4,'Building standalone Playtime');
     const projectFiles=[{name:'project.ndc',bytes:o.projectNdc instanceof Uint8Array?o.projectNdc:new Uint8Array(o.projectNdc||[])}];
-    const enginePaths=['js/node.js','js/assets.js','js/scriptNodes.js','js/uiComponents.js','js/runtimeEngine.js',...(needMidi?['js/midiParser.js']:[]),'js/app.js'];
+    const enginePaths=['js/node.js','js/assets.js','js/network.js','js/scriptNodes.js','js/uiComponents.js','js/runtimeEngine.js',...(needMidi?['js/midiParser.js']:[]),'js/app.js'];
     const enginePairs=[];
     for(let i=0;i<enginePaths.length;i++){const path=enginePaths[i],source=await fetchText(path);enginePairs.push([path,source]);o.onProgress?.(8+Math.round((i+1)/enginePaths.length*40),`Packed ${path}`);}
     if(!window.UIXNDCCodec?.encode)throw Error('NDC codec is not loaded');
