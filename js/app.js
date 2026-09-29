@@ -8078,7 +8078,7 @@ function updateRuntimeAnimations(dt){
     document.addEventListener('gesturestart',e=>e.preventDefault());document.addEventListener('gesturechange',e=>e.preventDefault());document.addEventListener('gestureend',e=>e.preventDefault());
   }
 
-  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode,openAssetSelector};
+  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,buildProjectNDC,getCurrentProjectName:()=>String(state.project?.name||'Untitled Node2D'),startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode,openAssetSelector};
   function ensureViewportNotice(){
     let notice=$('#uixViewportNarrowNotice');
     if(!notice){
