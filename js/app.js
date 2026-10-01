@@ -6069,22 +6069,42 @@
     const entries=[],nodes=[],nodeById=new Map(),parentById=new Map(),folderByLabel=new Map();
     const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){entries.push({node,parent});parentById.set(node.id,parent||null);if(node.type==='node'){nodes.push(node);nodeById.set(node.id,node);}else if(node.type==='folder'){folderByLabel.set(`${node.name} [${node.numericId}]`,node);walk(node.children,node);}}};
     walk(rt.scene?.nodes);
-    const bodyById=new Map(),physicsBodies=[],joints=[];for(const body of (rt.bodies||[])){if(!body?.node?.id)continue;bodyById.set(body.node.id,body);if(body.physics||body.collider)physicsBodies.push(body);}for(const owner of (rt.bodies||[])){if(!owner?.node?.id)continue;for(const j of (owner.joints?.joints||[])){const targetId=String(j.object||''),target=bodyById.get(targetId);if(!target||target===owner)continue;const entry={owner,def:j,bodyA:owner,bodyB:target,targetId};joints.push(entry);if(!physicsBodies.includes(owner))physicsBodies.push(owner);if(!physicsBodies.includes(target))physicsBodies.push(target);}}
+    const bodyById=new Map(),bodyByLabel=new Map(),bodiesByName=new Map(),physicsBodies=[],joints=[];for(const body of (rt.bodies||[])){if(!body?.node?.id)continue;bodyById.set(body.node.id,body);const label=`${body.node.name||''} [${body.node.numericId}]`;bodyByLabel.set(label,body);const nm=String(body.node.name||'');const list=bodiesByName.get(nm)||[];list.push(body);bodiesByName.set(nm,list);body._runtimeShapeDirty=true;if(body.physics||body.collider)physicsBodies.push(body);}for(const owner of (rt.bodies||[])){if(!owner?.node?.id)continue;for(const j of (owner.joints?.joints||[])){const targetId=String(j.object||''),target=bodyById.get(targetId);if(!target||target===owner)continue;const entry={owner,def:j,bodyA:owner,bodyB:target,targetId};joints.push(entry);if(!physicsBodies.includes(owner))physicsBodies.push(owner);if(!physicsBodies.includes(target))physicsBodies.push(target);}}
     const renderBodies=(rt.bodies||[]).filter(Boolean).slice().sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));
     const scriptById=new Map(),scriptOwnerById=new Map(),eventScriptsByName=new Map(),eventScriptsByNode=new Map(),routesByScriptOutput=new Map();
     const defByName=new Map(scriptNodes.filter(Boolean).map(def=>[def.name,def]));
+    const eventPools=new Map(),scriptRuntimePool=[];
     for(const node of nodes){
       const scripts=Array.isArray(rt.dynamicScriptsByNode?.[node.id])?rt.dynamicScriptsByNode[node.id]:[];const byDef=Object.create(null);
-      for(const sn of scripts){if(!sn?.id)continue;scriptById.set(sn.id,sn);scriptOwnerById.set(sn.id,node.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=eventScriptsByName.get(name)||[];list.push({node,sn});eventScriptsByName.set(name,list);}}
+      for(const sn of scripts){
+        if(!sn?.id)continue;
+        scriptById.set(sn.id,sn);scriptOwnerById.set(sn.id,node.id);
+        const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);
+        if(name){
+          const def=defByName.get(name)||scriptNodes.find(def=>def&&def.name===name)||null;
+          const item={node,sn,def,selectorType:null,selectorValue:null,compiled:null};
+          if(def){
+            try{
+              const first=flattenEditor(sn.values||[])[0]?.entry;
+              if(first?.type==='selector'){item.selectorType=first.name;item.selectorValue=Object.prototype.hasOwnProperty.call(first,'selected')?first.selected:(evaluateSelectorRuntime(first.value,node)[0]??'');}
+            }catch{}
+          }
+          const list=eventPools.get(name)||[];list.push(item);eventPools.set(name,list);
+        }
+      }
       eventScriptsByNode.set(node.id,byDef);
       const connections=Array.isArray(rt.dynamicConnectionsByNode?.[node.id])?rt.dynamicConnectionsByNode[node.id]:[];
       for(const c of connections){if(!c?.from||!c?.to||!c?.output)continue;const byOut=routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);routesByScriptOutput.set(c.from,byOut);}
     }
     const joyList=sceneJoysticks(rt.scene).map(j=>({variable:j.variable}));const joystickObject=Object.create(null);for(const j of joyList)joystickObject[j.variable]={distance:0,angle:0,value_x:0,value_y:0};
-    rt.nodeEntries=entries;rt.nodeList=nodes;rt.nodeById=nodeById;rt.bodyById=bodyById;rt.joints=joints.filter(j=>j.bodyA&&j.bodyB);rt.physicsBodies=physicsBodies;rt.renderBodies=renderBodies;rt.renderOrderDirty=false;rt.numericIds=new Set(nodes.map(n=>Number(n.numericId)).filter(Number.isFinite));
+    rt.nodeEntries=entries;rt.nodeList=nodes;rt.nodeById=nodeById;rt.bodyById=bodyById;rt.bodyByLabel=bodyByLabel;rt.bodiesByName=bodiesByName;rt.joints=joints.filter(j=>j.bodyA&&j.bodyB);rt.physicsBodies=physicsBodies;rt.renderBodies=renderBodies;rt.renderOrderDirty=false;rt.numericIds=new Set(nodes.map(n=>Number(n.numericId)).filter(Number.isFinite));
     let next=1;while(rt.numericIds.has(next))next++;rt.nextNumericId=Math.max(next,...nodes.map(n=>Number(n.numericId)+1).filter(Number.isFinite),1);
-    rt.scriptById=scriptById;rt.scriptOwnerById=scriptOwnerById;rt.eventScriptsByName=eventScriptsByName;rt.eventScriptsByNode=eventScriptsByNode;rt.routesByScriptOutput=routesByScriptOutput;rt.defByName=defByName;
+    rt.scriptById=scriptById;rt.scriptOwnerById=scriptOwnerById;rt.eventScriptsByName=eventScriptsByName;rt.eventScriptsByNode=eventScriptsByNode;rt.routesByScriptOutput=routesByScriptOutput;rt.defByName=defByName;rt.eventPools=eventPools;rt.contextCache=rt.contextCache instanceof Map?rt.contextCache:new Map();rt.scriptRuntimeCache=rt.scriptRuntimeCache instanceof Map?rt.scriptRuntimeCache:new Map();rt.scriptRuntimePool=[];rt.onTickPool=[];
     rt.shared={allNodes:nodes,folderOptions:[...folderByLabel.keys()],folderByLabel,spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]),...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],joysticksList:joyList,joystickObject};
+    for(const sn of scriptById.values()){const nodeId=scriptOwnerById.get(sn.id),node=nodeById.get(nodeId),def=defByName.get(String(sn.defName||''));if(!node||!def)continue;const compiled=runtimeGetCompiledScript(sn,node,def);const pool=rt.eventPools.get(String(sn.defName||''))||[];for(const item of pool){if(item.sn===sn){item.compiled=compiled;break;}}if(String(sn.defName||'')==='onTick')rt.onTickPool.push(compiled);}
+    rt.scriptRuntimePool=rt.onTickPool;
+    runtimeLinkCompiledRoutes(rt);
+    rt.onTickNeedsSceneOverlay=rt.onTickPool.some(compiled=>compiled?.needsSceneOverlay===true);
   }
   function runtimeSortRenderBodies(){const rt=state.runtime;if(!rt?.renderOrderDirty)return;rt.renderBodies.sort((a,b)=>(a.renderIndex??0)-(b.renderIndex??0));rt.renderOrderDirty=false;}
   function runScriptGraphForNode(node){
@@ -6094,7 +6114,7 @@
   function runtimeSceneVariables(sceneId=state.runtime.sceneId){ return state.runtime.sceneVariablesByScene?.[sceneId] || []; }
   function buildRuntimeBody(node){
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
-    const j=component(node,'joints'); return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
+    const j=component(node,'joints'); return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node),_runtimeShapeDirty:true};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
@@ -6103,8 +6123,21 @@
   }
   function runtimeRegisterScripts(ownerNode,scripts,connections){
     const rt=state.runtime,byDef=rt.eventScriptsByNode.get(ownerNode.id)||Object.create(null);
-    for(const sn of scripts||[]){rt.scriptById.set(sn.id,sn);rt.scriptOwnerById.set(sn.id,ownerNode.id);const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);if(name){const list=rt.eventScriptsByName.get(name)||[];list.push({node:ownerNode,sn});rt.eventScriptsByName.set(name,list);}}rt.eventScriptsByNode.set(ownerNode.id,byDef);
+    for(const sn of scripts||[]){
+      rt.scriptById.set(sn.id,sn);rt.scriptOwnerById.set(sn.id,ownerNode.id);
+      const name=String(sn.defName||'');if(!byDef[name])byDef[name]=[];byDef[name].push(sn);
+      const def=scriptNodeDefinition(name);
+      if(name){
+        const list=rt.eventScriptsByName.get(name)||[];list.push({node:ownerNode,sn});rt.eventScriptsByName.set(name,list);
+        const pool=rt.eventPools?.get(name)||[];let selectorType=null,selectorValue=null;
+        try{const first=flattenEditor(sn.values||[])[0]?.entry;if(first?.type==='selector'){selectorType=first.name;selectorValue=Object.prototype.hasOwnProperty.call(first,'selected')?first.selected:(evaluateSelectorRuntime(first.value,ownerNode)[0]??'');}}catch{}
+        const compiled=runtimeGetCompiledScript(sn,ownerNode,def);pool.push({node:ownerNode,sn,def,selectorType,selectorValue,compiled});rt.eventPools?.set(name,pool);
+        if(name==='onTick')rt.onTickPool?.push(compiled);
+      }
+    }
+    rt.eventScriptsByNode.set(ownerNode.id,byDef);
     for(const c of connections||[]){const byOut=rt.routesByScriptOutput.get(c.from)||new Map();const list=byOut.get(c.output)||[];list.push(c);byOut.set(c.output,list);rt.routesByScriptOutput.set(c.from,byOut);}
+    runtimeLinkCompiledRoutes(rt);
   }
   function runtimeCloneFullNode(source){
     if(!source||typeof source!=='object')return null;
@@ -6172,10 +6205,14 @@
   function runtimeDestroyNode(node){
     const rt=state.runtime;if(!node||!rt)return;const id=node.id,body=rt.bodyById.get(id);if(!rt.nodeById.has(id)&&!body)return;
     const parent=rt.parentById.get(id)||null,container=parent?.children||rt.scene?.nodes;if(Array.isArray(container)){const i=container.findIndex(x=>x?.id===id);if(i>=0)container.splice(i,1);}
-    const deadScripts=new Set((rt.dynamicScriptsByNode?.[id]||[]).map(sn=>sn?.id).filter(Boolean));for(const sid of deadScripts){rt.scriptById.delete(sid);rt.scriptOwnerById.delete(sid);delete rt.intervalStates[sid];}
+    const deadScripts=new Set((rt.dynamicScriptsByNode?.[id]||[]).map(sn=>sn?.id).filter(Boolean));for(const sid of deadScripts){rt.scriptById.delete(sid);rt.scriptOwnerById.delete(sid);rt.scriptRuntimeCache?.delete?.(sid);delete rt.intervalStates[sid];}
     for(const [name,list] of rt.eventScriptsByName){const next=list.filter(x=>x.node?.id!==id&&!deadScripts.has(x.sn?.id));if(next.length)rt.eventScriptsByName.set(name,next);else rt.eventScriptsByName.delete(name);}
     rt.eventScriptsByNode.delete(id);
+    rt.contextCache?.delete?.(id);
+    for(const name of [...(rt.eventPools?.keys?.()||[])]){const pool=rt.eventPools.get(name)||[];const next=pool.filter(x=>x.node?.id!==id);if(next.length)rt.eventPools.set(name,next);else rt.eventPools.delete(name);}
+    rt.onTickPool=(rt.onTickPool||[]).filter(x=>x.node?.id!==id);
     for(const [from,byOut] of rt.routesByScriptOutput){for(const [out,list] of byOut){const next=list.filter(c=>!deadScripts.has(c.from)&&!deadScripts.has(c.to));if(next.length)byOut.set(out,next);else byOut.delete(out);}if(!byOut.size)rt.routesByScriptOutput.delete(from);}
+    runtimeLinkCompiledRoutes(rt);rt.onTickNeedsSceneOverlay=rt.onTickPool?.some(compiled=>compiled?.needsSceneOverlay===true)||false;
     rt.timers=(rt.timers||[]).filter(t=>t?.nodeId!==id&&!deadScripts.has(t?.key));rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>n?.id!==id);
     delete rt.dynamicScriptsByNode[id];delete rt.dynamicConnectionsByNode[id];delete rt.localVarsByNode[id];delete rt.followTargets[id];delete rt.aiTargets[id];Object.values(rt.followTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});Object.values(rt.aiTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});
     rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>pair?.[0]?.node?.id!==id&&pair?.[1]?.node?.id!==id));
@@ -6206,11 +6243,21 @@
     const enabled=(hasComponent&&detectable)||(!hasComponent&&physicsCollider);
     if(!enabled)return null;
     const nt=body.t||{position:[0,0],scale:[1,1],angle:[0]};
+    const ct=hasComponent?(c.transform||{position:[0,0],scale:[1,1],angle:[0]}):null;
+    const shapeKey=[
+      Number(nt.position?.[0])||0,Number(nt.position?.[1])||0,
+      Number(nt.scale?.[0]??1),Number(nt.scale?.[1]??1),Number(nt.angle?.[0])||0,
+      hasComponent?String(c.shapeType||c.type||'Rect'):'Rect',
+      hasComponent?Number(ct?.position?.[0])||0:0,hasComponent?Number(ct?.position?.[1])||0:0,
+      hasComponent?Number(ct?.scale?.[0]??1):1,hasComponent?Number(ct?.scale?.[1]??1):1,
+      hasComponent?Number(ct?.angle?.[0])||0:0,
+      hasComponent?(c.collidable===false?'0':'1'):'0',physicsCollider?'1':'0'
+    ].join('|');
+    if(!body._runtimeShapeDirty&&body._runtimeShapeCache&&body._runtimeShapeCacheKey===shapeKey)return body._runtimeShapeCache;
     const nx=Number(nt.position?.[0]||0),ny=Number(nt.position?.[1]||0);
     const nsx=Number(nt.scale?.[0]??1),nsy=Number(nt.scale?.[1]??1),na=Number(nt.angle?.[0]||0)*Math.PI/180;
     let type='Rect',w=90*Math.abs(nsx),h=54*Math.abs(nsy),lx=0,ly=0,la=0;
     if(hasComponent){
-      const ct=c.transform||{position:[0,0],scale:[1,1],angle:[0]};
       type=['Rect','Circle','Triangle'].includes(c.shapeType)?c.shapeType:'Rect';
       lx=Number(ct.position?.[0]||0)*nsx;
       ly=Number(ct.position?.[1]||0)*nsy;
@@ -6221,13 +6268,20 @@
     const cos=Math.cos(na),sin=Math.sin(na);
     const x=nx+lx*cos-ly*sin,y=ny+lx*sin+ly*cos,angle=na+la;
     if(type==='Circle'){const d=Math.max(w,h);w=d;h=d;}
-    const shape={type,x,y,angle,w:Math.max(.01,w),h:Math.max(.01,h),vertices:null,radius:null};
-    if(type==='Circle')shape.radius=shape.w/2;
-    else {
+    let shape=body._runtimeShapeCache;
+    const vertexCount=type==='Circle'?0:(type==='Triangle'?3:4);
+    if(!shape||shape.type!==type||((shape.vertices?.length||0)!==vertexCount)){
+      shape={type,x,y,angle,w:Math.max(.01,w),h:Math.max(.01,h),vertices:vertexCount?Array.from({length:vertexCount},()=>({x:0,y:0})):null,radius:null};
+    }
+    shape.type=type;shape.x=x;shape.y=y;shape.angle=angle;shape.w=Math.max(.01,w);shape.h=Math.max(.01,h);
+    if(type==='Circle'){shape.radius=shape.w/2;shape.vertices=null;}
+    else{
       const hw=shape.w/2,hh=shape.h/2;
       const local=type==='Triangle'?[{x:0,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}]:[{x:-hw,y:-hh},{x:hw,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}];
-      shape.vertices=local.map(v=>{const q=rotateLocalPoint(v.x,v.y,angle);return {x:x+q.x,y:y+q.y};});
+      for(let i=0;i<vertexCount;i++){const v=local[i],q=rotateLocalPoint(v.x,v.y,angle);shape.vertices[i].x=x+q.x;shape.vertices[i].y=y+q.y;}
+      shape.radius=null;
     }
+    body._runtimeShapeCache=shape;body._runtimeShapeCacheKey=shapeKey;body._runtimeShapeDirty=false;
     return shape;
   }
   function shapeAABB(shape){
@@ -6245,9 +6299,31 @@
   }
   function supportPoint(shape,dir){const pts=supportPoints(shape,dir);if(!pts.length)return{x:shape.x||0,y:shape.y||0};const inv=1/pts.length;return pts.reduce((a,v)=>({x:a.x+v.x*inv,y:a.y+v.y*inv}),{x:0,y:0});}
   function collisionCircleCircle(A,B){const ab=subV({x:B.x,y:B.y},{x:A.x,y:A.y}),d=lenV(ab),r=A.radius+B.radius;if(d>=r)return null;const n=d>1e-8?mulV(ab,1/d):{x:1,y:0};return{normal:n,penetration:r-d,point:addV({x:A.x,y:A.y},mulV(n,A.radius-(r-d)*.5))};}
+  function collisionRectRect(A,B){
+    const dx=Number(B.x)-Number(A.x),dy=Number(B.y)-Number(A.y);
+    const ox=(A.w+B.w)*.5-Math.abs(dx),oy=(A.h+B.h)*.5-Math.abs(dy);
+    if(ox<=0||oy<=0)return null;
+    if(ox<oy){
+      const sx=dx<0?-1:1;
+      const ax=A.x+sx*A.w*.5,bx=B.x-sx*B.w*.5;
+      const top=Math.max(A.y-A.h*.5,B.y-B.h*.5),bottom=Math.min(A.y+A.h*.5,B.y+B.h*.5);
+      return {normal:{x:sx,y:0},penetration:ox,point:{x:(ax+bx)*.5,y:(top+bottom)*.5}};
+    }
+    const sy=dy<0?-1:1;
+    const ay=A.y+sy*A.h*.5,by=B.y-sy*B.h*.5;
+    const left=Math.max(A.x-A.w*.5,B.x-B.w*.5),right=Math.min(A.x+A.w*.5,B.x+B.w*.5);
+    return {normal:{x:0,y:sy},penetration:oy,point:{x:(left+right)*.5,y:(ay+by)*.5}};
+  }
   function collisionPolygonPolygon(A,B){const axes=[...polygonAxes(A.vertices),...polygonAxes(B.vertices)];let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pa=projectPolygon(A.vertices,axis),pb=projectPolygon(B.vertices,axis),over=Math.min(pa.max,pb.max)-Math.max(pa.min,pb.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const ca=polygonCenter(A.vertices),cb=polygonCenter(B.vertices);if(dotV(subV(cb,ca),best.normal)<0)best.normal=mulV(best.normal,-1);const n=best.normal,t=perpV(n);const paN=projectPolygon(A.vertices,n),pbN=projectPolygon(B.vertices,n);const ta=projectPolygon(A.vertices,t),tb=projectPolygon(B.vertices,t);const tMin=Math.max(ta.min,tb.min),tMax=Math.min(ta.max,tb.max);const tn=(paN.max+pbN.min)*0.5,tt=(tMin+tMax)*0.5;const point={x:n.x*tn+t.x*tt,y:n.y*tn+t.y*tt};return{normal:n,penetration:best.penetration,point};}
   function collisionCirclePolygon(circle,poly){const axes=polygonAxes(poly.vertices),cp=closestPolygonPoint(poly,{x:circle.x,y:circle.y});if(cp.point){const diff=subV(cp.point,{x:circle.x,y:circle.y}),d=lenV(diff);if(d>1e-7)axes.push(mulV(diff,1/d));}let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pc=projectCircle(circle,axis),pp=projectPolygon(poly.vertices,axis),over=Math.min(pc.max,pp.max)-Math.max(pc.min,pp.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const toward=cp.point?subV(cp.point,{x:circle.x,y:circle.y}):subV(polygonCenter(poly.vertices),{x:circle.x,y:circle.y});if(lenV(toward)>1e-7&&dotV(toward,best.normal)<0)best.normal=mulV(best.normal,-1);const circleContact={x:circle.x+best.normal.x*circle.radius,y:circle.y+best.normal.y*circle.radius};const polyContact=cp.point||supportPoint(poly,mulV(best.normal,-1));return{normal:best.normal,penetration:best.penetration,point:mulV(addV(circleContact,polyContact),.5)};}
-  function collideShapes(A,B){if(!A||!B)return null;if(A.type==='Circle'&&B.type==='Circle')return collisionCircleCircle(A,B);if(A.type==='Circle'&&B.type!=='Circle')return collisionCirclePolygon(A,B);if(A.type!=='Circle'&&B.type==='Circle'){const hit=collisionCirclePolygon(B,A);if(!hit)return null;return{normal:mulV(hit.normal,-1),penetration:hit.penetration,point:hit.point};}return collisionPolygonPolygon(A,B);}
+  function collideShapes(A,B){
+    if(!A||!B)return null;
+    if(A.type==='Rect'&&B.type==='Rect'&&Math.abs(Number(A.angle)||0)<1e-8&&Math.abs(Number(B.angle)||0)<1e-8)return collisionRectRect(A,B);
+    if(A.type==='Circle'&&B.type==='Circle')return collisionCircleCircle(A,B);
+    if(A.type==='Circle'&&B.type!=='Circle')return collisionCirclePolygon(A,B);
+    if(A.type!=='Circle'&&B.type==='Circle'){const hit=collisionCirclePolygon(B,A);if(!hit)return null;return{normal:mulV(hit.normal,-1),penetration:hit.penetration,point:hit.point};}
+    return collisionPolygonPolygon(A,B);
+  }
   function bodyMassProperties(body,shape){const p=body.physics?.body;if(p!=='Dynamic')return{mass:Infinity,invMass:0,inertia:Infinity,invInertia:0};let area=1,inertiaFactor=1;if(shape.type==='Circle'){area=Math.PI*shape.radius*shape.radius;inertiaFactor=.5*shape.radius*shape.radius;}else if(shape.type==='Triangle'){area=Math.max(.01,.5*shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/24;}else{area=Math.max(.01,shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/12;}const mass=Math.max(.01,area/1000),inertia=mass*inertiaFactor;return{mass,invMass:1/mass,inertia,invInertia:body.physics?.fixedRotation?0:1/Math.max(.0001,inertia)};}
   function torqueScreen(r,f){return-crossV(r,f);}
   function contactState(A,B,hit){const As=runtimeColliderShape(A),Bs=runtimeColliderShape(B);if(!As||!Bs)return null;const ap=bodyMassProperties(A,As),bp=bodyMassProperties(B,Bs);if(ap.invMass===0&&bp.invMass===0)return null;const ac=A.t?.position||[0,0],bc=B.t?.position||[0,0],ra=subV(hit.point,{x:Number(ac[0])||0,y:Number(ac[1])||0}),rb=subV(hit.point,{x:Number(bc[0])||0,y:Number(bc[1])||0});return{A,B,hit,ra,rb,n:normV(hit.normal),ap,bp,friction:Math.sqrt(Math.max(0,Number(A.physics?.friction)||0)*Math.max(0,Number(B.physics?.friction)||0)),restitution:clamp(Math.max(Number(A.physics?.bounciness)||0,Number(B.physics?.bounciness)||0),0,1),normalImpulse:0,tangentImpulse:0};}
@@ -6477,6 +6553,11 @@
     rt.dynamicConnectionsByNode=dynamicConnectionsByNode;
     rt.followTargets=Object.create(null);
     rt.aiTargets=Object.create(null);
+    rt.contextCache=new Map();
+    rt.scriptRuntimeCache=new Map();
+    rt.eventPools=new Map();
+    rt.onTickPool=[];
+    rt.scriptRuntimePool=[];
     rt.savedStates=savedStates;
     rt.activeCollisionPairs=new Set();
     rt.frameCollisionPairs=new Map();
@@ -6561,6 +6642,124 @@
   function runtimeConnectionList(){
     const list=state.runtime?.dynamicConnectionsByNode?.[state.runtime?.sceneId];
     return Array.isArray(list)?list:[];
+  }
+
+  function runtimeTypeConvert(value,type){
+    if(value===null)return null;
+    const t=String(type||'str');
+    if(t==='int'){
+      if(typeof value!=='number'||!Number.isFinite(value))throw new Error('Type error: int requires a finite number');
+      return value;
+    }
+    if(t==='bool'){
+      if(typeof value!=='boolean')throw new Error('Type error: bool requires true or false');
+      return value;
+    }
+    if(t==='col'){
+      if(typeof value!=='string')throw new Error('Type error: col requires a color string');
+      parseColor(value);return value;
+    }
+    if(t==='selector'){
+      if(typeof value!=='string')throw new Error('Type error: selector requires a string');
+      return value;
+    }
+    return String(value);
+  }
+
+  function runtimeCompileExpression(source,type='str'){
+    const text=String(source??'');
+    if(!text.trim())return null;
+    validateRuntimeExpressionSafety(text);
+    const fn=Function('ctx','Math',`\"use strict\"; return (${text});`);
+    return ctx=>runtimeTypeConvert(fn(ctx,Math),type);
+  }
+
+  function runtimeCompileScript(sn,node,def){
+    if(!sn||!node||!def)return null;
+    const rt=state.runtime;
+    const cacheMap=rt.scriptRuntimeCache||(rt.scriptRuntimeCache=new Map());
+    const cached=cacheMap.get(sn.id);
+    if(cached&&cached.node===node&&cached.def===def)return cached;
+    const fields=[];
+    const values=Object.create(null);
+    const exprs=sn.expressions||{};
+    for(const item of flattenEditor(sn?.values||[])){
+      const entry=item.entry;if(!entry)continue;
+      const name=entry.name;
+      if(Object.prototype.hasOwnProperty.call(exprs,item.path)){
+        let evaluator=null;
+        try{evaluator=runtimeCompileExpression(exprs[item.path],entry.type);}catch(err){
+          state.runtime.lastError=String(err?.message||err);
+          evaluator=()=>{throw err;};
+        }
+        fields.push({name,eval:evaluator});
+      }else if(entry.type==='selector'){
+        const selected=Object.prototype.hasOwnProperty.call(entry,'selected')?entry.selected:(evaluateSelectorRuntime(entry.value,node)[0]??'');
+        values[name]=selected;
+        fields.push({name,constant:true});
+      }else{
+        values[name]=entry.value;
+        fields.push({name,constant:true});
+      }
+    }
+    const out={sn,node,def,enabled:scriptRequirementEnabled(def),ctx:runtimeContext(node),values,fields,routes:Object.create(null),hasDynamicFields:fields.some(f=>!f.constant),needsSceneOverlay:false};
+    cacheMap.set(sn.id,out);
+    return out;
+  }
+
+  function runtimeCompiledValues(compiled){
+    if(compiled.hasDynamicFields){for(const f of compiled.fields){if(f.constant)continue;compiled.values[f.name]=f.eval(compiled.ctx);}}
+    return compiled.values;
+  }
+
+  function runtimeClearScriptRuntimeCaches(rt){
+    if(!rt)return;
+    rt.contextCache?.clear?.();
+    rt.contextCache= new Map();
+    rt.scriptRuntimeCache?.clear?.();
+    rt.scriptRuntimeCache= new Map();
+    rt.scriptRuntimePool=[];
+    rt.eventPools=new Map();
+    rt.onTickPool=[];
+  }
+
+  function runtimeGetCompiledScript(sn,node,def){
+    const compiled=runtimeCompileScript(sn,node,def);
+    return compiled;
+  }
+
+  function runtimeLinkCompiledRoutes(rt){
+    if(!rt)return;
+    for(const compiled of rt.scriptRuntimeCache?.values?.()||[]){compiled.routes=Object.create(null);compiled.needsSceneOverlay=runtimeScriptWritesScene(compiled);}
+    for(const [from,byOut] of rt.routesByScriptOutput||[]){
+      const source=rt.scriptRuntimeCache?.get(from);if(!source)continue;
+      for(const [out,list] of byOut||[]){
+        const routes=[];
+        for(const c of list||[]){
+          const target=rt.scriptRuntimeCache?.get(c.to);
+          if(target)routes.push(target);
+        }
+        if(routes.length)source.routes[out]=routes;
+      }
+    }
+    let changed=true;
+    for(let pass=0;changed&&pass<32;pass++){
+      changed=false;
+      for(const compiled of rt.scriptRuntimeCache?.values?.()||[]){
+        if(compiled.needsSceneOverlay)continue;
+        for(const targets of Object.values(compiled.routes||{})){
+          if((targets||[]).some(t=>t?.needsSceneOverlay)){compiled.needsSceneOverlay=true;changed=true;break;}
+        }
+      }
+    }
+  }
+  function runtimeScriptWritesScene(compiled){
+    const name=String(compiled?.def?.name||compiled?.sn?.defName||'');
+    if(name==='loadVariable')return true;
+    if(name!=='setVariable')return false;
+    const values=compiled?.values||{};
+    if(values.Type!==undefined)return String(values.Type)==='Scene';
+    return true;
   }
   function runtimeConnectionsForNode(nodeId){
     const all=state.runtime?.dynamicConnectionsByNode?.[state.runtime?.sceneId];
@@ -6920,7 +7119,7 @@ function updateRuntimeAnimations(dt){
     return !!c;
   }
   function runtimeSetComponent(node,type,mutator){
-    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics')body.physics=clone(c);if(type==='collider')body.collider=clone(c);if(type==='joints'){body.joints=clone(c);runtimeRebuildCaches();}if(['sprite','text','input','progressbar','animationsprite'].includes(type))body._renderCache=null;body._shapeDirty=true;body._massDirty=true;const inList=state.runtime.physicsBodies.includes(body),jointed=Array.isArray(state.runtime.joints)&&state.runtime.joints.some(j=>j.bodyA===body||j.bodyB===body),should=!!body.physics||!!body.collider||jointed;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
+    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics')body.physics=clone(c);if(type==='collider')body.collider=clone(c);if(type==='joints'){body.joints=clone(c);runtimeRebuildCaches();}if(['sprite','text','input','progressbar','animationsprite'].includes(type))body._renderCache=null;body._shapeDirty=true;body._runtimeShapeDirty=true;body._massDirty=true;state.runtime.contextCache?.delete?.(node.id);for(const sn of state.runtime.dynamicScriptsByNode?.[node.id]||[])state.runtime.scriptRuntimeCache?.delete?.(sn.id);runtimeLinkCompiledRoutes(state.runtime);state.runtime.onTickNeedsSceneOverlay=state.runtime.onTickPool?.some(compiled=>compiled?.needsSceneOverlay===true)||false;const inList=state.runtime.physicsBodies.includes(body),jointed=Array.isArray(state.runtime.joints)&&state.runtime.joints.some(j=>j.bodyA===body||j.bodyB===body),should=!!body.physics||!!body.collider||jointed;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
   }
   async function prepareRuntimeMic(){
     ensureGameSettings();
@@ -6953,30 +7152,28 @@ function updateRuntimeAnimations(dt){
   function runtimeStopSpeechRecognition(){const mic=state.runtime?.mic;if(!mic)return false;mic.speechActive=false;try{mic.speechRecognition?.stop();}catch{}mic.speechRecognition=null;return true;}
 
   function runtimeVariableProxy(scope,node){
-    const target=Object.create(null);
+    const target=Object.create(null);let cachedList=null,cachedMap=null;
+    const map=()=>{
+      const list=runtimeVariableArray(scope,node);
+      if(list!==cachedList){cachedList=list;cachedMap=new Map((Array.isArray(list)?list:[]).map(v=>[String(v.name),v]));}
+      return cachedMap;
+    };
     return new Proxy(target,{
       get(_target,prop){
         if(typeof prop!=='string')return undefined;
-        if(prop==='toJSON')return ()=>Object.fromEntries(runtimeVariableArray(scope,node).map(v=>[v.name,v.value]));
-        const rec=runtimeVariableArray(scope,node).find(v=>String(v.name)===prop);
-        return rec?.value;
+        const m=map();if(prop==='toJSON')return ()=>Object.fromEntries([...m.values()].map(v=>[v.name,v.value]));
+        return m.get(prop)?.value;
       },
-      has(_target,prop){return typeof prop==='string'&&runtimeVariableArray(scope,node).some(v=>String(v.name)===prop);},
-      ownKeys(){return runtimeVariableArray(scope,node).map(v=>String(v.name));},
+      has(_target,prop){return typeof prop==='string'&&map().has(prop);},
+      ownKeys(){return [...map().keys()];},
       getOwnPropertyDescriptor(_target,prop){
-        if(typeof prop!=='string')return undefined;
-        const rec=runtimeVariableArray(scope,node).find(v=>String(v.name)===prop);
+        if(typeof prop!=='string')return undefined;const rec=map().get(prop);
         return rec?{enumerable:true,configurable:true,get(){return rec.value}}:undefined;
       },
       set(_target,prop,value){
-        if(typeof prop!=='string')return false;
-        const rec=runtimeVariableArray(scope,node).find(v=>String(v.name)===prop);
-        if(!rec)return false;
+        if(typeof prop!=='string')return false;const rec=map().get(prop);if(!rec)return false;
         if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(prop,value);
-        if(rec.dataType==='Bool')rec.value=!!value;
-        else if(rec.dataType==='Int')rec.value=Number(value);
-        else rec.value=String(value);
-        return true;
+        if(rec.dataType==='Bool')rec.value=!!value;else if(rec.dataType==='Int')rec.value=Number(value);else rec.value=String(value);return true;
       }
     });
   }
@@ -7016,7 +7213,7 @@ function updateRuntimeAnimations(dt){
       setVariable:(scope,name,value)=>runtimeSetVariable(scope,name,value,node),
       saveVariable:(scope,name,storageType)=>runtimeSaveVariable(scope,name,storageType,node),
       loadVariable:(scope,name,storageType)=>runtimeLoadVariable(scope,name,storageType,node),
-      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);b._shapeDirty=true;}},
+      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);b._shapeDirty=true;b._runtimeShapeDirty=true;}},
       setNode:(name,id)=>{if(node){if(name!==null&&name!==undefined)node.name=String(name);if(id!==null&&id!==undefined){const n=Number(id);if(Number.isFinite(n))node.numericId=n;}}},
       setText:(v)=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});}),
       setSprite:(v)=>runtimeSetComponent(node,'sprite',c=>{if(v.Type!==null&&v.Type!==undefined)c.sourceType=v.Type;if(v.Sprite!==null&&v.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v.Animation!==null&&v.Animation!==undefined)c.animation=v.Animation;if(v.Pixelated!==null&&v.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v.Opacity!==null&&v.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);}),
@@ -7045,7 +7242,34 @@ function updateRuntimeAnimations(dt){
       angularVelocity:{enumerable:true,configurable:true,get:()=>Number(body?.omega||0)*180/Math.PI,set:v=>{if(body&&v!==null&&v!==undefined)body.omega=Number(v||0)*Math.PI/180;}},
       omega:{enumerable:true,configurable:true,get:()=>Number(body?.omega)||0,set:v=>{if(body&&v!==null&&v!==undefined)body.omega=Number(v)||0;}}
     });
-    for(const j of state.runtime.shared?.joysticksList||[]){const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;}
+    for(const j of state.runtime.shared?.joysticksList||[]){const base=j.variable||'joystick';for(const suffix of ['distance','angle','value_x','value_y'])Object.defineProperty(ctx,`${base}_${suffix}`,{configurable:true,enumerable:true,get:()=>Number(state.runtime.joysticks?.find(x=>x.variable===base)?.[suffix])||0});}
+    Object.defineProperties(ctx,{
+      velocityX:{configurable:true,enumerable:true,get:()=>Number(body?.vx)||0},
+      velocityY:{configurable:true,enumerable:true,get:()=>Number(body?.vy)||0},
+      angularVelocity:{configurable:true,enumerable:true,get:()=>Number(body?.omega||0)*180/Math.PI},
+      angularX:{configurable:true,enumerable:true,get:()=>Number(body?.omega||0)*180/Math.PI},
+      text:{configurable:true,enumerable:true,get:()=>component(node,'text')||{}},
+      inputComponent:{configurable:true,enumerable:true,get:()=>component(node,'input')||{}},
+      sprite:{configurable:true,enumerable:true,get:()=>component(node,'sprite')||{}},
+      animations:{configurable:true,enumerable:true,get:()=>component(node,'animationsprite')?.animations||[]},
+      progressBar:{configurable:true,enumerable:true,get:()=>component(node,'progressbar')||{}},
+      physics:{configurable:true,enumerable:true,get:()=>component(node,'physics')||{}},
+      collider:{configurable:true,enumerable:true,get:()=>component(node,'collider')||{}},
+      transform:{configurable:true,enumerable:true,get:()=>body?.t||component(node,'transform')||{}},
+      scene:{configurable:true,enumerable:true,get:()=>state.runtime.scene},
+      serverClient:{configurable:true,enumerable:true,get:()=>window.UIXNetwork?.getClients?.()||[]},
+      inputs:{configurable:true,enumerable:true,get:()=>state.runtime.inputs||{}},
+      allNodes:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.allNodes||[]},
+      folderOptions:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.folderOptions||[]},
+      spriteAssets:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.spriteAssets||[]},
+      audioAssets:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.audioAssets||[]},
+      midiAssets:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.midiAssets||[]},
+      joysticksList:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.joysticksList||[]},
+      joystick:{configurable:true,enumerable:true,get:()=>state.runtime.shared?.joystickObject||Object.create(null)},
+      sceneList:{configurable:true,enumerable:true,get:()=>state.scenes}
+    });
+    const inputGetters={TouchUpX:'TouchUpX',TouchUpY:'TouchUpY',TouchDownX:'TouchDownX',TouchDownY:'TouchDownY',TouchMoveX:'TouchMoveX',TouchMoveY:'TouchMoveY',MouseUpX:'MouseUpX',MouseUpY:'MouseUpY',MouseDownX:'MouseDownX',MouseDownY:'MouseDownY',MouseMoveX:'MouseMoveX',MouseMoveY:'MouseMoveY',ScreenUpX:'ScreenUpX',ScreenUpY:'ScreenUpY',ScreenDownX:'ScreenDownX',ScreenDownY:'ScreenDownY',ScreenMoveX:'ScreenMoveX',ScreenMoveY:'ScreenMoveY'};
+    for(const key of Object.keys(inputGetters))Object.defineProperty(ctx,key,{configurable:true,enumerable:true,get:()=>Number(state.runtime.inputs?.[key])||0});
     return ctx;
   }
   let runtimeAudioContext=null,runtimeAudioMaster=null;
@@ -7190,41 +7414,52 @@ function updateRuntimeAnimations(dt){
   function runtimeCloseAudio(){runtimeStopAudio();runtimeAudioBuffers.clear();runtimeAudioLoading.clear();try{runtimeAudioMaster?.disconnect();}catch{}try{runtimeAudioContext?.close();}catch{}runtimeAudioMaster=null;runtimeAudioContext=null;try{runtimeMIDIContext?.close();}catch{}runtimeMIDIContext=null;}
   function routeRuntimeOutput(sourceSn,outputId){
     const rt=state.runtime;if(!sourceSn||!rt)return;
+    const source=rt.scriptRuntimeCache?.get(sourceSn.id);
+    if(source){
+      for(const target of source.routes?.[outputId]||[]){
+        const frame=rt.frameCounter||0;
+        target.sn._lastInputFrame=frame;
+        const interval=rt.intervalStates?.[target.sn.id];if(interval)interval.lastInputFrame=frame;
+        for(const t of rt.timers||[])if(t.kind==='timeout'&&t.key===target.sn.id)t.inputFrame=frame;
+        executeRuntimeCompiled(target,false);
+      }
+      return;
+    }
     for(const c of rt.routesByScriptOutput?.get(sourceSn.id)?.get(outputId)||[]){
       const targetScript=rt.scriptById.get(c.to),ownerId=rt.scriptOwnerById.get(c.to),targetNode=ownerId?rt.nodeById.get(ownerId):null;
-      if(targetScript&&targetNode){
-        const frame=rt.frameCounter||0;
-        targetScript._lastInputFrame=frame;
-        const interval=rt.intervalStates?.[targetScript.id];
-        if(interval)interval.lastInputFrame=frame;
-        rt.timers?.forEach(t=>{if(t.kind==='timeout'&&t.key===targetScript.id)t.inputFrame=frame;});
-        executeRuntimeScriptNode(targetScript,scriptNodeDefinition(targetScript.defName),targetNode,false);
-      }
+      if(targetScript&&targetNode)executeRuntimeCompiled(runtimeGetCompiledScript(targetScript,targetNode,scriptNodeDefinition(targetScript.defName)),false);
     }
   }
-  function executeRuntimeScriptNode(sn,def,node,isEvent=false){
-    if(!sn||!def||!node)return null;
-    if(!scriptRequirementEnabled(def))return null;
+  function executeRuntimeCompiled(compiled,isEvent=false){
+    if(!compiled||compiled.enabled===false)return null;
+    const {sn,def,node}=compiled;if(!sn||!def||!node)return null;
+    let values;
+    try{values=runtimeCompiledValues(compiled);}catch(err){const msg=String(err?.message||err);state.runtime.lastError=msg;runtimeOutput('error',`ScriptNode ${def.name} on ${node.name}: ${msg}`);return null;}
     if(def.receiver&&!isEvent&&def.name==='Interval'){
-      const key=sn.id,v=runtimeValuesForScript(sn,node),cancellable=!!(v.cancellable??v.Cancellable);
+      const key=sn.id,cancellable=!!(values.cancellable??values.Cancellable);
       state.runtime.intervalStates[key] ||= {active:false,next:0,ms:1000,cancellable:false,fired:false,nodeId:node.id,lastInputFrame:-1};
       const st=state.runtime.intervalStates[key];
-      st.active=true;st.ms=Math.max(1,Number(v.Milliseconds)||1000);st.cancellable=cancellable;st.fired=false;st.nodeId=node.id;st.lastInputFrame=state.runtime.frameCounter||0;st.next=performance.now()+st.ms;
+      st.active=true;st.ms=Math.max(1,Number(values.Milliseconds)||1000);st.cancellable=cancellable;st.fired=false;st.nodeId=node.id;st.lastInputFrame=state.runtime.frameCounter||0;st.next=performance.now()+st.ms;
       return null;
     }
     if(def.receiver&&!isEvent&&def.name==='Timeout'){
-      const key=sn.id,now=performance.now(),v=runtimeValuesForScript(sn,node),ms=Math.max(0,Number(v.Milliseconds)||0),cancellable=!!(v.cancellable??v.Cancellable);
+      const key=sn.id,now=performance.now(),ms=Math.max(0,Number(values.Milliseconds)||0),cancellable=!!(values.cancellable??values.Cancellable);
       state.runtime.timers.push({kind:'timeout',key,nodeId:node.id,at:now+ms,cancellable,inputFrame:state.runtime.frameCounter||0});
       return null;
     }
-    const ctx=runtimeContext(node),values=runtimeValuesForScript(sn,node);
-    const route=result=>{Object.entries(result||{}).forEach(([out,val])=>{if(val)routeRuntimeOutput(sn,out);});return result||{};};
+    const ctx=compiled.ctx;
+    const route=result=>{for(const out in (result||{})){if(result[out])routeRuntimeOutput(sn,out);}return result||{};};
     let result;
     try{result=def.func(ctx,values);}catch(err){const msg=String(err?.message||err);state.runtime.lastError=msg;runtimeOutput('error',`ScriptNode ${def.name} on ${node.name}: ${msg}`);return null;}
     if(result&&typeof result.then==='function'){
       return Promise.resolve(result).then(route).catch(err=>{const msg=String(err?.message||err);state.runtime.lastError=msg;runtimeOutput('error',`ScriptNode ${def.name} on ${node.name}: ${msg}`);return null;});
     }
     return route(result);
+  }
+  function executeRuntimeScriptNode(sn,def,node,isEvent=false){
+    if(!sn||!def||!node)return null;
+    if(!scriptRequirementEnabled(def))return null;
+    return executeRuntimeCompiled(runtimeGetCompiledScript(sn,node,def),isEvent);
   }
   function runRuntimeSceneScripts(){for(const item of state.runtime.eventScriptsByName?.get('onLoad')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
   function runRuntimeUnloadScripts(){for(const item of state.runtime.eventScriptsByName?.get('onUnload')||[])executeRuntimeScriptNode(item.sn,scriptNodeDefinition(item.sn.defName),item.node,true);}
@@ -7237,8 +7472,20 @@ function updateRuntimeAnimations(dt){
     return String(target.name||'').trim()===String(label||'').replace(/\s*\[\d+\]\s*$/,'').trim();
   }
   function runtimeIsCollided(node,targetLabel,applyByName=false){
-    const body=runtimeBodyForNode(node);if(!body)return false;
-    return (state.runtime.bodies||[]).some(other=>other!==body&&runtimeTargetMatches(other.node,targetLabel,applyByName)&&!!collideShapes(runtimeColliderShape(body),runtimeColliderShape(other)));
+    const rt=state.runtime,body=runtimeBodyForNode(node);if(!body)return false;
+    const raw=String(targetLabel||'');
+    let candidates=[];
+    if(applyByName){
+      const clean=raw.replace(/\s*\[\d+\]\s*$/,'').trim();
+      candidates=rt.bodiesByName?.get(clean)||[];
+    }else{
+      const exact=rt.bodyByLabel?.get(raw)||rt.bodyById?.get(raw);
+      if(exact)candidates=[exact];
+    }
+    if(!candidates.length)return false;
+    const ownShape=runtimeColliderShape(body);if(!ownShape)return false;
+    for(const other of candidates){if(other===body)continue;const shape=runtimeColliderShape(other);if(shape&&collideShapes(ownShape,shape))return true;}
+    return false;
   }
   function flushRuntimeCollisionEvents(){
     const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),next=new Set();
@@ -7299,28 +7546,30 @@ function updateRuntimeAnimations(dt){
   }
 
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
-    if(!state.runtime.running)return;
-    state.runtime.inputs=Object.assign(state.runtime.inputs||{},values);
-    const items=state.runtime.eventScriptsByName?.get(defName)||[];
-    const frameSceneSnapshot=(defName==='onTick')?runtimeClone(runtimeSceneVariables(state.runtime.sceneId)):null;
-    for(const item of items){
-      const node=item.node,sn=item.sn;
-      if(targetNodeId&&node.id!==targetNodeId)continue;
-      const def=scriptNodeDefinition(sn.defName);
-      if(!def||def.receiver)continue;
-      const first=flattenEditor(sn.values)[0]?.entry;
-      if(first?.type==='selector'){
-        const selected=first.selected??'';
-        if(defName==='onKeybind'&&selected!==values.key)continue;
-        if(['onTouch','onMouse','onScreenInput'].includes(defName)&&selected!==eventType)continue;
-        if(defName==='onJoystick'&&selected!==values.Variable)continue;
-        if(defName==='onConnectionChange'&&selected!==values.connection)continue;
+    const rt=state.runtime;if(!rt.running)return;
+    rt.inputs ||= {};
+    Object.assign(rt.inputs,values);
+    const items=(defName==='onTick'?rt.onTickPool:rt.eventPools?.get(defName))||[];
+    let frameSceneSnapshot=null;
+    if(defName==='onTick'&&rt.onTickNeedsSceneOverlay)frameSceneSnapshot=runtimeClone(runtimeSceneVariables(rt.sceneId));
+    const previousOverlay=rt.activeSceneVariableOverlay;
+    try{
+      for(const item of items){
+        const node=item.node,sn=item.sn,def=item.def||scriptNodeDefinition(sn.defName),compiled=item.compiled||runtimeGetCompiledScript(sn,node,def);
+        if(!node||!sn||!def||def.receiver)continue;
+        if(targetNodeId&&node.id!==targetNodeId)continue;
+        if(item.selectorType){
+          const selected=item.selectorValue??'';
+          if(defName==='onKeybind'&&selected!==values.key)continue;
+          if(['onTouch','onMouse','onScreenInput'].includes(defName)&&selected!==eventType)continue;
+          if(defName==='onJoystick'&&selected!==values.Variable)continue;
+          if(defName==='onConnectionChange'&&selected!==values.connection)continue;
+        }
+        if(frameSceneSnapshot&&compiled.needsSceneOverlay)rt.activeSceneVariableOverlay=runtimeClone(frameSceneSnapshot);
+        else rt.activeSceneVariableOverlay=previousOverlay;
+        try{executeRuntimeCompiled(compiled,true);}finally{rt.activeSceneVariableOverlay=previousOverlay;}
       }
-      const previousOverlay=state.runtime.activeSceneVariableOverlay;
-      if(frameSceneSnapshot)state.runtime.activeSceneVariableOverlay=runtimeClone(frameSceneSnapshot);
-      try{executeRuntimeScriptNode(sn,def,node,true);}
-      finally{state.runtime.activeSceneVariableOverlay=previousOverlay;}
-    }
+    }finally{rt.activeSceneVariableOverlay=previousOverlay;}
   }
 
   function runtimeJoystickLayout(j,W=1280,H=720){const size=Array.isArray(j.size)?j.size:[110,110],w=Math.max(1,Number(size[0])||110),h=Math.max(1,Number(size[1])||110),p=j.position||{};const x=p.left!=null?Number(p.left)+w/2:p.right!=null?W-Number(p.right)-w/2:W/2;const y=p.top!=null?Number(p.top)+h/2:p.bottom!=null?H-Number(p.bottom)-h/2:H/2;return{x,y,w,h,radius:Math.min(w,h)/2};}
@@ -7672,7 +7921,7 @@ function updateRuntimeAnimations(dt){
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);
     const hydrated=hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],animationStates:Object.create(null)};
+    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,contextCache:new Map(),scriptRuntimeCache:new Map(),eventPools:new Map(),onTickPool:[],scriptRuntimePool:[],pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],animationStates:Object.create(null)};
     configureRuntimeNetwork();
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
@@ -7700,8 +7949,11 @@ function updateRuntimeAnimations(dt){
     try{
       const frameDt=Math.min(.05,Math.max(0,(now-runtimeLast)/1000));runtimeLast=now;runtimeAccumulator=Math.min(runtimeAccumulator+frameDt,.12);
       const fixedDt=1/60;let steps=0;state.runtime.frameCounter=(state.runtime.frameCounter||0)+1;
-      while(runtimeAccumulator>=fixedDt&&steps<4){stepRuntime(fixedDt);runtimeAccumulator-=fixedDt;steps++;}
-      if(steps===4&&runtimeAccumulator>=fixedDt)runtimeAccumulator=0;
+      const touchDevice=('ontouchstart' in window)||Number(navigator.maxTouchPoints||0)>0;
+      const lowPower=Number(navigator.hardwareConcurrency||8)<=4;
+      const maxSteps=lowPower&&touchDevice?2:3;
+      while(runtimeAccumulator>=fixedDt&&steps<maxSteps){stepRuntime(fixedDt);runtimeAccumulator-=fixedDt;steps++;}
+      if(steps===maxSteps&&runtimeAccumulator>=fixedDt)runtimeAccumulator=Math.min(runtimeAccumulator,fixedDt*.5);
       updateRuntimeFps(now);drawRuntime();updateRuntimeTextInputPosition();
       if(state.runtime.running&&!state.runtime.runtimeFailed)runtimeFrame=requestAnimationFrame(runtimeTick);
     }catch(error){
