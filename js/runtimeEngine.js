@@ -29,7 +29,7 @@
     const nt=body.t||{position:[0,0],scale:[1,1],angle:[0]};
     const ctKey=hasComponent&&c?.transform?c.transform:{position:[0,0],scale:[1,1],angle:[0]};
     const shapeKey=[Number(nt.position?.[0])||0,Number(nt.position?.[1])||0,Number(nt.scale?.[0]??1),Number(nt.scale?.[1]??1),Number(nt.angle?.[0])||0,hasComponent?String(c.shapeType||c.type||'Rect'):'Rect',Number(ctKey.position?.[0])||0,Number(ctKey.position?.[1])||0,Number(ctKey.scale?.[0]??1),Number(ctKey.scale?.[1]??1),Number(ctKey.angle?.[0])||0,hasComponent?(c.collidable===false?'0':'1'):'0',physics?.isCollider===true?'1':'0'].join('|');
-    if(!body._shapeDirty&&body._shapeCache&&body._shapeKey===shapeKey)return body._shapeCache;
+    if(isStatic&&!body._shapeDirty&&body._shapeCache&&body._shapeKey===shapeKey)return body._shapeCache;
 
     const nx=Number(nt.position?.[0])||0, ny=Number(nt.position?.[1])||0;
     const nsx=Number(nt.scale?.[0] ?? 1), nsy=Number(nt.scale?.[1] ?? 1);
@@ -48,18 +48,14 @@
     }
     const off=rot(lx,ly,na), x=nx+off.x, y=ny+off.y, angle=na+la;
     if(type==='Circle'){const d=Math.max(w,h);w=d;h=d;}
-    let shape=body._shapeCache;
-    if(!shape||shape.type!==type)shape={type,x,y,angle,w:Math.max(.01,w),h:Math.max(.01,h),vertices:null,radius:null};
-    shape.type=type;shape.x=x;shape.y=y;shape.angle=angle;shape.w=Math.max(.01,w);shape.h=Math.max(.01,h);
-    if(type==='Circle'){shape.radius=shape.w/2;shape.vertices=null;}
+    const shape={type,x,y,angle,w:Math.max(.01,w),h:Math.max(.01,h),vertices:null,radius:null};
+    if(type==='Circle') shape.radius=shape.w/2;
     else {
-      const hw=shape.w/2, hh=shape.h/2, count=type==='Triangle'?3:4;
-      if(!Array.isArray(shape.vertices)||shape.vertices.length!==count)shape.vertices=Array.from({length:count},()=>({x:0,y:0}));
+      const hw=shape.w/2, hh=shape.h/2;
       const local=type==='Triangle' ? [{x:0,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}] : [{x:-hw,y:-hh},{x:hw,y:-hh},{x:hw,y:hh},{x:-hw,y:hh}];
-      for(let i=0;i<count;i++){const v=local[i],q=rot(v.x,v.y,angle);shape.vertices[i].x=x+q.x;shape.vertices[i].y=y+q.y;}
-      shape.radius=null;
+      shape.vertices=local.map(v=>{const q=rot(v.x,v.y,angle);return{x:x+q.x,y:y+q.y};});
     }
-    body._shapeCache=shape;body._shapeKey=shapeKey;body._shapeDirty=false;
+    if(isStatic){body._shapeCache=shape;body._shapeKey=shapeKey;body._shapeDirty=false;}
     return shape;
   }
 
@@ -132,21 +128,6 @@
     const n=d>EPS?mul(dvec,1/d):{x:1,y:0};
     return {normal:n,penetration:r-d,points:[add({x:A.x,y:A.y},mul(n,A.radius-(r-d)*.5))]};
   }
-  function rectRect(A,B){
-    const dx=Number(B.x)-Number(A.x),dy=Number(B.y)-Number(A.y);
-    const ox=(A.w+B.w)*.5-Math.abs(dx),oy=(A.h+B.h)*.5-Math.abs(dy);
-    if(ox<=0||oy<=0)return null;
-    if(ox<oy){
-      const sx=dx<0?-1:1;
-      const ax=A.x+sx*A.w*.5,bx=B.x-sx*B.w*.5;
-      const top=Math.max(A.y-A.h*.5,B.y-B.h*.5),bottom=Math.min(A.y+A.h*.5,B.y+B.h*.5);
-      return {normal:{x:sx,y:0},penetration:ox,points:[{x:(ax+bx)*.5,y:(top+bottom)*.5}]};
-    }
-    const sy=dy<0?-1:1;
-    const ay=A.y+sy*A.h*.5,by=B.y-sy*B.h*.5;
-    const left=Math.max(A.x-A.w*.5,B.x-B.w*.5),right=Math.min(A.x+A.w*.5,B.x+B.w*.5);
-    return {normal:{x:0,y:sy},penetration:oy,points:[{x:(left+right)*.5,y:(ay+by)*.5}]};
-  }
   function closestOnPolygon(poly,p){
     let best=poly.vertices[0],bestD=Infinity;
     for(let i=0;i<poly.vertices.length;i++){
@@ -180,7 +161,6 @@
   }
   function collide(A,B){
     if(!A||!B)return null;
-    if(A.type==='Rect'&&B.type==='Rect'&&Math.abs(Number(A.angle)||0)<EPS&&Math.abs(Number(B.angle)||0)<EPS)return rectRect(A,B);
     if(A.type==='Circle'&&B.type==='Circle')return circleCircle(A,B);
     if(A.type==='Circle')return circlePoly(A,B,false);
     if(B.type==='Circle')return circlePoly(B,A,true);
@@ -365,7 +345,7 @@
     for(let i=0;i<bodies.length;i++){
       const b=bodies[i];b.colliding=false;const type=b.physics?.body;
       if(type==='Dynamic')b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
-      if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;b._shapeDirty=true;}
+      if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;}
       const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const isStatic=!['Dynamic','Kinematic'].includes(type);const cacheValid=isStatic&&b._aabbCache&&!b._shapeDirty&&b._aabbCacheKey===b._shapeKey;const box=cacheValid?b._aabbCache:aabb(shape);if(isStatic){b._aabbCache=box;b._aabbCacheKey=b._shapeKey;}aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
     }
 
