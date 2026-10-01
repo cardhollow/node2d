@@ -58,17 +58,18 @@
     game: { preferredSceneId: '', screenType: 'Windowboxing', requirements: { 'Use Mic': false }, mic: { speechLanguage: 'en-US', continuous: true, interimResults: true } },
     ui: {
       componentCollapsed: Object.create(null),
-      globalVariablesCollapsed: false,
-      serverVariablesCollapsed: false,
-      sceneVariablesCollapsed: false,
-      localVariablesCollapsed: false,
+      globalVariablesCollapsed: true,
+      serverVariablesCollapsed: true,
+      sceneVariablesCollapsed: true,
+      localVariablesCollapsed: true,
       scriptGroupCollapsed: Object.create(null),
       expressionGroupCollapsed: Object.create(null),
       variableCollapsed: Object.create(null),
       selectedComponentKey: '',
       renderOrderCache: null,
       renderOrderSceneId: '',
-      editorVisualCacheRevision: 0
+      editorVisualCacheRevision: 0,
+      variablesTreeExpanded: false
     }
   };
 
@@ -626,7 +627,10 @@
   }
   function currentSelection() {
     if (state.selectedId === 'scene-camera') return { special: 'camera', name: 'Scene Camera', id: 'scene-camera' };
-    if (state.selectedId === 'global-variables') return { special: 'global', name: 'Global Variables', id: 'global-variables' };
+    if (state.selectedId === 'variables') return { special: 'variables-root', name: 'Variables', id: 'variables' };
+    if (state.selectedId === 'global-variables') return { special: 'global', scope: 'Global', name: 'Global Variables', id: 'global-variables' };
+    if (state.selectedId === 'server-variables') return { special: 'variables', scope: 'Server', name: 'Server Variables', id: 'server-variables' };
+    if (state.selectedId === 'scene-variables') return { special: 'variables', scope: 'Scene', name: 'Scene Variables', id: 'scene-variables' };
     if (state.selectedId === 'ui-components') return { special: 'ui', name: 'UI Components', id: 'ui-components' };
     const joystick = sceneJoysticks().find(j => j.id === state.selectedId);
     if (joystick) return { special: 'joystick', name: `Joystick · ${joystick.variable || 'joystick'}`, id: joystick.id, joystick };
@@ -645,7 +649,7 @@
   function normalizeSelectionState(){
     const valid=new Set(allNodes().map(x=>x.node.id));
     state.selectedIds=(Array.isArray(state.selectedIds)?state.selectedIds:[]).filter(id=>valid.has(id));
-    if(state.selectedId&&!valid.has(state.selectedId)&&!['scene-camera','global-variables','ui-components'].includes(state.selectedId))state.selectedId=state.selectedIds.at(-1)||'scene-camera';
+    if(state.selectedId&&!valid.has(state.selectedId)&&!['scene-camera','variables','global-variables','server-variables','scene-variables','ui-components'].includes(state.selectedId))state.selectedId=state.selectedIds.at(-1)||'scene-camera';
     if(state.selectionAnchorId&&!valid.has(state.selectionAnchorId))state.selectionAnchorId=null;
     if(state.selectedIds.length===1)state.selectedId=state.selectedIds[0];
   }
@@ -664,6 +668,46 @@
     if(announce)status(state.multiSelectionMode?'Multi Selection: ON — click Nodes to add/remove them':'Multi Selection: OFF');
     return state.multiSelectionMode;
   }
+
+  function closestSelectedIndex(keys,selected,targetIndex,anchorKey=''){
+    const selectedIndexes=[];
+    const selectedSet=selected instanceof Set?selected:new Set(selected||[]);
+    keys.forEach((key,index)=>{if(selectedSet.has(key))selectedIndexes.push(index);});
+    if(!selectedIndexes.length)return anchorKey&&keys.includes(anchorKey)?keys.indexOf(anchorKey):-1;
+    let best=selectedIndexes[0],bestDistance=Math.abs(best-targetIndex);
+    const anchorIndex=anchorKey&&keys.includes(anchorKey)?keys.indexOf(anchorKey):-1;
+    for(const index of selectedIndexes){
+      const distance=Math.abs(index-targetIndex);
+      if(distance<bestDistance || (distance===bestDistance&&index===anchorIndex)){best=index;bestDistance=distance;}
+    }
+    return best;
+  }
+
+  function explorerSelection(keys,current,targetKey,anchorKey,mods,{dragAdd=false,preserveCtrlShift=true}={}){
+    const ordered=Array.isArray(keys)?keys:[];
+    const targetIndex=ordered.indexOf(targetKey);
+    const selected=current instanceof Set?new Set(current):new Set(current||[]);
+    if(targetIndex<0)return {selected,anchorKey};
+    const ctrl=!!(mods?.ctrlKey||mods?.metaKey),shift=!!(mods?.shiftKey);
+    if(dragAdd){selected.add(targetKey);return {selected,anchorKey:targetKey};}
+    if(ctrl&&shift&&preserveCtrlShift){
+      const start=closestSelectedIndex(ordered,selected,targetIndex,anchorKey);
+      if(start<0)selected.add(targetKey);
+      else{const lo=Math.min(start,targetIndex),hi=Math.max(start,targetIndex);for(let i=lo;i<=hi;i++)selected.add(ordered[i]);}
+      return {selected,anchorKey:anchorKey||targetKey};
+    }
+    if(shift){
+      let start=anchorKey&&ordered.includes(anchorKey)?ordered.indexOf(anchorKey):closestSelectedIndex(ordered,selected,targetIndex,anchorKey);
+      if(start<0)start=targetIndex;
+      const lo=Math.min(start,targetIndex),hi=Math.max(start,targetIndex);
+      return {selected:new Set(ordered.slice(lo,hi+1)),anchorKey:anchorKey||targetKey};
+    }
+    if(ctrl){
+      if(selected.has(targetKey))selected.delete(targetKey);else selected.add(targetKey);
+      return {selected,anchorKey:targetKey};
+    }
+    return {selected:new Set([targetKey]),anchorKey:targetKey};
+  }
   function updateMultiSelectionActionUI(){
     const button=$('#toggleMultiSelectionAction');
     if(!button)return;
@@ -673,38 +717,61 @@
     const icon=button.querySelector('[data-multi-selection-icon]');
     if(icon)icon.textContent=on?'☑':'☐';
   }
+  function selectionIdsForFolder(folder){
+    const ids=[];
+    const walk=(item)=>{
+      if(!item)return;
+      ids.push(item.id);
+      if(item.type==='folder')for(const child of (Array.isArray(item.children)?item.children:[]))walk(child);
+    };
+    walk(folder);
+    return ids;
+  }
+  function expandFolderSelections(ids){
+    const out=[];
+    const seen=new Set();
+    for(const id of (Array.isArray(ids)?ids:[])){
+      const item=findNode(id);
+      const add=selectionIdsForFolder(item?.type==='folder'?item:item);
+      for(const value of add)if(value&&!seen.has(value)){seen.add(value);out.push(value);}
+    }
+    return out;
+  }
   function setNodeSelection(node,e={}){
     flushPendingValueEditors();
     const id=node?.id;if(!id)return false;
     const mods=resolvedEditorModifiers(e);
-    const multiIntent=mods.shiftKey||mods.ctrlKey||mods.metaKey||state.multiSelectionMode;
-    if(node.type==='folder'&&node.collapsed&&multiIntent){
-      status('Closed folders cannot be selected in Multi Selection');
-      return false;
-    }
     const rawList=visibleTreeItems();
-    const list=multiIntent?rawList.filter(item=>!(item.type==='folder'&&item.collapsed)):rawList;
-    const ids=list.map(n=>n.id);const primary=state.selectedId;
-    if(!ids.includes(id))return false;
-    if(mods.shiftKey&&state.selectionAnchorId&&ids.includes(state.selectionAnchorId)){
-      const a=ids.indexOf(state.selectionAnchorId),b=ids.indexOf(id),lo=Math.min(a,b),hi=Math.max(a,b);
-      state.selectedIds=ids.slice(lo,hi+1);state.selectedId=id;
-    }else if(mods.ctrlKey||mods.metaKey||state.multiSelectionMode){
-      const current=Array.isArray(state.selectedIds)?state.selectedIds.slice():[];
-      const at=current.indexOf(id);
-      if(at>=0)current.splice(at,1);else current.push(id);
-      const valid=new Set(ids);
-      state.selectedIds=current.filter(itemId=>valid.has(itemId));
-      state.selectedId=state.selectedIds.includes(id)?id:(state.selectedIds.at(-1)||null);
+    if(!rawList.some(item=>item.id===id))return false;
+    const ids=rawList.map(n=>n.id);
+    let nextIds,nextAnchor,nextSelectedId;
+    if(!mods.shiftKey&&!mods.ctrlKey&&!mods.metaKey&&state.multiSelectionMode){
+      const current=new Set(state.selectedIds||[]);
+      const subtree=new Set(selectionIdsForFolder(node));
+      const hasAny=[...subtree].some(v=>current.has(v));
+      if(hasAny)for(const v of subtree)current.delete(v);else for(const v of subtree)current.add(v);
+      nextIds=expandFolderSelections(ids.filter(itemId=>current.has(itemId)));
+      nextAnchor=id;nextSelectedId=nextIds.at(-1)||id;
     }else{
-      state.selectedIds=[id];state.selectedId=id;
+      const result=explorerSelection(ids,new Set(state.selectedIds||[]),id,state.selectionAnchorId,mods);
+      nextIds=expandFolderSelections(ids.filter(itemId=>result.selected.has(itemId)));
+      nextAnchor=result.anchorKey;nextSelectedId=nextIds.includes(id)?id:(nextIds.at(-1)||id);
     }
-    state.selectionAnchorId=id;state.ui.selectedComponentKey='';
-    return primary!==state.selectedId||state.selectedIds.length>1;
+    const changed=String(state.selectedId)!==String(nextSelectedId)||JSON.stringify(state.selectedIds||[])!==JSON.stringify(nextIds||[])||String(state.selectionAnchorId||'')!==String(nextAnchor||'');
+    if(changed)pushHistory('Select Nodes');
+    state.selectedIds=nextIds;state.selectionAnchorId=nextAnchor;state.selectedId=nextSelectedId;state.ui.selectedComponentKey='';
+    return changed;
   }
   function clearNodeSelection(fallback='scene-camera'){
     flushPendingValueEditors();
-    if(fallback&&findNode(fallback)){state.selectedIds=[fallback];state.selectionAnchorId=fallback;}else{state.selectedIds=[];state.selectionAnchorId=null;}state.selectedId=fallback;state.ui.selectedComponentKey='';}
+    const isNodeFallback=!!(fallback&&findNode(fallback));
+    const nextIds=isNodeFallback?[fallback]:[];
+    const nextAnchor=isNodeFallback?fallback:null;
+    const nextSelected=fallback||'scene-camera';
+    const changed=String(state.selectedId)!==String(nextSelected)||JSON.stringify(state.selectedIds||[])!==JSON.stringify(nextIds)||String(state.selectionAnchorId||'')!==String(nextAnchor||'');
+    if(changed)pushHistory('Select Nodes');
+    state.selectedIds=nextIds;state.selectionAnchorId=nextAnchor;state.selectedId=nextSelected;state.ui.selectedComponentKey='';
+  }
   function topLevelSelectedItems(){
     const items=selectedSceneNodes(),set=new Set(items.map(n=>n.id));
     return items.filter(item=>!items.some(parent=>parent!==item&&parent.type==='folder'&&set.has(parent.id)&&isDescendant(parent,item.id)));
@@ -913,7 +980,7 @@
     state.nextVariableId=Number(snap.nextVariableId)||1;
     state.scenes=clone(snap.scenes||[]);
     state.currentSceneId=snap.currentSceneId||state.scenes[0]?.id||'';
-    state.mode=snap.mode||'select';
+    state.mode=(snap.mode==='all'?'transform':(snap.mode||'select'));
     state.selectedId=snap.selectedId||'scene-camera';
     state.selectedIds=clone(snap.selectedIds||[]);
     state.selectionAnchorId=snap.selectionAnchorId||state.selectedId;
@@ -991,6 +1058,25 @@
   function flushPendingHistory(){
     const p=state.history.pending;
     if(!p)return false;
+    state.history.pending=null;
+    state.history.pendingSeq++;
+    if(state.history.busy)return false;
+    const after=historySnapshot();
+    if(sameHistoryState(p.before,after)){syncHistoryUi();return false;}
+    commitHistoryPendingSnapshot(p,after);
+    return true;
+  }
+  function beginHistoryTransaction(action='Edit'){
+    const h=state.history;
+    if(h.busy)return false;
+    if(h.pending)flushPendingHistory();
+    state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;
+    h.pending={token:++h.pendingSeq,before:historySnapshot(),action:String(action||'Edit').trim()||'Edit',hold:true};
+    return true;
+  }
+  function endHistoryTransaction(){
+    const p=state.history.pending;
+    if(!p||!p.hold)return false;
     state.history.pending=null;
     state.history.pendingSeq++;
     if(state.history.busy)return false;
@@ -1137,7 +1223,7 @@
     const copy=clone(item);
     copy.id=`${item.type==='folder'?'folder':'node'}-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
     copy.numericId=nextNodeNumericId();
-    copy.name=uniqueNodeName(`${item.name|| (item.type==='folder'?'Folder':'Node')} Copy`, options.siblingItems||[]);
+    copy.name=String(item.name|| (item.type==='folder'?'Folder':'Node'));
     if(item.type==='folder'){
       copy.collapsed=false;
       copy.children=(Array.isArray(item.children)?item.children:[]).map(child=>cloneTreeItem(child,{siblingItems:copy.children}));
@@ -1209,7 +1295,7 @@
     pushHistory();
     const inserted=[];
     clips.forEach((packed,index)=>{
-      const data=clone(packed.item);const oldName=data.name;const map=new Map();remapPastedTree(data,packed,map);data.name=uniqueNodeName(index===0?oldName:`${oldName}`,targetContainer);restorePackedScripts(packed,map);
+      const data=clone(packed.item);const oldName=data.name;const map=new Map();remapPastedTree(data,packed,map);data.name=String(oldName||'Node');restorePackedScripts(packed,map);
       const anchor=selectedNode();const at=anchor&&targetContainer.findIndex(n=>n.id===anchor.id)>=0?targetContainer.findIndex(n=>n.id===anchor.id)+1+inserted.length:targetContainer.length;
       targetContainer.splice(at,0,data);inserted.push(data);
     });
@@ -1419,17 +1505,41 @@
 
   function renderSelectionTree() {
     const host = $('#selectionTree'); host.innerHTML = '';
-    const special = [
-      ['scene-camera', '◉', 'Scene Camera'], ['global-variables', '◆', 'Global Variables'], ['ui-components', '▣', 'UI Components']
-    ];
-    special.forEach(([id, icon, name]) => {
-      const selectedSpecial = state.selectedId === id || (id === 'ui-components' && !!sceneJoysticks().find(j => j.id === state.selectedId));
-      const row = document.createElement('div'); row.className = `tree-node special-node${selectedSpecial ? ' selected' : ''}${id === 'ui-components' ? ' future-node' : ''}`; row.dataset.nodeId = id;
-      row.innerHTML = `<div class="node-row" role="button" aria-selected="${state.selectedId === id}"><span class="twisty">+</span><span class="node-icon">${icon}</span><span class="node-name">${name}</span></div>`;
-      row.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearNodeSelection(id); renderAll(); status(`Selected ${name}`); });
-      row.addEventListener('contextmenu', e => { e.preventDefault(); showContextMenu([{ label: 'Select', action: () => { state.selectedId = id; renderAll(); } }], e.clientX, e.clientY); });
-      host.append(row);
-    });
+    const addSpecialRow=(id,icon,name,indent=0,onClick)=>{
+      const rowWrap=document.createElement('div');
+      rowWrap.className=`tree-node special-node${state.selectedId===id?' selected':''}`;
+      rowWrap.dataset.nodeId=id;
+      rowWrap.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:${6+indent*12}px"><span class="twisty">+</span><span class="node-icon">${icon}</span><span class="node-name">${esc(name)}</span></div>`;
+      rowWrap.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();onClick?.(e);});
+      rowWrap.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();onClick?.(e);});
+      return rowWrap;
+    };
+    const cameraRow=addSpecialRow('scene-camera','◉','Scene Camera',0,()=>{clearNodeSelection('scene-camera');renderAll();status('Selected Scene Camera');});
+    host.append(cameraRow);
+    const varsOpen=!!state.ui.variablesTreeExpanded;
+    const variables=document.createElement('div');
+    variables.className=`tree-node special-node${state.selectedId==='variables'?' selected':''}`;
+    variables.dataset.nodeId='variables';
+    variables.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId==='variables'}"><span class="twisty">${varsOpen?'−':'+'}</span><span class="node-icon">◇</span><span class="node-name">Variables</span></div>`;
+    variables.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();state.ui.variablesTreeExpanded=!state.ui.variablesTreeExpanded;renderSelectionTree();});
+    host.append(variables);
+    if(varsOpen){
+      const child=(id,icon,name)=>{
+        const row=document.createElement('div');row.className=`tree-node special-node${state.selectedId===id?' selected':''}`;row.dataset.nodeId=id;
+        row.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:30px"><span class="twisty"></span><span class="node-icon">${icon}</span><span class="node-name">${esc(name)}</span></div>`;
+        row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();clearNodeSelection(id);renderAll();status(`Selected ${name}`);});
+        host.append(row);
+      };
+      child('scene-variables','▣','Scene Variables');
+      child('global-variables','◆','Global Variables');
+      child('server-variables','◇','Server Variables');
+    }
+    const uiRow=document.createElement('div');
+    uiRow.className=`tree-node special-node${(state.selectedId==='ui-components'||!!sceneJoysticks().find(j=>j.id===state.selectedId))?' selected':''} future-node`;
+    uiRow.dataset.nodeId='ui-components';
+    uiRow.innerHTML='<div class="node-row" role="button"><span class="twisty">+</span><span class="node-icon">▣</span><span class="node-name">UI Components</span></div>';
+    uiRow.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();clearNodeSelection('ui-components');renderAll();status('Selected UI Components');});
+    host.append(uiRow);
     const separator = document.createElement('div'); separator.className = 'tree-separator'; host.append(separator);
     const label = document.createElement('div'); label.className = 'nodes-label'; label.textContent = 'Nodes'; host.append(label);
     const nodesHost = document.createElement('div'); nodesHost.id = 'sceneNodes'; host.append(nodesHost);
@@ -1554,7 +1664,9 @@
         $('#componentTarget').textContent=`${selection?.name ? selection.name : 'Selection'} <${multiTreeItems.length}>`;
       }
       if(selection.special==='camera')return renderCameraInspector(host);
-      if(selection.special==='global')return renderVariables(host,true);
+      if(selection.special==='variables-root')return host.append(empty('Select Scene, Global, or Server Variables.'));
+      if(selection.special==='global')return renderVariables(host,'Global');
+      if(selection.special==='variables')return renderVariables(host,selection.scope||'Global');
       if(selection.special==='ui')return renderUIComponents(host);
       if(selection.special==='joystick'){
         const wrap=document.createElement('div');
@@ -1868,10 +1980,10 @@
   function renderCameraInspector(host) {
     host.append(componentCard('Camera', [
       checkboxField('Enabled', state.camera.enabled, v => { state.camera.enabled = v; }),
-      field('Follow', cameraFollowLabel(), 'custom-select', v => { setCameraFollow(v); drawWorkplace(); }, cameraFollowOptions()),
+      field('Follow', cameraFollowLabel(), 'custom-select', v => { setCameraFollow(v); drawWorkplace(); }, cameraFollowOptions(), cameraFollowLabel),
       field('Horizontal', state.camera.horizontal, 'number', v => { state.camera.horizontal=Number(v)||0; drawWorkplace(); }),
       field('Vertical', state.camera.vertical, 'number', v => { state.camera.vertical=Number(v)||0; drawWorkplace(); }),
-      field('Animation', state.camera.animation, 'custom-select', v => { state.camera.animation=v; drawWorkplace(); }, CAMERA_ANIMATIONS),
+      field('Animation', state.camera.animation, 'custom-select', v => { state.camera.animation=v; drawWorkplace(); }, CAMERA_ANIMATIONS, ()=>state.camera.animation),
       field('Speed', state.camera.speed, 'number', v => { state.camera.speed=Math.max(0,Number(v)||0); }),
       field('Scale', state.camera.scale, 'number', v => { state.camera.scale=Math.max(0.01,Number(v)||0.01); drawWorkplace(); }),
       colorField('BG Color', state.camera.bgColor, v => { state.camera.bgColor=v; drawWorkplace(); })
@@ -1890,6 +2002,11 @@
     const nodeComp=nodeComponents(node).find(c=>c.type==='node');
     if(nodeComp){
       body.append(checkboxField('Visibility',nodeComp.visible!==false,v=>{pushHistory('Edit Visibility');nodeComp.visible=!!v;drawWorkplace();}));
+      body.append(field('Relative',nodeComp.relative==='Screen'?'Screen':'World','custom-select',v=>{
+        pushHistory('Edit Relative');
+        nodeComp.relative=v==='Screen'?'Screen':'World';
+        drawWorkplace();
+      },['World','Screen'],()=>nodeComp.relative==='Screen'?'Screen':'World'));
     }
     return componentCard('Node', body, false, null, `node:${node.id}`, {node,comp:nodeComp});
   }
@@ -1942,7 +2059,7 @@
     activeComponentInspectorContext={node,comp:rawInspectorComponent||comp,type:comp?.type||''};
     let rows = [];
     switch (comp.type) {
-      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();}), field('Relative',comp.relative||'World','custom-select',v=>{comp.relative=v==='Screen'?'Screen':'World';drawWorkplace();},['World','Screen'])]; break;
+      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();}), field('Relative',comp.relative||'World','custom-select',v=>{comp.relative=v==='Screen'?'Screen':'World';drawWorkplace();},['World','Screen'],()=>comp.relative==='Screen'?'Screen':'World')]; break;
       case 'script': rows = [field('Name', comp.name || '', 'text', v => comp.name = v), field('Edit', 'Edit', 'button', () => openScriptEditor(node))]; break;
       case 'transform': rows = [axisVectorField('Position', comp.position, (x,y) => { comp.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.scale, (x,y) => { comp.scale=[Number.isFinite(Number(x))?Number(x):1, Number.isFinite(Number(y))?Number(y):1]; drawWorkplace(); }), field('Angle', comp.angle[0], 'number', v => { comp.angle=[Number(v)||0]; drawWorkplace(); })]; break;
       case 'text': rows = renderTextRows(node, comp); break;
@@ -1969,19 +2086,19 @@
       }
       case 'sprite': {
         const animComp=component(node,'animationsprite');
-        rows=[field('Type',comp.sourceType||'Sprite','custom-select',v=>{comp.sourceType=v;renderComponentPanel();drawWorkplace();},['Sprite','Animation']),field('Opacity',Math.round(clamp(Number(comp.opacity??1),0,1)*100),'number',v=>{comp.opacity=clamp(Number(v)/100,0,1);drawWorkplace();}),checkboxField('Pixelated',!!comp.pixelated,v=>{comp.pixelated=v;drawWorkplace();}),axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[x,y];drawWorkplace();}),axisVectorField('Size',comp.size||[0,0],(x,y)=>{comp.size=[Math.max(0,Number(x)||0),Math.max(0,Number(y)||0)];drawWorkplace();})];
+        rows=[field('Type',comp.sourceType||'Sprite','custom-select',v=>{comp.sourceType=v;renderComponentPanel();drawWorkplace();},['Sprite','Animation'],()=>comp.sourceType||'Sprite'),field('Opacity',Math.round(clamp(Number(comp.opacity??1),0,1)*100),'number',v=>{comp.opacity=clamp(Number(v)/100,0,1);drawWorkplace();}),checkboxField('Pixelated',!!comp.pixelated,v=>{comp.pixelated=v;drawWorkplace();}),axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[x,y];drawWorkplace();}),axisVectorField('Size',comp.size||[0,0],(x,y)=>{comp.size=[Math.max(0,Number(x)||0),Math.max(0,Number(y)||0)];drawWorkplace();})];
         if((comp.sourceType||'Sprite')==='Animation'){
-          const opts=(animComp?.animations||[]).map(a=>a.name);rows.push(field('Animation',comp.animation||opts[0]||'','custom-select',v=>{comp.animation=v;drawWorkplace();},opts));
+          const opts=(animComp?.animations||[]).map(a=>a.name);rows.push(field('Animation',comp.animation||opts[0]||'','custom-select',v=>{comp.animation=v;drawWorkplace();},opts,()=>comp.animation||opts[0]||''));
           if(!animComp)rows.push(readOnlyField('Animation','Add Animation Sprite component first'));
         } else rows.push(assetField('Sprite',comp.src,'Sprite',asset=>{comp.name=asset.name;comp.src=asset.value;comp.sourceType='Sprite';renderComponentPanel();drawWorkplace();}));
         break; }
       case 'animationsprite': rows = renderAnimationRows(node, comp); break;
       case 'progressbar': {
         const radius=Array.isArray(comp.cornerRadius)?comp.cornerRadius:[0,0,0,0];
-        rows=[field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),field('Value',comp.value,'number',v=>{comp.value=Number(v)||0;drawWorkplace();}),field('Min',comp.min,'number',v=>{comp.min=Number(v)||0;drawWorkplace();}),field('Max',comp.max,'number',v=>{comp.max=Number(v)||0;drawWorkplace();}),axisVectorField('Position',comp.position,(x,y)=>{comp.position=[x,y];drawWorkplace();}),colorField('BG Color',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),colorField('Fill Color',comp.fillCol,v=>{comp.fillCol=v;drawWorkplace();}),cornerRadiusFields(radius,v=>{comp.cornerRadius=v;drawWorkplace();}),colorField('Outline Color',comp.outline?.color||'#000000FF',v=>{comp.outline.color=v;drawWorkplace();}),field('Outline Size',comp.outline?.size??0,'number',v=>{comp.outline.size=Math.max(0,Number(v)||0);drawWorkplace();}),field('Direction',comp.direction,'custom-select',v=>{comp.direction=v;drawWorkplace();},['left','right'])];
+        rows=[field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),field('Value',comp.value,'number',v=>{comp.value=Number(v)||0;drawWorkplace();}),field('Min',comp.min,'number',v=>{comp.min=Number(v)||0;drawWorkplace();}),field('Max',comp.max,'number',v=>{comp.max=Number(v)||0;drawWorkplace();}),axisVectorField('Position',comp.position,(x,y)=>{comp.position=[x,y];drawWorkplace();}),colorField('BG Color',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),colorField('Fill Color',comp.fillCol,v=>{comp.fillCol=v;drawWorkplace();}),cornerRadiusFields(radius,v=>{comp.cornerRadius=v;drawWorkplace();}),colorField('Outline Color',comp.outline?.color||'#000000FF',v=>{comp.outline.color=v;drawWorkplace();}),field('Outline Size',comp.outline?.size??0,'number',v=>{comp.outline.size=Math.max(0,Number(v)||0);drawWorkplace();}),field('Direction',comp.direction,'custom-select',v=>{comp.direction=v;drawWorkplace();},['left','right'],()=>comp.direction)];
         break; }
-      case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic']), field('Mass', comp.mass??0, 'number', v => { comp.mass=Math.max(0,Number(v)||0); drawWorkplace(); }), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
-      case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'])]; break;
+      case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic'], ()=>comp.body), field('Mass', comp.mass??1, 'number', v => { const n=Number(v); comp.mass=Number.isFinite(n)?Math.max(0,n):1; normalizeNode(node); drawWorkplace(); }), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
+      case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'], ()=>comp.shapeType||'Rect')]; break;
       case 'joints': rows = renderJointsRows(node, comp); break;
       case 'canvas': {
         const cameraOptions=[['None',''],['Main Cam','main']];
@@ -1994,13 +2111,13 @@
         const optionValues=new Map(cameraOptions.map(x=>[x[0],x[1]]));
         const currentLabel=cameraOptions.find(x=>x[1]===String(comp.source||''))?.[0]||'None';
         rows=[
-          field('Sub Camera',currentLabel,'custom-select',v=>{comp.source=optionValues.get(v)||'';drawWorkplace();},optionLabels),
+          field('Sub Camera',currentLabel,'custom-select',v=>{comp.source=optionValues.get(v)||'';drawWorkplace();},optionLabels,()=>optionLabels.find(l=>optionValues.get(l)===comp.source)||'None'),
           field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),
           field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),
           axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[Number(x)||0,Number(y)||0];drawWorkplace();}),
           axisVectorField('Scale',comp.scale||[1,1],(x,y)=>{comp.scale=[Number(x)||1,Number(y)||1];drawWorkplace();}),
           colorField('Background',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),
-          field('Rendering',({stretch:'Stretch',crop:'Crop',windowboxing:'Windowboxing'}[String(comp.render||'windowboxing').toLowerCase()]||'Windowboxing'),'custom-select',v=>{comp.render=String(v).toLowerCase();drawWorkplace();},['Stretch','Crop','Windowboxing']),
+          field('Rendering',({stretch:'Stretch',crop:'Crop',windowboxing:'Windowboxing'}[String(comp.render||'windowboxing').toLowerCase()]||'Windowboxing'),'custom-select',v=>{comp.render=String(v).toLowerCase();drawWorkplace();},['Stretch','Crop','Windowboxing'],()=>({stretch:'Stretch',crop:'Crop',windowboxing:'Windowboxing'}[String(comp.render||'windowboxing').toLowerCase()]||'Windowboxing')),
           checkboxField('Pixelated',comp.pixelated!==false,v=>{comp.pixelated=!!v;drawWorkplace();})
         ];
         break;
@@ -2514,7 +2631,7 @@
     window.__UIXValueCommitGlobalHooks=true;
     document.addEventListener('pointerdown',e=>{
       const active=document.activeElement;
-      if(active&&typeof active.__uixCommit==='function'&&!active.contains(e.target)&&!active.closest('.modal-backdrop')){
+      if(active&&typeof active.__uixCommit==='function'&&!active.contains(e.target)&&!active.closest('.modal-backdrop')&&!e.target.closest('.floating-select-menu,.select-wrap,.select-button,.context-menu')){
         try{active.__uixCommit('outside');}catch(err){console.error(err);}
       }
     },true);
@@ -2585,7 +2702,7 @@
     if(path)multiMarkerFor(input,wrap,path);return wrap;
   }
 
-  function field(label,value,type='text',onChange=()=>{},options=[]){
+  function field(label,value,type='text',onChange=()=>{},options=[],getCurrentValue=null){
     const path=multiReadPathFromValue(value);
     const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';
     if(type==='readonly'){c.append(Object.assign(document.createElement('div'),{className:'readonly-value',textContent:value??''}));}
@@ -2595,7 +2712,7 @@
       c.append(i);
     }
     else if(type==='button'){const b=document.createElement('button');b.className='script-button';b.textContent=value;b.addEventListener('click',onChange);c.append(b);}
-    else if(type==='custom-select') c.append(customSelect(value,options,onChange,activeMultiComponentContext,path,label));
+    else if(type==='custom-select') c.append(customSelect(value,options,onChange,activeMultiComponentContext,path,label,getCurrentValue));
     else {
       const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';
       bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label,path,{live:true});
@@ -2658,8 +2775,59 @@
   // ---------------- Color ----------------
   function rgbToHsv(rgba){const r=clamp(Number(rgba?.[0]??0),0,1),g=clamp(Number(rgba?.[1]??0),0,1),b=clamp(Number(rgba?.[2]??0),0,1),max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h=(h*60+360)%360;}return{h,s:max?d/max:0,v:max};}
   function openColorModal(value,onChange,label){try{const rgba=parseColor(value);state.color={rgba,onChange,label,hsv:rgbToHsv(rgba)};$('#colorTargetLabel').textContent=label||'RGBA';syncColorUI();renderColorSliders();drawColorWheel();showModal($('#colorModal'));}catch{status('Invalid color');}}
-  function renderColorSliders(){const host=$('#colorSliders');host.innerHTML='';[['R',0],['G',1],['B',2],['A',3]].forEach(([name,i])=>{const row=document.createElement('div');row.className='color-slider-row';const lab=document.createElement('label');lab.textContent=name;const input=document.createElement('input');input.type='range';input.min=0;input.max=255;input.value=Math.round(state.color.rgba[i]*255);const out=document.createElement('output');out.textContent=input.value;input.oninput=()=>{state.color.rgba[i]=Number(input.value)/255;out.textContent=input.value;state.color.hsv=rgbToHsv(state.color.rgba);syncColorUI();};row.append(lab,input,out);host.append(row);});}
-  function syncColorUI(){state.color.hsv=state.color.hsv||rgbToHsv(state.color.rgba);const hex=rgbaToHex(state.color.rgba);$('#colorTextInput').value=hex;$('#colorHexPreview').textContent=hex;$('#colorPreview').style.background=rgbaCss(state.color.rgba);$('#colorSliders')?.querySelectorAll('input[type=range]').forEach((input,i)=>input.value=Math.round(clamp(state.color.rgba[i],0,1)*255));$('#colorSliders')?.querySelectorAll('output').forEach((out,i)=>out.textContent=String(Math.round(clamp(state.color.rgba[i],0,1)*255)));drawColorWheel();}
+  function renderColorSliders(){
+    const host=$('#colorSliders');if(!host)return;host.innerHTML='';
+    const rows=[['R','rgba-r'],['G','rgba-g'],['B','rgba-b'],['V','value'],['A','rgba-a']];
+    rows.forEach(([name,channel])=>{
+      const row=document.createElement('div');row.className='color-slider-row';
+      const lab=document.createElement('label');lab.textContent=name;
+      const input=document.createElement('input');input.type='range';input.min='0';input.max='255';input.step='1';input.dataset.colorChannel=channel;
+      const out=document.createElement('output');out.dataset.colorChannel=channel;
+      row.append(lab,input,out);host.append(row);
+      input.addEventListener('input',()=>{
+        const n=clamp(Number(input.value)||0,0,255);
+        state.color.hsv=state.color.hsv||rgbToHsv(state.color.rgba);
+        if(channel==='value'){
+          state.color.hsv.v=n/255;
+          const rgb=hsvToRgb(state.color.hsv.h,state.color.hsv.s,state.color.hsv.v);
+          state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];
+        }else if(channel==='rgba-a'){
+          state.color.rgba[3]=n/255;
+        }else{
+          const idx=channel==='rgba-r'?0:channel==='rgba-g'?1:2;
+          state.color.rgba[idx]=n/255;
+          state.color.hsv=rgbToHsv(state.color.rgba);
+        }
+        syncColorUI();
+      });
+    });
+    syncColorUI();
+  }
+  function syncColorUI(){
+    if(!state.color)return;
+    state.color.hsv=state.color.hsv||rgbToHsv(state.color.rgba);
+    const hex=rgbaToHex(state.color.rgba);
+    $('#colorTextInput').value=hex;$('#colorHexPreview').textContent=hex;$('#colorPreview').style.background=rgbaCss(state.color.rgba);
+    $('#colorSliders')?.querySelectorAll('input[type=range]').forEach(input=>{
+      const channel=input.dataset.colorChannel;let value=0;
+      if(channel==='value')value=Math.round(clamp(state.color.hsv.v,0,1)*255);
+      else if(channel==='rgba-r')value=Math.round(clamp(state.color.rgba[0],0,1)*255);
+      else if(channel==='rgba-g')value=Math.round(clamp(state.color.rgba[1],0,1)*255);
+      else if(channel==='rgba-b')value=Math.round(clamp(state.color.rgba[2],0,1)*255);
+      else if(channel==='rgba-a')value=Math.round(clamp(state.color.rgba[3],0,1)*255);
+      input.value=String(value);
+    });
+    $('#colorSliders')?.querySelectorAll('output').forEach(out=>{
+      const channel=out.dataset.colorChannel;let value=0;
+      if(channel==='value')value=Math.round(clamp(state.color.hsv.v,0,1)*255);
+      else if(channel==='rgba-r')value=Math.round(clamp(state.color.rgba[0],0,1)*255);
+      else if(channel==='rgba-g')value=Math.round(clamp(state.color.rgba[1],0,1)*255);
+      else if(channel==='rgba-b')value=Math.round(clamp(state.color.rgba[2],0,1)*255);
+      else if(channel==='rgba-a')value=Math.round(clamp(state.color.rgba[3],0,1)*255);
+      out.textContent=String(value);
+    });
+    drawColorWheel();
+  }
   function drawColorWheel(){const c=$('#colorWheel'),ctx=c.getContext('2d'),cx=130,cy=130,r=112;ctx.clearRect(0,0,c.width,c.height);for(let i=0;i<360;i++){const a=(i-90)*Math.PI/180;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+Math.PI/180);ctx.closePath();ctx.fillStyle=`hsl(${i},100%,50%)`;ctx.fill();}ctx.globalCompositeOperation='destination-in';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.strokeStyle='#707070';ctx.strokeRect(18,18,224,224);const hsv=state.color?.hsv||rgbToHsv(state.color?.rgba);const a=(Number(hsv?.h||0)-90)*Math.PI/180,s=clamp(Number(hsv?.s||0),0,1),ix=cx+Math.cos(a)*r*s,iy=cy+Math.sin(a)*r*s;ctx.beginPath();ctx.arc(ix,iy,7,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#111';ctx.stroke();}
   function pickWheel(e){const wheel=$('#colorWheel');if(!wheel)return;const rect=wheel.getBoundingClientRect(),sx=260/Math.max(1,rect.width),sy=260/Math.max(1,rect.height),x=(e.clientX-rect.left)*sx-130,y=(e.clientY-rect.top)*sy-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),v=clamp(Number(state.color.hsv?.v??1),0,1),rgb=hsvToRgb(h,s,v);state.color.hsv={h,s,v};state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
   function hsvToRgb(h,s,v){const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let r=0,g=0,b=0;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];return[r+m,g+m,b+m];}
@@ -2696,12 +2864,22 @@
     if(top<pad) top=Math.min(window.innerHeight-mr.height-pad,ar.bottom+2);
     el.style.left=`${Math.round(left)}px`;el.style.top=`${Math.round(top)}px`;el.style.visibility='visible';
   }
-  function customSelect(value,options,onChange,multiCtx=null,multiPath=null,label='Edit'){
+  function customSelect(value,options,onChange,multiCtx=null,multiPath=null,label='Edit',getCurrentValue=null){
     const wrap=document.createElement('div');wrap.className='select-wrap';
-    const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(value)}</span><span>⌄</span>`;
+    const readCurrent=()=>{try{const v=typeof getCurrentValue==='function'?getCurrentValue():value;return v===undefined||v===null?'':v;}catch{return value===undefined||value===null?'':value;}};
+    const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(readCurrent())}</span><span>⌄</span>`;
     const menu=document.createElement('div');menu.className='select-menu floating-select-menu';menu.hidden=true;menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';
-    options.forEach(option=>{const item=document.createElement('button');item.type='button';item.textContent=option;item.className=String(option)===String(value)?'active':'';item.addEventListener('pointerdown',e=>e.stopPropagation());item.addEventListener('click',e=>{e.stopPropagation();if(multiCtx){multiCtx.pendingSetOps=[];multiCtx.suppressHistory=true;multiCtx.suppressPropagation=true;try{onChange(option);}finally{multiCtx.suppressPropagation=false;}const ops=multiCtx.pendingSetOps.slice();if(!ops.length&&Array.isArray(multiPath)&&multiPath.length)ops.push({path:multiPath.slice(),value:option});for(const op of ops)multiPropagatedSet(multiCtx,op.path,op.value);multiCtx.suppressHistory=false;}else{pushHistory(`Edit ${label}`);onChange(option);}b.firstElementChild.textContent=option;closeMenus();});menu.append(item);});
-    b.addEventListener('click',e=>{e.stopPropagation();if(activeSelectMenu===menu){closeMenus();return;}closeMenus();document.body.append(menu);activeSelectMenu=menu;positionFloatingElement(menu,b);});
+    const updateCurrent=()=>{
+      const current=readCurrent();
+      wrap.dataset.currentValue=String(current??'');
+      if(b.firstElementChild)b.firstElementChild.textContent=String(current);
+      [...menu.children].forEach(item=>item.classList.toggle('active',String(item.dataset.value??item.textContent)===String(current)));
+      return current;
+    };
+    options.forEach(option=>{const item=document.createElement('button');item.type='button';item.textContent=option;item.dataset.value=String(option);item.className=String(option)===String(readCurrent())?'active':'';item.addEventListener('pointerdown',e=>e.stopPropagation());item.addEventListener('click',e=>{e.stopPropagation();if(multiCtx){multiCtx.pendingSetOps=[];multiCtx.suppressHistory=true;multiCtx.suppressPropagation=true;try{onChange(option);}finally{multiCtx.suppressPropagation=false;}const ops=multiCtx.pendingSetOps.slice();if(!ops.length&&Array.isArray(multiPath)&&multiPath.length)ops.push({path:multiPath.slice(),value:option});for(const op of ops)multiPropagatedSet(multiCtx,op.path,op.value);multiCtx.suppressHistory=false;}else{pushHistory(`Edit ${label}`);onChange(option);}updateCurrent();closeMenus();});menu.append(item);});
+    b.addEventListener('click',e=>{e.stopPropagation();if(activeSelectMenu===menu){closeMenus();return;}closeMenus();updateCurrent();document.body.append(menu);activeSelectMenu=menu;positionFloatingElement(menu,b);updateCurrent();});
+    wrap.__uixSelectSync=updateCurrent;
+    wrap.__uixSelectGetCurrent=readCurrent;
     wrap.append(b);return wrap;
   }
   function openNativeSelect(select){
@@ -2801,8 +2979,9 @@
   function addVariable(scopeOrGlobal){
     const scope=typeof scopeOrGlobal==='boolean'?(scopeOrGlobal?'Global':'Local'):scopeOrGlobal;
     const name=nextVariableName(scope,scope==='Local'?'localVariable':'NewVariable');
+    pushHistory(`Add ${scope} Variable`);
     variableList(scope).push(makeVariable(name,'String','',scope, true));
-    scope==='Local'?renderLocalVariables():renderComponentPanel();
+    scope==='Local'?renderLocalVariables():(state.script.nodeId?renderScriptScopeVariables():renderComponentPanel());
   }
   function renderVariableSection(host, title, scope, collapsedKey){
     const vars=variableList(scope);
@@ -2817,11 +2996,12 @@
     const footer=document.createElement('div');footer.className='variable-footer';const add=document.createElement('button');add.className='add-component-button';add.innerHTML='<span>＋</span>Add Variable';add.addEventListener('click',e=>{e.stopPropagation();addVariable(scope);});footer.append(add);body.append(footer);
     section.append(head,body);host.append(section);
   }
-  function renderVariables(host, globalSelection) {
+  function renderVariables(host, scope='Global') {
     host.innerHTML='';
-    renderVariableSection(host,'Global Variables','Global','globalVariablesCollapsed');
-    renderVariableSection(host,'Server Variables','Server','serverVariablesCollapsed');
-    renderVariableSection(host,'Scene Variables','Scene','sceneVariablesCollapsed');
+    const labels={Global:'Global Variables',Server:'Server Variables',Scene:'Scene Variables'};
+    const keys={Global:'globalVariablesCollapsed',Server:'serverVariablesCollapsed',Scene:'sceneVariablesCollapsed'};
+    const normalized=['Global','Server','Scene'].includes(scope)?scope:'Global';
+    renderVariableSection(host,labels[normalized],normalized,keys[normalized]);
   }
   function flashValidationError(el){
     if(!el)return;
@@ -2901,7 +3081,7 @@
     const key=v.id||`${scope}:${v.name||'Variable'}`;const collapsed=!!state.ui.variableCollapsed[key];
     const body=document.createElement('div');body.className='variable-body';body.classList.toggle('hidden',collapsed);toggle.textContent=collapsed?'+':'−';toggle.title=collapsed?'Expand':'Collapse';
     toggle.addEventListener('click',e=>{e.stopPropagation();state.ui.variableCollapsed[key]=!state.ui.variableCollapsed[key];const c=!!state.ui.variableCollapsed[key];body.classList.toggle('hidden',c);toggle.textContent=c?'+':'−';toggle.title=c?'Expand':'Collapse';});
-    del.addEventListener('click',e=>{e.stopPropagation();askConfirm('Delete Variable',`Delete “${v.name||'Variable'}”?`,()=>{const list=variableList(scope),i=list.indexOf(v);if(i>=0)list.splice(i,1);delete state.ui.variableCollapsed[key];scope==='Local'?renderLocalVariables():renderComponentPanel();if(state.script.nodeId)renderScriptCanvas();});});
+    del.addEventListener('click',e=>{e.stopPropagation();askConfirm('Delete Variable',`Delete “${v.name||'Variable'}”?`,()=>{const list=variableList(scope),i=list.indexOf(v);if(i>=0){pushHistory(`Delete ${v.name||'Variable'}`);list.splice(i,1);}delete state.ui.variableCollapsed[key];scope==='Local'?renderLocalVariables():(state.script.nodeId?renderScriptScopeVariables():renderComponentPanel());if(state.script.nodeId)renderScriptCanvas();});});
     actions.append(toggle,del);head.append(title,actions);card.append(head);
     const nameRow=field('Name',v.name,'text',x=>{
       const input=nameRow.querySelector('input');
@@ -2932,12 +3112,12 @@
         }
       }
       v.dataType=next;
-      if(scope==='Local') renderLocalVariables(); else renderComponentPanel();
+      if(scope==='Local') renderLocalVariables(); else if(state.script.nodeId) renderScriptScopeVariables(); else renderComponentPanel();
       if(state.script.nodeId) renderScriptCanvas();
-    },['String','Bool','Int']));
+    },['String','Bool','Int'],()=>String(v.dataType||'String')));
     const valueRow=document.createElement('div');valueRow.className='property-row';const label=document.createElement('span');label.className='property-label';label.textContent='Value';const c=document.createElement('div');c.className='property-control';
-    if(v.dataType==='Bool') c.append(customSelect(v.value?'true':'false',['true','false'],x=>{v.value=x==='true';}));
-    else {const input=document.createElement('input');input.type=v.dataType==='Int'?'number':'text';input.value=v.value??'';input.addEventListener('change',()=>v.value=v.dataType==='Int'?(Number(input.value)||0):input.value);c.append(input);}
+    if(v.dataType==='Bool') c.append(customSelect(v.value?'true':'false',['true','false'],x=>{v.value=x==='true';},null,null,'Variable Value',()=>v.value?'true':'false'));
+    else {const input=document.createElement('input');input.type=v.dataType==='Int'?'number':'text';input.value=v.value??'';input.addEventListener('change',()=>{pushHistory(`Edit ${v.name} Value`);v.value=v.dataType==='Int'?(Number(input.value)||0):input.value;});c.append(input);}
     valueRow.append(label,c);body.append(valueRow);
     body.append(checkboxField('Debug',!!v.debug,x=>{v.debug=x;}));
     card.append(body);
@@ -3064,8 +3244,8 @@
     document.addEventListener('pointermove',move,{passive:false});
     document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
   }
-  function modeLabel(m){return ({select:'Select',move:'Move',rotate:'Rotate',scale:'Scale',all:'All'})[m]||'Select';}
-  function setMode(m){state.mode=m;window.UIXKeyBindsContext=window.UIXKeyBindsContext||{};window.UIXKeyBindsContext.mode=m;$$('.mode-button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('#activeModeLabel').textContent=modeLabel(m);drawWorkplace();status(`${modeLabel(m)} mode`);}
+  function modeLabel(m){return ({select:'Select',move:'Move',rotate:'Rotate',scale:'Scale',transform:'Transform'})[m]||'Select';}
+  function setMode(m){m=(m==='all'?'transform':m);state.mode=m;window.UIXKeyBindsContext=window.UIXKeyBindsContext||{};window.UIXKeyBindsContext.mode=m;$$('.mode-button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('#activeModeLabel').textContent=modeLabel(m);drawWorkplace();status(`${modeLabel(m)} mode`);}
   let zoomLabelEl=null,panLabelEl=null;
   function updateZoomLabel(){
     zoomLabelEl ||= $('#zoomLabel');
@@ -3220,15 +3400,19 @@
     const text=component(node,'text');if(text){const p=text.position||[0,0],m=getTextMetrics(node,text,ctx);add(p[0],p[1],m.w,m.h);}
     const input=component(node,'input');if(input){const p=input.position||[0,0],s=input.scale||[1,1];add(p[0],p[1],(Number(input.width)||260)*Math.abs(Number(s[0])||1),(Number(input.height)||48)*Math.abs(Number(s[1])||1));}
     const source=nodeVisualSource(node),sprite=component(node,'sprite');
-    if(source.src){
-      const img=getAssetImage(source.src);
-      if(img?.complete&&img.naturalWidth>0&&img.naturalHeight>0){
-        const base=constrainImageSize(img),m=spriteLocalGeometry(node);
-        if(base){
-          if(m)add(m.x,m.y,m.w,m.h);
-          else add(sprite?.position?.[0]||0,sprite?.position?.[1]||0,sprite?(Number(sprite.size?.[0])>0?Number(sprite.size[0]):base.w):base.w,sprite?(Number(sprite.size?.[1])>0?Number(sprite.size[1]):base.h):base.h);
+    if(sprite){
+      const sp=Array.isArray(sprite.position)?sprite.position:[0,0];
+      let sw=Number(sprite.size?.[0])>0?Number(sprite.size[0]):220;
+      let sh=Number(sprite.size?.[1])>0?Number(sprite.size[1]):160;
+      if(source.src){
+        const img=getAssetImage(source.src);
+        if(img?.complete&&img.naturalWidth>0&&img.naturalHeight>0){
+          const base=constrainImageSize(img),m=spriteLocalGeometry(node);
+          if(m){sw=m.w;sh=m.h;}
+          else if(base){sw=Number(sprite.size?.[0])>0?Number(sprite.size[0]):base.w;sh=Number(sprite.size?.[1])>0?Number(sprite.size[1]):base.h;}
         }
       }
+      add(sp[0],sp[1],sw,sh);
     }
     const progress=component(node,'progressbar');if(progress){const p=progress.position||[0,0];add(p[0],p[1],Math.max(1,Number(progress.width)||1),Math.max(1,Number(progress.height)||1));}
     const canvas=component(node,'canvas');if(canvas){const p=canvas.position||[0,0],s=canvas.scale||[1,1];add(p[0],p[1],(Number(canvas.width)||320)*Math.abs(Number(s[0])||1),(Number(canvas.height)||180)*Math.abs(Number(s[1])||1));}
@@ -3257,14 +3441,12 @@
     const rev=Number(state.ui.editorVisualCacheRevision)||0;
     let cached=editorCullRadiusCache.get(node);
     if(!cached||cached.rev!==rev){
-      let r=64;
-      const text=component(node,'text');
-      if(text){const fs=Math.max(1,Number(text.fontSize)||32);r=Math.max(r,fs*Math.max(2,String(text.txt||'').split('\n').length+1)*1.25);}
-      const input=component(node,'input');if(input)r=Math.max(r,Math.hypot(Number(input.width)||260,Number(input.height)||48)*.6);
-      const sprite=component(node,'sprite');if(sprite)r=Math.max(r,Math.hypot(Number(sprite.size?.[0])||220,Number(sprite.size?.[1])||160)*.55);
-      const progress=component(node,'progressbar');if(progress)r=Math.max(r,Math.hypot(Number(progress.width)||1,Number(progress.height)||1)*.6);
-      const canvas=component(node,'canvas');if(canvas)r=Math.max(r,Math.hypot(Number(canvas.width)||320,Number(canvas.height)||180)*.6);
-      cached={rev,base:r};
+      const ctx=workspaceContext||$('#workplaceCanvas')?.getContext?.('2d');
+      const bounds=getNodeVisualBounds(node,ctx);
+      const ex=Math.max(Math.abs(Number(bounds.minX)||0),Math.abs(Number(bounds.maxX)||0));
+      const ey=Math.max(Math.abs(Number(bounds.minY)||0),Math.abs(Number(bounds.maxY)||0));
+      const base=Math.max(32,Math.hypot(ex,ey));
+      cached={rev,base};
       editorCullRadiusCache.set(node,cached);
     }
     return cached.base*Math.max(Math.abs(Number(sx)||1),Math.abs(Number(sy)||1));
@@ -3343,15 +3525,21 @@
     const rect=getWorkplaceRect();ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,rect.width,rect.height);
     // Editor Workplace stays neutral; camera BG Color is runtime-only.
     ctx.fillStyle='#202020';ctx.fillRect(0,0,rect.width,rect.height);drawGrid(ctx,rect);
-    ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);drawAxes(ctx);drawCameraViewport(ctx,rect);drawSelectedSubCameraViewports(ctx,selectedSceneNodes());
+    ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);drawAxes(ctx);drawCameraViewport(ctx,rect);drawSelectedSubCameraViewports(ctx,selectedSceneNodes().filter(n=>runtimeNodeVisible(n)));
     const renderNodes=sortedRenderNodes();
     const halfW=rect.width/(2*Math.max(.01,state.zoom))+220,stateHalfH=rect.height/(2*Math.max(.01,state.zoom))+180;
     const centerX=-state.pan.x/state.zoom,centerY=-state.pan.y/state.zoom;
     renderNodes.forEach(node=>{
+      if(component(node,'node')?.visible===false)return;
       const t=component(node,'transform');
       const pos=editorNodeWorldPosition(node),x=pos.x,y=pos.y,sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);
-      const radius=editorNodeCullRadius(node,sx,sy);
-      if(Math.abs(x-centerX)>halfW+radius||Math.abs(y-centerY)>stateHalfH+radius)return;
+      const bounds=getNodeVisualBounds(node,ctx);
+      const rad=angle*Math.PI/180,c=Math.cos(rad),sn=Math.sin(rad);
+      const corners=[[bounds.minX,bounds.minY],[bounds.maxX,bounds.minY],[bounds.maxX,bounds.maxY],[bounds.minX,bounds.maxY]];
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      for(const [lx,ly] of corners){const px=lx*sx,py=ly*sy,wx=px*c-py*sn+x,wy=px*sn+py*c+y;minX=Math.min(minX,wx);maxX=Math.max(maxX,wx);minY=Math.min(minY,wy);maxY=Math.max(maxY,wy);}
+      const margin=96;
+      if(maxX<centerX-halfW-margin||minX>centerX+halfW+margin||maxY<centerY-stateHalfH-margin||minY>centerY+stateHalfH+margin)return;
       let cache=editorVisualCache.get(node),rev=Number(state.ui.editorVisualCacheRevision)||0;
       if(!cache||cache.rev!==rev){cache=buildEditorVisualCache(node,ctx);if(cache)editorVisualCache.set(node,cache);}
       if(cache){
@@ -3369,7 +3557,7 @@
     });
     ctx.imageSmoothingEnabled=true;
     if(ctx.imageSmoothingQuality==='nearest')ctx.imageSmoothingQuality='low';
-    const selectedNodes=selectedSceneNodes();if(selectedNodes.length>1){drawMultiSelectionGizmo(ctx,selectedNodes);selectedNodes.forEach(node=>drawSelectedCollider(ctx,node));}else{const selected=selectedNodes[0]||selectedNode();if(selected)drawGizmo(ctx,selected);drawSelectedCollider(ctx,selected);}drawSelectedJoints(ctx,selectedNodes.length?selectedNodes:[selectedNode()].filter(Boolean));drawEditorUIComponents(ctx);ctx.restore();
+    const selectedNodes=selectedSceneNodes().filter(n=>runtimeNodeVisible(n));if(selectedNodes.length>1){drawMultiSelectionGizmo(ctx,selectedNodes);selectedNodes.forEach(node=>drawSelectedCollider(ctx,node));}else{const selected=selectedNodes[0]||selectedNode();if(selected&&runtimeNodeVisible(selected))drawGizmo(ctx,selected);if(selected&&runtimeNodeVisible(selected))drawSelectedCollider(ctx,selected);}drawSelectedJoints(ctx,selectedNodes.length?selectedNodes:[selectedNode()].filter(Boolean));drawEditorUIComponents(ctx);ctx.restore();
     updateZoomLabel();
     ensureEditorAnimationLoop();
   }
@@ -3386,7 +3574,7 @@
       const jc=component(owner,'joints');
       for(const j of (jc?.joints||[])){
         const target=all.find(n=>n.id===j.object);
-        if(!target||(!ids.has(owner.id)&&!ids.has(target.id)))continue;
+        if(!runtimeNodeVisible(owner)||!runtimeNodeVisible(target)||(!ids.has(owner.id)&&!ids.has(target.id)))continue;
         const aLocal=j.type==='Revolute'?(j.parent||[0,0]):(j.anchorA||[0,0]);
         const bLocal=j.type==='Revolute'?(j.child||[0,0]):(j.anchorB||[0,0]);
         const a=jointWorldAnchor(owner,aLocal),b=jointWorldAnchor(target,bLocal);
@@ -3569,6 +3757,7 @@
   }
   function drawSelectedCollider(ctx,node){
     if(getEditorSettings().showCollider===false)return;
+    if(!runtimeNodeVisible(node))return;
     const c=component(node,'collider');if(!c||c.collidable===false)return;
     const g=colliderGeometry(node,c);ctx.save();ctx.translate(g.x,g.y);ctx.rotate(g.angle);
     ctx.strokeStyle='#4b8dff';ctx.fillStyle='rgba(75,141,255,.08)';ctx.lineWidth=2/state.zoom;ctx.setLineDash([6/state.zoom,4/state.zoom]);ctx.beginPath();
@@ -3579,7 +3768,7 @@
   }
 
   function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d')),pos=editorNodeWorldPosition(node);return {kind:'node',node,component:t,transform:t,center:[pos.x,pos.y],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
-  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'){const handle=66/state.zoom;drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>drawScaleHandle(ctx,x,y,id));drawCenter(ctx,'#e4ca4e');}else{const handle=66/state.zoom;drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');}}if(state.mode==='rotate'||state.mode==='all'){const r=58/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
+  function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='transform'){const handle=66/state.zoom;drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='transform'){if(getEditorSettings().scaleGizmo==='Full'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>drawScaleHandle(ctx,x,y,id));drawCenter(ctx,'#e4ca4e');}else{const handle=66/state.zoom;drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');}}if(state.mode==='rotate'||state.mode==='transform'){const r=58/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
 
   function drawArrow(ctx,x1,y1,x2,y2,color){ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const ang=Math.atan2(y2-y1,x2-x1);const s=7/state.zoom;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-Math.cos(ang-.55)*s,y2-Math.sin(ang-.55)*s);ctx.lineTo(x2-Math.cos(ang+.55)*s,y2-Math.sin(ang+.55)*s);ctx.closePath();ctx.fill();ctx.restore();}
   function drawScaleHandle(ctx,x,y){const s=11/state.zoom;ctx.fillStyle='#e4ca4e';ctx.fillRect(x-s/2,y-s/2,s,s);}
@@ -3590,24 +3779,24 @@
     const b=selectionBounds(nodes);if(!b)return;
     const mode=state.mode;
     ctx.save();ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.setLineDash([6/state.zoom,4/state.zoom]);ctx.strokeRect(b.left,b.top,b.w,b.h);ctx.setLineDash([]);
-    if(mode==='move'||mode==='all'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}
-    if(mode==='scale'||mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){[[b.left,b.top,'tl'],[b.x,b.top,'top'],[b.right,b.top,'tr'],[b.left,b.y,'left'],[b.right,b.y,'right'],[b.left,b.bottom,'bl'],[b.x,b.bottom,'bottom'],[b.right,b.bottom,'br']].forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.multi&&workspace.gizmoDrag.type==='scale'&&workspace.gizmoDrag.corner===id){const z=12/state.zoom;ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-z/2-2/state.zoom,y-z/2-2/state.zoom,z+4/state.zoom,z+4/state.zoom);}});drawCenterAt(ctx,b.x,b.y,'#e4ca4e');}else{const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}}
-    if(mode==='rotate'||mode==='all'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,r=58/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();ctx.restore();}
+    if(mode==='move'||mode==='transform'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}
+    if(mode==='scale'||mode==='transform'){if(getEditorSettings().scaleGizmo==='Full'){[[b.left,b.top,'tl'],[b.x,b.top,'top'],[b.right,b.top,'tr'],[b.left,b.y,'left'],[b.right,b.y,'right'],[b.left,b.bottom,'bl'],[b.x,b.bottom,'bottom'],[b.right,b.bottom,'br']].forEach(([x,y,id])=>{drawScaleHandle(ctx,x,y);if(workspace.gizmoDrag?.multi&&workspace.gizmoDrag.type==='scale'&&workspace.gizmoDrag.corner===id){const z=12/state.zoom;ctx.strokeStyle='#fff';ctx.lineWidth=1/state.zoom;ctx.strokeRect(x-z/2-2/state.zoom,y-z/2-2/state.zoom,z+4/state.zoom,z+4/state.zoom);}});drawCenterAt(ctx,b.x,b.y,'#e4ca4e');}else{const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,handle=66/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');ctx.restore();}}
+    if(mode==='rotate'||mode==='transform'){const active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,r=58/state.zoom;ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ga);ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();ctx.restore();}
     ctx.restore();
   }
   function drawCenterAt(ctx,x,y,color){ctx.save();ctx.fillStyle=color;ctx.fillRect(x-3/state.zoom,y-3/state.zoom,6/state.zoom,6/state.zoom);ctx.restore();}
   function getSelectionGizmoHit(nodes,world){
     const b=selectionBounds(nodes);if(!b)return null;const mode=state.mode,hit=10/state.zoom,active=findNode(state.selectedId)||nodes.at(-1),ga=Number(component(active,'transform')?.angle?.[0]||0)*Math.PI/180,local=rotatePoint(world.x-b.x,world.y-b.y,-ga);
-    if(mode==='scale'||mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-b.w/2,-b.h/2,'tl'],[0,-b.h/2,'top'],[b.w/2,-b.h/2,'tr'],[-b.w/2,0,'left'],[b.w/2,0,'right'],[-b.w/2,b.h/2,'bl'],[0,b.h/2,'bottom'],[b.w/2,b.h/2,'br']])if(Math.hypot(local.x-p[0],local.y-p[1])<hit)return {type:'scale',corner:p[2],gizmoAngle:ga};}else{const handle=66/state.zoom;if(Math.hypot(local.x-handle,local.y)<hit*1.5)return {type:'scale',corner:'right',gizmoAngle:ga};if(Math.hypot(local.x,local.y+handle)<hit*1.5)return {type:'scale',corner:'top',gizmoAngle:ga};}if(mode==='scale'&&Math.hypot(local.x,local.y)<hit*1.5)return {type:'scale',corner:'center',gizmoAngle:ga};}
-    if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(local.x,local.y)-r)<hit&&local.y<0)return {type:'rotate',gizmoAngle:ga};}
-    if(mode==='move'||mode==='all'){const mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(local.x,local.y)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:ga};if(Math.abs(local.y)<hit&&local.x>8/state.zoom&&local.x<mx+hit)return {type:'move',axis:'x',gizmoAngle:ga};if(Math.abs(local.x)<hit&&local.y<-8/state.zoom&&local.y>-my-hit)return {type:'move',axis:'y',gizmoAngle:ga};}
+    if(mode==='scale'||mode==='transform'){if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-b.w/2,-b.h/2,'tl'],[0,-b.h/2,'top'],[b.w/2,-b.h/2,'tr'],[-b.w/2,0,'left'],[b.w/2,0,'right'],[-b.w/2,b.h/2,'bl'],[0,b.h/2,'bottom'],[b.w/2,b.h/2,'br']])if(Math.hypot(local.x-p[0],local.y-p[1])<hit)return {type:'scale',corner:p[2],gizmoAngle:ga};}else{const handle=66/state.zoom;if(Math.hypot(local.x-handle,local.y)<hit*1.5)return {type:'scale',corner:'right',gizmoAngle:ga};if(Math.hypot(local.x,local.y+handle)<hit*1.5)return {type:'scale',corner:'top',gizmoAngle:ga};}if(mode==='scale'&&Math.hypot(local.x,local.y)<hit*1.5)return {type:'scale',corner:'center',gizmoAngle:ga};}
+    if(mode==='rotate'||mode==='transform'){const r=58/state.zoom;if(Math.abs(Math.hypot(local.x,local.y)-r)<hit&&local.y<0)return {type:'rotate',gizmoAngle:ga};}
+    if(mode==='move'||mode==='transform'){const mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(local.x,local.y)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:ga};if(Math.abs(local.y)<hit&&local.x>8/state.zoom&&local.x<mx+hit)return {type:'move',axis:'x',gizmoAngle:ga};if(Math.abs(local.x)<hit&&local.y<-8/state.zoom&&local.y>-my-hit)return {type:'move',axis:'y',gizmoAngle:ga};}
     return null;
   }
 
-  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}else{const handle=66/state.zoom;if(Math.hypot(lx-handle,ly)<hit*1.5)return {type:'scale',corner:'right'};if(Math.hypot(lx,ly+handle)<hit*1.5)return {type:'scale',corner:'top'};}if(mode==='scale'&&Math.hypot(lx,ly)<hit*1.5)return {type:'scale',corner:'center'};}if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate',gizmoAngle:g.angle};}if(mode==='move'||mode==='all'){const hit=12/state.zoom,mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:g.angle};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x',gizmoAngle:g.angle};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y',gizmoAngle:g.angle};}return null;}
+  function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='transform'){const hit=10/state.zoom;if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}else{const handle=66/state.zoom;if(Math.hypot(lx-handle,ly)<hit*1.5)return {type:'scale',corner:'right'};if(Math.hypot(lx,ly+handle)<hit*1.5)return {type:'scale',corner:'top'};}if(mode==='scale'&&Math.hypot(lx,ly)<hit*1.5)return {type:'scale',corner:'center'};}if(mode==='rotate'||mode==='transform'){const r=58/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate',gizmoAngle:g.angle};}if(mode==='move'||mode==='transform'){const hit=12/state.zoom,mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:g.angle};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x',gizmoAngle:g.angle};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y',gizmoAngle:g.angle};}return null;}
 
   function nodeAt(world){
-    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;const pos=editorNodeWorldPosition(node);let dx=world.x-pos.x,dy=world.y-pos.y,rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
+    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node'||!runtimeNodeVisible(node))continue;const t=component(node,'transform');if(!t)continue;const pos=editorNodeWorldPosition(node);let dx=world.x-pos.x,dy=world.y-pos.y,rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
       const geo=spriteLocalGeometry(node);
       if(geo){if(Math.abs(lx/sx-geo.x)<=geo.w/2&&Math.abs(ly/sy-geo.y)<=geo.h/2)return node;continue;}
       const size=getNodeVisualSize(node,ctx),bw=Math.max(70,size.w*sx),bh=Math.max(45,size.h*sy);if(Math.abs(lx)<=bw/2&&Math.abs(ly)<=bh/2)return node;}return null;
@@ -3740,7 +3929,7 @@
         pinch.lastDistance=dist;pinch.lastMidX=midX;pinch.lastMidY=midY;requestWorkplaceDraw();return;
       }
       if(workspace.joystickDrag){
-        if(!workspace.joystickDrag.historyPushed){pushHistory('Move Joystick');workspace.joystickDrag.historyPushed=true;}
+        if(!workspace.joystickDrag.historyPushed){beginHistoryTransaction('Move Joystick');workspace.joystickDrag.historyPushed=true;}
         const j=workspace.joystickDrag.joystick,world=screenToWorld(e.clientX,e.clientY),cam=cameraEditorFrame();
         const local=inverseRotatePoint(world.x-cam.x,world.y-cam.y,cam.angle);const w=Math.max(1,Number(j.size?.[0]||110)),h=Math.max(1,Number(j.size?.[1]||110));
         const localX=local.x-workspace.joystickDrag.offsetX,localY=local.y-workspace.joystickDrag.offsetY;
@@ -3751,8 +3940,8 @@
     });
     const end=e=>{
       if(e?.pointerId!==undefined)pointers.delete(e.pointerId);if(pointers.size<2)pinch=null;
-      if(workspace.joystickDrag){workspace.joystickDrag=null;renderComponentPanel();}
-      if(workspace.gizmoDrag){workspace.gizmoDrag=null;renderComponentPanel();}
+      if(workspace.joystickDrag){endHistoryTransaction();workspace.joystickDrag=null;renderComponentPanel();}
+      if(workspace.gizmoDrag){endHistoryTransaction();workspace.gizmoDrag=null;renderComponentPanel();}
       workspace.panDrag=null;$('#workplace').classList.remove('panning');
     };
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
@@ -3765,7 +3954,7 @@
   function updateGizmoDrag(e){
     const d=workspace.gizmoDrag;
     if(!d)return;
-    if(!d.historyPushed){pushHistory(d.type==='move'?'Move Node':d.type==='rotate'?'Rotate Node':'Scale Node');d.historyPushed=true;}
+    if(!d.historyPushed){beginHistoryTransaction(d.type==='move'?'Move Node':d.type==='rotate'?'Rotate Node':'Scale Node');d.historyPushed=true;}
     if(d.multi)return updateMultiGizmoDrag(e);
     const n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=d.settings||getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
     if(d.type==='move'){
@@ -3883,9 +4072,9 @@
     const settings=getEditorSettings();
     const settingsWrap=document.createElement('div');settingsWrap.id='editorSnapSettings';settingsWrap.className='editor-snap-settings';
     const heading=document.createElement('div');heading.className='editor-snap-heading';heading.textContent='Editing Snap';settingsWrap.append(heading);
-    const makeRow=(label,value,options={})=>{const row=document.createElement('div');row.className='editor-snap-row';const name=document.createElement('div');name.className='keybind-name';name.textContent=label;const control=document.createElement('div');control.className='editor-snap-control';if(options.select){const select=document.createElement('select');select.className='editor-snap-input';options.select.forEach(v=>{const opt=document.createElement('option');opt.value=String(v);opt.textContent=v===0?'0° (Off)':`${v}°`;opt.selected=Number(v)===Number(value);select.append(opt);});select.addEventListener('change',()=>{const next=getEditorSettings();next.rotateSnap=Math.max(0,Number(select.value)||0);saveEditorSettings(next);});control.append(select);}else{const input=document.createElement('input');input.className='editor-snap-input';input.type='number';input.min='0';input.step='0.01';input.value=String(value);input.addEventListener('change',()=>{const next=getEditorSettings();next.moveScaleSnap=Math.max(0,Number(input.value)||0);input.value=String(next.moveScaleSnap);saveEditorSettings(next);});control.append(input);}row.append(name,control);settingsWrap.append(row);};
-    makeRow('Move / Scale Snap',settings.moveScaleSnap);
-    makeRow('Rotate Snap',settings.rotateSnap,{select:[0,15,30,45,90,180]});
+    const makeRow=(label,value,options={})=>{const row=document.createElement('div');row.className='editor-snap-row';const name=document.createElement('div');name.className='keybind-name';name.textContent=label;const control=document.createElement('div');control.className='editor-snap-control';if(options.select){const select=document.createElement('select');select.className='editor-snap-input';options.select.forEach(v=>{const opt=document.createElement('option');opt.value=String(v);opt.textContent=v===0?'0° (Off)':`${v}°`;opt.selected=Number(v)===Number(value);select.append(opt);});select.addEventListener('change',()=>{const next=getEditorSettings();const key=options.key||'rotateSnap';next[key]=Math.max(0,Number(select.value)||0);saveEditorSettings(next);});control.append(select);}else{const input=document.createElement('input');input.className='editor-snap-input';input.type='number';input.min='0';input.step='0.01';input.value=String(value);input.addEventListener('change',()=>{const next=getEditorSettings();const key=options.key||'moveScaleSnap';next[key]=Math.max(0,Number(input.value)||0);input.value=String(next[key]);saveEditorSettings(next);});control.append(input);}row.append(name,control);settingsWrap.append(row);};
+    makeRow('Move / Scale Snap',settings.moveScaleSnap,{key:'moveScaleSnap'});
+    makeRow('Rotate Snap',settings.rotateSnap,{key:'rotateSnap'});
     const gizmoRow=document.createElement('div');gizmoRow.className='editor-snap-row';const gizmoName=document.createElement('div');gizmoName.className='keybind-name';gizmoName.textContent='Scale Gizmo';const gizmoControl=document.createElement('div');gizmoControl.className='editor-snap-control';const gizmoSelect=document.createElement('select');gizmoSelect.className='editor-snap-input';['Full','Arrow'].forEach(v=>{const opt=document.createElement('option');opt.value=v;opt.textContent=v;opt.selected=settings.scaleGizmo===v;gizmoSelect.append(opt);});gizmoSelect.addEventListener('change',()=>{const next=getEditorSettings();next.scaleGizmo=gizmoSelect.value==='Full'?'Full':'Arrow';saveEditorSettings(next);drawWorkplace();});gizmoControl.append(gizmoSelect);gizmoRow.append(gizmoName,gizmoControl);settingsWrap.append(gizmoRow);
     const multiRow=document.createElement('div');multiRow.className='editor-snap-row';const multiLabel=document.createElement('label');multiLabel.className='game-setting-check';const multiCheck=document.createElement('input');multiCheck.type='checkbox';multiCheck.checked=settings.multiSelectionUnifiedEditing!==false;const multiText=document.createElement('span');multiText.textContent='Multiselection Unified Editing';multiLabel.append(multiCheck,multiText);multiRow.append(multiLabel);settingsWrap.append(multiRow);
     const missingRow=document.createElement('div');missingRow.className='editor-snap-row';const missingLabel=document.createElement('label');missingLabel.className='game-setting-check';const missingCheck=document.createElement('input');missingCheck.type='checkbox';missingCheck.checked=!!settings.createNewMissingComponent;const missingText=document.createElement('span');missingText.textContent='Create New Missing Component';missingLabel.append(missingCheck,missingText);missingRow.append(missingLabel);settingsWrap.append(missingRow);missingCheck.addEventListener('change',()=>{const next=getEditorSettings();next.createNewMissingComponent=missingCheck.checked;saveEditorSettings(next);});
@@ -4607,15 +4796,13 @@
   function selectAssetManagerAsset(asset,e={},dragAdd=false){
     const list=state.assets[state.activeAssetTab]||[],key=assetKey(asset),keys=list.map(assetKey),set=state.assetManagerSelection instanceof Set?state.assetManagerSelection:new Set(),mods=resolvedEditorModifiers(e);
     const anchor=state.assetManagerSelectionAnchorKey;
-    if(dragAdd){set.add(key);}
-    else if(mods.shiftKey&&anchor&&keys.includes(anchor)){
-      const a=keys.indexOf(anchor),b=keys.indexOf(key),lo=Math.min(a,b),hi=Math.max(a,b);state.assetManagerSelection=new Set(keys.slice(lo,hi+1));
-    }else if(mods.ctrlKey||mods.metaKey){
-      set.has(key)?set.delete(key):set.add(key);state.assetManagerSelection=set;
-    }else if(state.assetManagerSelectMode){
-      set.has(key)?set.delete(key):set.add(key);state.assetManagerSelection=set;
-    }else{state.assetManagerSelection=new Set([key]);}
-    state.assetManagerSelectionAnchorKey=key;
+    if(state.assetManagerSelectMode&&!mods.shiftKey&&!mods.ctrlKey&&!mods.metaKey&&!dragAdd){
+      set.has(key)?set.delete(key):set.add(key);
+      state.assetManagerSelection=set;state.assetManagerSelectionAnchorKey=key;
+    }else{
+      const result=explorerSelection(keys,set,key,anchor,mods,{dragAdd});
+      state.assetManagerSelection=result.selected;state.assetManagerSelectionAnchorKey=result.anchorKey;
+    }
     updateAssetManagerSelectionUI();
   }
   function toggleAssetManagerSelection(asset){selectAssetManagerAsset(asset,{},false);renderAssetManager();}
@@ -4784,17 +4971,12 @@
         const order=document.createElement('span');order.className='selection-order-badge asset-selector-order';order.hidden=!chosen;order.textContent=chosen?String(selectionOrder.get(sk)||''):'';p.append(order);
         const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.filename||asset.name||type;b.append(p,n);
         const selectLocalAsset=(ev,targetAsset=asset,forceAdd=false,refresh=true)=>{
-          const targetKey=key(targetAsset),targetSelectionKey=selectionKey(type,targetKey),mods=resolvedEditorModifiers(ev||{}),anchor=selectionAnchor.get(type),keys=list.map(key);
-          if(forceAdd){if(!set.has(targetKey)){set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}}
-          else if(mods.shiftKey&&anchor&&keys.includes(anchor)){
-            const a=keys.indexOf(anchor),z=keys.indexOf(targetKey),lo=Math.min(a,z),hi=Math.max(a,z);
-            keys.slice(lo,hi+1).forEach(itemKey=>{if(!set.has(itemKey)){set.add(itemKey);selectionOrder.set(selectionKey(type,itemKey),nextSelectionOrder++);}});
-          }else if(mods.ctrlKey||mods.metaKey){
-            if(set.has(targetKey)){set.delete(targetKey);selectionOrder.delete(targetSelectionKey);}else{set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}
-          }else{
-            if(set.has(targetKey)){set.delete(targetKey);selectionOrder.delete(targetSelectionKey);}else{set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}
-          }
-          selectionAnchor.set(type,targetKey);if(refresh)render();
+          const targetKey=key(targetAsset),mods=resolvedEditorModifiers(ev||{}),anchor=selectionAnchor.get(type),keys=list.map(key);
+          const result=explorerSelection(keys,set,targetKey,anchor,mods,{dragAdd:forceAdd});
+          set.clear();result.selected.forEach(k=>set.add(k));
+          set.forEach(k=>{const sk=selectionKey(type,k);if(!selectionOrder.has(sk))selectionOrder.set(sk,nextSelectionOrder++);});
+          for(const sk of [...selectionOrder.keys()]){if(sk.startsWith(type+'::')){const raw=sk.slice(type.length+2);if(!set.has(raw))selectionOrder.delete(sk);}}
+          selectionAnchor.set(type,result.anchorKey);if(refresh)render();
         };
         let dragState=null;
         b.addEventListener('pointerdown',e=>{e.preventDefault();dragState={pointerId:e.pointerId,lastKey:k,startX:e.clientX,startY:e.clientY};selectLocalAsset(e,asset,false,false);b.dataset.pointerActivated='1';b.setPointerCapture?.(e.pointerId);},{passive:false});
@@ -4947,14 +5129,9 @@
         const targetKey=assetKey(targetAsset);
         if(!isMulti){const fn=state.assetSelection?.onSelect;state.assetSelection=null;closeModal(modal);fn?.(targetAsset);renderComponentPanel();drawWorkplace();return;}
         const current=state.assetSelection;if(!current)return;
-        const listKeys=(state.assets[type]||[]).map(assetKey),set=current.selected,mods=resolvedEditorModifiers(ev||{}),anchor=current.anchorKey;
-        if(forceAdd){set.add(targetKey);}
-        else if(mods.shiftKey&&anchor&&listKeys.includes(anchor)){
-          const a=listKeys.indexOf(anchor),bIndex=listKeys.indexOf(targetKey),lo=Math.min(a,bIndex),hi=Math.max(a,bIndex);listKeys.slice(lo,hi+1).forEach(k=>set.add(k));
-        }else if(mods.ctrlKey||mods.metaKey){
-          set.has(targetKey)?set.delete(targetKey):set.add(targetKey);
-        }else{set.has(targetKey)?set.delete(targetKey):set.add(targetKey);}
-        current.anchorKey=targetKey;updateSelectorUI();
+        const listKeys=(state.assets[type]||[]).map(assetKey),mods=resolvedEditorModifiers(ev||{});
+        const result=explorerSelection(listKeys,current.selected,targetKey,current.anchorKey,mods,{dragAdd:forceAdd});
+        current.selected=result.selected;current.anchorKey=result.anchorKey;updateSelectorUI();
       };
       let dragState=null;
       if(isMulti){
@@ -5062,6 +5239,7 @@
     });
   }
   function openScriptEditor(node){
+    if(!Object.prototype.hasOwnProperty.call(state.ui,'localVariablesCollapsed'))state.ui.localVariablesCollapsed=true;
     resetScriptCanvasInteraction?.();
     saveScriptViewport();
     state.script.nodeId=node.id;state.script.selectedNodeId=null;state.script.selectedNodeIds=[];state.script.selectionAnchorId=null;
@@ -5074,7 +5252,7 @@
     const host=$('#localVariablesContent'); if(!host)return; host.innerHTML='';
     const vars=Array.isArray(state.localVarsByNode[state.script.nodeId]) ? state.localVarsByNode[state.script.nodeId] : (state.localVarsByNode[state.script.nodeId]=[]);
     const section=document.createElement('section'); section.className='local-variable-group';
-    const head=document.createElement('button'); head.className='library-group-header';
+    const head=document.createElement('button'); head.className='library-group-header'; head.type='button';
     const body=document.createElement('div'); body.className='local-variable-body';
     const collapsed=!!state.ui.localVariablesCollapsed;
     body.classList.toggle('hidden',collapsed);
@@ -5084,6 +5262,14 @@
     vars.forEach(v=>body.append(variableEditor(v,'Local')));
     const add=document.createElement('button'); add.className='add-component-button local-add-variable'; add.innerHTML='<span>＋</span>Add Variable'; add.onclick=()=>addVariable(false); body.append(add);
     section.append(head,body); host.append(section);
+  }
+  function renderScriptScopeVariables(){
+    const host=document.getElementById('scriptScopeVariablesContent');
+    if(!host)return;
+    host.innerHTML='';
+    renderVariableSection(host,'Global Variables','Global','globalVariablesCollapsed');
+    renderVariableSection(host,'Server Variables','Server','serverVariablesCollapsed');
+    renderVariableSection(host,'Scene Variables','Scene','sceneVariablesCollapsed');
   }
 
   function renderScriptLibrary(){
@@ -5099,7 +5285,7 @@
       head.innerHTML=`<span>${collapsed?'+':'−'}</span>${group}`;
       if(!nodes.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No ScriptNodes'}));
       nodes.forEach(def=>{
-        const b=document.createElement('button'); b.className='library-node'; b.textContent=def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled; b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
+        const b=document.createElement('button'); b.className=`library-node script-group-${String(def.group||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`; b.dataset.scriptGroup=String(def.group||''); b.textContent=def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled; b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
         b.addEventListener('click',()=>enabled?addScriptNode(def):showScriptRequirementPrompt(def));
         b.addEventListener('dragstart',e=>{if(!enabled){e.preventDefault();showScriptRequirementPrompt(def);return;}e.dataTransfer.setData('application/x-uix-script-node',def.name);e.dataTransfer.effectAllowed='copy';});
         body.append(b);
@@ -5337,17 +5523,27 @@
   }
   function renderScriptNodeCard(sn,def){
     const enabled=scriptRequirementEnabled(def);
-    const card=document.createElement('article');card.className=`script-node-card${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}${enabled?'':' script-node-require-disabled'}`;card.dataset.scriptNodeId=sn.id;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;card.setAttribute('aria-disabled',enabled?'false':'true');card.title=enabled?'':`Requires ${def.require}`;
+    const group=String(def.group||'').trim();
+    const card=document.createElement('article');card.className=`script-node-card script-group-${group.toLowerCase().replace(/[^a-z0-9]+/g,'-')}${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}${enabled?'':' script-node-require-disabled'}`;card.dataset.scriptNodeId=sn.id;card.dataset.scriptGroup=group;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;card.setAttribute('aria-disabled',enabled?'false':'true');card.title=enabled?'':`Requires ${def.require}`;
     if(!enabled)card.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();showScriptRequirementPrompt(def);},true);
     const title=document.createElement('div');title.className='script-node-title';title.textContent=def.name;card.append(title);
-    if(def.receiver){const input=document.createElement('button');input.className='script-input-port';input.title='Input';input.addEventListener('click',e=>e.stopPropagation());card.append(input);}
+    if(def.receiver){const input=document.createElement('button');input.className='script-input-port';input.title='Input';input.setAttribute('aria-label','Input');input.style.setProperty('--script-port-color','#8a8a8a');input.addEventListener('click',e=>e.stopPropagation());card.append(input);}
     const fields=document.createElement('div');fields.className='script-editor-fields';
     flattenEditor(sn.values).forEach(item=>{
       if(sn.defName==='createParticles'&&item.entry.name==='Sprite'){const typeItem=flattenEditor(sn.values).find(x=>x.entry.name==='Type');const currentType=String(typeItem?scriptEditorValue(sn,typeItem):'Circle');if(currentType!=='Sprite')return;}
       const row=document.createElement('div');row.className='script-editor-row';const label=document.createElement('div');label.className='script-editor-label';label.textContent=item.entry.name;row.append(label,scriptInputButton(sn,item));fields.append(row);
     });
     if(fields.children.length)card.append(fields);
-    const outputs=document.createElement('div');outputs.className='script-output-list';(Array.isArray(def.output)?def.output:[]).forEach(out=>{const row=document.createElement('div');row.className='script-output';const label=document.createElement('span');label.textContent=out.id;const port=document.createElement('button');port.className='script-output-port';port.dataset.outputId=out.id;port.title=`Output ${out.id}`;if(out.col)port.style.background=out.col;attachOutputDrag(port);row.append(label,port);outputs.append(row);});if(outputs.children.length)card.append(outputs);
+    const outputs=document.createElement('div');outputs.className='script-output-list';(Array.isArray(def.output)?def.output:[]).forEach(out=>{
+      const outputId=String(out.id||'');
+      const row=document.createElement('div');row.className='script-output';row.dataset.outputId=outputId;
+      const label=document.createElement('span');label.textContent=outputId;
+      const port=document.createElement('button');port.className='script-output-port';port.dataset.outputId=outputId;port.dataset.outputKind=outputId;port.dataset.timingOutput=(def.name==='Interval'||def.name==='Timeout')?'true':'false';port.title=`Output ${outputId}`;
+      const semanticColor=scriptOutputColor(def.name,outputId,out)||'#8a8a8a';
+      port.style.background=semanticColor;
+      port.style.setProperty('--script-port-color',semanticColor);
+      attachOutputDrag(port);row.append(label,port);outputs.append(row);
+    });if(outputs.children.length)card.append(outputs);
     card.addEventListener('click',e=>{if(e.target.closest('.script-input,.script-input-port,.script-output-port'))return;selectScriptNode(sn,e);renderScriptCanvas();});
     card.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();scriptContextMenu(sn,e.clientX,e.clientY);});
     attachScriptDrag(card,sn);return card;
@@ -5380,11 +5576,15 @@
 
   function scriptList(){return state.script.nodeId?(state.script.nodesByNode[state.script.nodeId]||[]):[];}
   function selectScriptNode(sn,e={}){
-    const list=scriptList(),ids=list.map(x=>x.id),set=new Set(state.script.selectedNodeIds||[]);
-    if(e.shiftKey&&state.script.selectionAnchorId&&ids.includes(state.script.selectionAnchorId)){const a=ids.indexOf(state.script.selectionAnchorId),b=ids.indexOf(sn.id),lo=Math.min(a,b),hi=Math.max(a,b);state.script.selectedNodeIds=ids.slice(lo,hi+1);}
-    else if(e.ctrlKey||e.metaKey){if(set.has(sn.id))set.delete(sn.id);else set.add(sn.id);state.script.selectedNodeIds=list.filter(x=>set.has(x.id)).map(x=>x.id);if(!state.script.selectedNodeIds.length)state.script.selectedNodeIds=[sn.id];}
-    else state.script.selectedNodeIds=[sn.id];
-    state.script.selectionAnchorId=sn.id;state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;
+    const list=scriptList(),ids=list.map(x=>x.id);
+    if(!ids.includes(sn.id))return;
+    const mods=resolvedEditorModifiers(e),result=explorerSelection(ids,new Set(state.script.selectedNodeIds||[]),sn.id,state.script.selectionAnchorId,mods);
+    const nextIds=ids.filter(id=>result.selected.has(id));
+    const nextAnchor=result.anchorKey;
+    const nextPrimary=nextIds.includes(sn.id)?sn.id:(nextIds.at(-1)||sn.id);
+    const changed=String(state.script.selectedNodeId||'')!==String(nextPrimary||'')||JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(nextIds||[])||String(state.script.selectionAnchorId||'')!==String(nextAnchor||'');
+    if(changed)pushHistory('Select ScriptNodes');
+    state.script.selectedNodeIds=nextIds;state.script.selectionAnchorId=nextAnchor;state.script.selectedNodeId=nextPrimary;
   }
   function selectedScriptNodes(){const set=new Set(state.script.selectedNodeIds||[]);return scriptList().filter(x=>set.has(x.id));}
   function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
@@ -5395,7 +5595,7 @@
   function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
   function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];if(!con.some(c=>c.from===id||c.to===id))return;pushHistory('Disconnect ScriptNode');state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
   function defForScriptDoc(sn){return scriptNodeDefinition(sn?.defName)?.name||sn?.defName||'ScriptNode';}
-  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>duplicateScriptNodes()},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'? Documentation',icon:'',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
+  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>duplicateScriptNodes()},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'? Documentation',icon:'',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
   function applyScriptPanelState(){
     const layout=$('#scriptModal .script-layout'),left=$('#scriptModal .script-left'),right=$('#scriptInspector');
     if(!layout||!left||!right)return;
@@ -5470,7 +5670,7 @@
       const def=scriptNodes.find(x=>x.name===sn.defName);
       if(!def)return;
       const row=document.createElement('div');
-      row.className=`script-inspector-row${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}`;
+      row.className=`script-inspector-row script-group-${String(def.group||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}${state.script.selectedNodeIds?.includes(sn.id)?' selected':''}${state.script.selectedNodeIds?.length>1&&state.script.selectedNodeIds.includes(sn.id)?' multi-selected':''}`;
       const name=document.createElement('button');
       name.type='button';
       name.className='script-inspector-name';
@@ -5842,13 +6042,13 @@
     if(node&&component(node,'progressbar'))list['Progress Bar']=[{label:'Value',value:'ctx.progressBar.value'},{label:'Min',value:'ctx.progressBar.min'},{label:'Max',value:'ctx.progressBar.max'},{label:'Width',value:'ctx.progressBar.width'},{label:'Height',value:'ctx.progressBar.height'},{label:'Position X',value:'ctx.progressBar.position[0]'},{label:'Position Y',value:'ctx.progressBar.position[1]'}];
     return list;
   }
-  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const canvas=$('#scriptCanvas');const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y,historyPushed:false};card.setPointerCapture?.(e.pointerId);function move(ev){if(!start.historyPushed&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)>2){pushHistory('Move ScriptNode');start.historyPushed=true;}sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);});}
+  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y,historyPushed:false};card.setPointerCapture?.(e.pointerId);function move(ev){if(!start.historyPushed&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)>2){beginHistoryTransaction('Move ScriptNode');start.historyPushed=true;}sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){if(start.historyPushed)endHistoryTransaction();card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);card.releasePointerCapture?.(e.pointerId);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);card.addEventListener('pointercancel',end);});}
   function attachOutputDrag(port){
     port.addEventListener('pointerdown',e=>{
       e.stopPropagation();e.preventDefault();
       const svg=$('#scriptConnections'),canvas=$('#scriptCanvas');
-      const temp=document.createElementNS('http://www.w3.org/2000/svg','line');temp.setAttribute('class','temp-connection');svg.append(temp);
-      function move(ev){const a=port.getBoundingClientRect(),cr=canvas.getBoundingClientRect();temp.setAttribute('x1',a.left+a.width/2-cr.left);temp.setAttribute('y1',a.top+a.height/2-cr.top);temp.setAttribute('x2',ev.clientX-cr.left);temp.setAttribute('y2',ev.clientY-cr.top);}
+      const temp=document.createElementNS('http://www.w3.org/2000/svg','path');temp.setAttribute('class','temp-connection');svg.append(temp);
+      function move(ev){const a=port.getBoundingClientRect(),cr=canvas.getBoundingClientRect();const x1=a.left+a.width/2-cr.left,y1=a.top+a.height/2-cr.top,x2=ev.clientX-cr.left,y2=ev.clientY-cr.top;temp.setAttribute('d',scriptWirePath(x1,y1,x2,y2));}
       function up(ev){
         const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.script-input-port');
         const outputNode=port.closest('.script-node-card')?.dataset.scriptNodeId, outputId=port.dataset.outputId;
@@ -5867,7 +6067,60 @@
     });
   }
 
-  function renderScriptConnections(){const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';(state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{const from=$(`[data-script-node-id="${c.from}"] [data-output-id="${c.output}"]`,$('#scriptCanvas'));const to=$(`[data-script-node-id="${c.to}"] .script-input-port`,$('#scriptCanvas'));if(!from||!to)return;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),canvas=$('#scriptCanvas').getBoundingClientRect();const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',a.left+a.width/2-canvas.left);line.setAttribute('y1',a.top+a.height/2-canvas.top);line.setAttribute('x2',b.left+b.width/2-canvas.left);line.setAttribute('y2',b.top+b.height/2-canvas.top);line.setAttribute('class','script-connection');line.dataset.connectionIndex=index;line.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0){pushHistory('Disconnect ScriptNode');list.splice(i,1);}renderScriptConnections();});svg.append(line);});}
+  function scriptOutputColor(defName,outputId,descriptor=null){
+    if(descriptor&&descriptor.col)return String(descriptor.col);
+    const id=String(outputId||'').toLowerCase();
+    if(id==='truth')return '#3c9cff';
+    if(id==='falsy'||id==='false')return '#ff4d4d';
+    if(id==='success')return '#4cd97b';
+    if(id==='err'||id==='error')return '#ff9d45';
+    if((defName==='Interval'||defName==='Timeout')&&id==='out')return '#d56cff';
+    return '';
+  }
+  function scriptWirePath(x1,y1,x2,y2){
+    const dx=x2-x1,dy=y2-y1;
+    const dir=dx>=0?1:-1;
+    const lead=Math.max(14,Math.min(28,Math.abs(dx)*0.12));
+    const sx=x1+dir*lead;
+    const ex=x2-dir*lead;
+    const span=Math.max(24,Math.min(180,Math.abs(ex-sx)*0.5));
+    if(Math.abs(dy)<2 && dir>0){
+      return `M ${x1} ${y1} L ${sx} ${y1} L ${ex} ${y2} L ${x2} ${y2}`;
+    }
+    return `M ${x1} ${y1} L ${sx} ${y1} C ${sx+dir*span} ${y1}, ${ex-dir*span} ${y2}, ${ex} ${y2} L ${x2} ${y2}`;
+  }
+  function renderScriptConnections(){
+    const svg=$('#scriptConnections');if(!svg)return;svg.innerHTML='';
+    const canvasEl=$('#scriptCanvas');if(!canvasEl)return;
+    canvasEl.querySelectorAll('.script-input-port').forEach(port=>port.style.setProperty('--script-port-color','#8a8a8a'));
+    const canvas=canvasEl.getBoundingClientRect();
+    (state.script.connectionsByNode[state.script.nodeId]||[]).forEach((c,index)=>{
+      const fromCard=$(`[data-script-node-id="${c.from}"]`,canvasEl);
+      const from=fromCard?.querySelector(`.script-output-port[data-output-id="${CSS.escape(String(c.output||''))}"]`);
+      const toCard=$(`[data-script-node-id="${c.to}"]`,canvasEl);
+      const to=toCard?.querySelector('.script-input-port');
+      if(!from||!to)return;
+      const a=from.getBoundingClientRect(),b=to.getBoundingClientRect();
+      const x1=a.left+a.width/2-canvas.left,y1=a.top+a.height/2-canvas.top;
+      const x2=b.left+b.width/2-canvas.left,y2=b.top+b.height/2-canvas.top;
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d',scriptWirePath(x1,y1,x2,y2));
+      path.setAttribute('class','script-connection');
+      path.dataset.connectionIndex=index;
+      const defName=fromCard?.querySelector('.script-node-title')?.textContent||'';
+      const outDef=scriptNodeDefinition(defName)?.output?.find(o=>String(o?.id||'')===String(c.output||''));
+      const color=scriptOutputColor(defName,String(c.output||''),outDef);
+      if(color){
+        path.style.stroke=color;
+        path.dataset.semanticColor=color;
+        to.style.setProperty('--script-port-color',color);
+      }else{
+        to.style.setProperty('--script-port-color','#8a8a8a');
+      }
+      path.addEventListener('pointerdown',e=>{e.stopPropagation();const list=state.script.connectionsByNode[state.script.nodeId]||[];const i=list.indexOf(c);if(i>=0){pushHistory('Disconnect ScriptNode');list.splice(i,1);}renderScriptConnections();});
+      svg.append(path);
+    });
+  }
   function enableScriptCanvas(){
     enableScriptPanelControls();
     const canvas=$('#scriptCanvas'); let pan=null;const pointers=new Map();let pinch=null;
@@ -5912,7 +6165,7 @@
     };
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);canvas.addEventListener('pointerleave',()=>{});
     canvas.addEventListener('lostpointercapture',()=>resetScriptCanvasInteraction?.());
-    canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
+    canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
     canvas.addEventListener('wheel',e=>{e.preventDefault();const rect=canvas.getBoundingClientRect(),before=scriptClientToWorld(e.clientX,e.clientY),next=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);state.script.zoom=next;state.script.pan.x=e.clientX-rect.left-rect.width/2-before.x*next;state.script.pan.y=e.clientY-rect.top-rect.height/2-before.y*next;applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
     canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return;}addScriptNodeAt(def,e.clientX,e.clientY);});
@@ -6159,8 +6412,11 @@
   }
   function runtimeSceneVariables(sceneId=state.runtime.sceneId){ return state.runtime.sceneVariablesByScene?.[sceneId] || []; }
   function buildRuntimeBody(node){
+    normalizeNode(node);
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
-    const j=component(node,'joints'); return {node,relative:component(node,'node')?.relative==='Screen'?'Screen':'World',t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
+    const j=component(node,'joints');
+    const renderRadius=editorNodeCullRadius(node,1,1);
+    return {node,relative:component(node,'node')?.relative==='Screen'?'Screen':'World',t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node),renderRadius};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
@@ -6337,7 +6593,7 @@
   function collisionPolygonPolygon(A,B){const axes=[...polygonAxes(A.vertices),...polygonAxes(B.vertices)];let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pa=projectPolygon(A.vertices,axis),pb=projectPolygon(B.vertices,axis),over=Math.min(pa.max,pb.max)-Math.max(pa.min,pb.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const ca=polygonCenter(A.vertices),cb=polygonCenter(B.vertices);if(dotV(subV(cb,ca),best.normal)<0)best.normal=mulV(best.normal,-1);const n=best.normal,t=perpV(n);const paN=projectPolygon(A.vertices,n),pbN=projectPolygon(B.vertices,n);const ta=projectPolygon(A.vertices,t),tb=projectPolygon(B.vertices,t);const tMin=Math.max(ta.min,tb.min),tMax=Math.min(ta.max,tb.max);const tn=(paN.max+pbN.min)*0.5,tt=(tMin+tMax)*0.5;const point={x:n.x*tn+t.x*tt,y:n.y*tn+t.y*tt};return{normal:n,penetration:best.penetration,point};}
   function collisionCirclePolygon(circle,poly){const axes=polygonAxes(poly.vertices),cp=closestPolygonPoint(poly,{x:circle.x,y:circle.y});if(cp.point){const diff=subV(cp.point,{x:circle.x,y:circle.y}),d=lenV(diff);if(d>1e-7)axes.push(mulV(diff,1/d));}let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pc=projectCircle(circle,axis),pp=projectPolygon(poly.vertices,axis),over=Math.min(pc.max,pp.max)-Math.max(pc.min,pp.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const toward=cp.point?subV(cp.point,{x:circle.x,y:circle.y}):subV(polygonCenter(poly.vertices),{x:circle.x,y:circle.y});if(lenV(toward)>1e-7&&dotV(toward,best.normal)<0)best.normal=mulV(best.normal,-1);const circleContact={x:circle.x+best.normal.x*circle.radius,y:circle.y+best.normal.y*circle.radius};const polyContact=cp.point||supportPoint(poly,mulV(best.normal,-1));return{normal:best.normal,penetration:best.penetration,point:mulV(addV(circleContact,polyContact),.5)};}
   function collideShapes(A,B){if(!A||!B)return null;if(A.type==='Circle'&&B.type==='Circle')return collisionCircleCircle(A,B);if(A.type==='Circle'&&B.type!=='Circle')return collisionCirclePolygon(A,B);if(A.type!=='Circle'&&B.type==='Circle'){const hit=collisionCirclePolygon(B,A);if(!hit)return null;return{normal:mulV(hit.normal,-1),penetration:hit.penetration,point:hit.point};}return collisionPolygonPolygon(A,B);}
-  function bodyMassProperties(body,shape){const p=body.physics?.body;if(p!=='Dynamic')return{mass:Infinity,invMass:0,inertia:Infinity,invInertia:0};let area=1,inertiaFactor=1;if(shape.type==='Circle'){area=Math.PI*shape.radius*shape.radius;inertiaFactor=.5*shape.radius*shape.radius;}else if(shape.type==='Triangle'){area=Math.max(.01,.5*shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/24;}else{area=Math.max(.01,shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/12;}const mass=Math.max(.01,Number(body.physics?.mass)||area/1000),inertia=mass*inertiaFactor;return{mass,invMass:1/mass,inertia,invInertia:body.physics?.fixedRotation?0:1/Math.max(.0001,inertia)};}
+  function bodyMassProperties(body,shape){const p=body.physics?.body;if(p!=='Dynamic')return{mass:Infinity,invMass:0,inertia:Infinity,invInertia:0};const raw=Number(body.physics?.mass);let area=1,inertiaFactor=1;if(shape.type==='Circle'){area=Math.PI*shape.radius*shape.radius;inertiaFactor=.5*shape.radius*shape.radius;}else if(shape.type==='Triangle'){area=Math.max(.01,.5*shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/24;}else{area=Math.max(.01,shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/12;}const mass=Number.isFinite(raw)&&raw>0?raw:Math.max(.001,area/1000);const inertia=Math.max(1e-6,mass*inertiaFactor);return{mass,invMass:1/mass,inertia,invInertia:body.physics?.fixedRotation?0:1/inertia};}
   function torqueScreen(r,f){return-crossV(r,f);}
   function contactState(A,B,hit){const As=runtimeColliderShape(A),Bs=runtimeColliderShape(B);if(!As||!Bs)return null;const ap=bodyMassProperties(A,As),bp=bodyMassProperties(B,Bs);if(ap.invMass===0&&bp.invMass===0)return null;const ac=A.t?.position||[0,0],bc=B.t?.position||[0,0],ra=subV(hit.point,{x:Number(ac[0])||0,y:Number(ac[1])||0}),rb=subV(hit.point,{x:Number(bc[0])||0,y:Number(bc[1])||0});return{A,B,hit,ra,rb,n:normV(hit.normal),ap,bp,friction:Math.sqrt(Math.max(0,Number(A.physics?.friction)||0)*Math.max(0,Number(B.physics?.friction)||0)),restitution:clamp(Math.max(Number(A.physics?.bounciness)||0,Number(B.physics?.bounciness)||0),0,1),normalImpulse:0,tangentImpulse:0};}
   function pointVelocity(body,r){return addV({x:Number(body.vx)||0,y:Number(body.vy)||0},crossSV(Number(body.omega)||0,r));}
@@ -6384,14 +6640,14 @@
     }
   }
   function solvePositionContacts(contacts){for(let iter=0;iter<6;iter++){let changed=false;for(const c of contacts){const fresh=collideShapes(runtimeColliderShape(c.A),runtimeColliderShape(c.B));if(!fresh)continue;c.hit=fresh;c.n=normV(fresh.normal);const total=c.ap.invMass+c.bp.invMass;if(total<=0)continue;const correction=Math.min(1.0,Math.max(fresh.penetration-0.25,0)*0.22);if(correction<=0)continue;const move=mulV(c.n,correction/total);if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;}if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}changed=true;}if(!changed)break;}}
-  function updateRuntimeCollisions(dt=1/120){const bodies=state.runtime.bodies||[];bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if(!(bodies[i].physics?.isCollider===true&&bodies[j].physics?.isCollider===true))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
+  function updateRuntimeCollisions(dt=1/120){const bodies=(state.runtime.bodies||[]).filter(b=>runtimeNodeVisible(b?.node));bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if((bodies[i].physics?.isCollider===false)||(bodies[j].physics?.isCollider===false))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
   function runtimeIsCollided(aNode,targetLabel){
     const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
   }
-  function drawRuntimeColliders(ctx){if(!state.runtime.debug||getEditorSettings().showCollider===false)return;for(const b of state.runtime.bodies||[]){const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
+  function drawRuntimeColliders(ctx){if(!state.runtime.debug||getEditorSettings().showCollider===false)return;for(const b of state.runtime.bodies||[]){if(!runtimeNodeVisible(b?.node))continue;const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
   function runtimeFindFolderByLabel(label){return state.runtime?.shared?.folderByLabel?.get(String(label||''))||null;}
   function runtimeFolderColliderBodies(label,bodyById=null){
-    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];const map=bodyById||state.runtime.bodyById,ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=map?.get(item.id);if(body?.collider?.collidable!==false&&body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
+    const folder=runtimeFindFolderByLabel(label);if(!folder)return [];const map=bodyById||state.runtime.bodyById,ids=[];const walk=items=>{for(const item of (Array.isArray(items)?items:[])){if(item.type==='node'){const body=map?.get(item.id);if(runtimeNodeVisible(item)&&body?.collider?.collidable!==false&&body?.collider)ids.push(body);}else if(item.type==='folder')walk(item.children);}};walk(folder.children);return ids;
   }
   function runtimeBodyRadius(body){const g=runtimeColliderShape(body);if(!g)return 0;const a=shapeAABB(g);return Math.max(a.w,a.h)*.5;}
   function pointInPolygon(p,vertices){
@@ -6479,9 +6735,19 @@
     if(runtimePathBlocked(pos,waypoint,obstacles,Math.max(2,bodyRadius+3))){ai.path=null;ai.lastPlanAt=now;return{x:0,y:0,face:null};}
     const dir=normV(subV(waypoint,pos));return{x:dir.x*speed,y:dir.y*speed,face:dir};
   }
+  function runtimeApproachVelocity(body,desired,dt,maxAccel){
+    const cvx=Number(body.vx)||0,cvy=Number(body.vy)||0,dx=desired.x-cvx,dy=desired.y-cvy,d=Math.hypot(dx,dy);if(d<1e-6)return{x:desired.x,y:desired.y};
+    const step=Math.min(d,Math.max(1,maxAccel)*Math.max(0,dt));return{x:cvx+dx*(step/d),y:cvy+dy*(step/d)};
+  }
+  function runtimeAngleApproach(body,face,dt){
+    if(body.physics?.fixedRotation){body.omega=0;return;}
+    if(!face||(!face.x&&!face.y))return;
+    const targetDeg=Math.atan2(face.y,face.x)*180/Math.PI,currentDeg=Number(body.t?.angle?.[0])||0,delta=((targetDeg-currentDeg+540)%360)-180;
+    const maxTurn=720,turnAccel=2400,desiredOmega=clamp(delta/Math.max(0.06,dt),-maxTurn,maxTurn),omega=Number(body.omega)||0,od=desiredOmega-omega,step=Math.min(Math.abs(od),turnAccel*Math.max(0,dt));body.omega=omega+(od<0?-step:step);
+  }
   function updateRuntimeMovementControllers(dt){
     const bodyById=state.runtime.bodyById||new Map();
-    Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);if(d<=Math.max(1,speed*dt)){owner.vx=0;owner.vy=0;}else{const k=speed/d;owner.vx=dx*k;owner.vy=dy*k;}if(!owner.physics.fixedRotation&&d>1e-6)owner.t.angle[0]=Math.atan2(dy,dx)*180/Math.PI;});
+    Object.entries(state.runtime.followTargets||{}).forEach(([ownerId,info])=>{const owner=bodyById.get(ownerId),target=bodyById.get(info?.targetId);if(!owner||!target||!runtimeNodeVisible(owner.node)||!runtimeNodeVisible(target.node)||!owner.physics)return;const speed=Math.max(0,Number(info.speed)||0),dx=(Number(target.t?.position?.[0])||0)-(Number(owner.t?.position?.[0])||0),dy=(Number(target.t?.position?.[1])||0)-(Number(owner.t?.position?.[1])||0),d=Math.hypot(dx,dy);const desired=d<=Math.max(2,speed*dt)?{x:0,y:0}:{x:dx/d*speed,y:dy/d*speed};const accel=Math.max(120,speed*8);const v=runtimeApproachVelocity(owner,desired,dt,accel);owner.vx=v.x;owner.vy=v.y;if(d>1e-6)runtimeAngleApproach(owner,{x:dx,y:dy},dt);else if(owner.physics.fixedRotation)owner.omega=0;});
     Object.entries(state.runtime.aiTargets||{}).forEach(([ownerId,ai])=>{const owner=bodyById.get(ownerId);if(!owner||!owner.physics)return;const steer=runtimeSteeringForAI(owner,ai,dt,bodyById);if(!steer)return;owner.vx=steer.x;owner.vy=steer.y;if(!owner.physics.fixedRotation&&steer.face)owner.t.angle[0]=Math.atan2(steer.face.y,steer.face.x)*180/Math.PI;});
   }
   function runtimeLocalVariablesForScene(scene){
@@ -6603,14 +6869,16 @@
     updateRuntimeAnimations(dt);
     processRuntimeSpawnQueue(16);
     updateRuntimeParticles(dt);
-    const physicsCount=state.runtime.physicsBodies?.length||0;
+    const activePhysics=(state.runtime.physicsBodies||[]).filter(body=>runtimeNodeVisible(body?.node));
+    const activeJoints=(state.runtime.joints||[]).filter(j=>runtimeNodeVisible(j?.bodyA?.node)&&runtimeNodeVisible(j?.bodyB?.node));
+    const physicsCount=activePhysics.length;
     const touchDevice=('ontouchstart' in window)||Number(navigator.maxTouchPoints||0)>0;
     const lowPower=Number(navigator.hardwareConcurrency||8)<=4;
     const substeps=touchDevice?(lowPower?1:Math.min(2,physicsCount>40?1:2)):(physicsCount>40?1:2);
     const subDt=dt/substeps;
     for(let sub=0;sub<substeps;sub++){
       updateRuntimeMovementControllers(subDt);
-      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(state.runtime.physicsBodies||[],subDt,pairs=>queueRuntimeCollisionPairs(pairs),state.runtime.joints||[]);
+      if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(activePhysics,subDt,pairs=>queueRuntimeCollisionPairs(pairs),activeJoints);
       else queueRuntimeCollisionPairs(updateRuntimeCollisions(subDt));
     }
     flushRuntimeCollisionEvents();processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
@@ -7314,7 +7582,7 @@ function updateRuntimeAnimations(dt){
     const rt=state.runtime;if(!rt?.running)return;
     const seconds=Math.max(0,Number(dt)||0);
     for(const body of rt.bodies||[]){
-      const node=body?.node;if(!node||!rt.animationStates?.[node.id])continue;
+      const node=body?.node;if(!node||!runtimeNodeVisible(node)||!rt.animationStates?.[node.id])continue;
       const info=runtimeEnsureAnimationState(node,true);if(!info||!info.state.playing)continue;
       const fps=Math.max(1,Number(info.animation.fps)||8),len=info.frames.length;
       info.state.accumulator+=seconds*fps;
@@ -7349,7 +7617,7 @@ function updateRuntimeAnimations(dt){
     const x=values?.PosX===null||values?.PosX===undefined?baseX:Number(values.PosX)||0;
     const y=values?.PosY===null||values?.PosY===undefined?baseY:Number(values.PosY)||0;
     for(let i=0;i<count;i++){
-      const p={x,y,px:x,py:y,sx:Number.isFinite(scaleX)?scaleX:1,sy:Number.isFinite(scaleY)?scaleY:1,vx:Number(values?.VelocityX)||0,vy:Number(values?.VelocityY)||0,ax:Number(values?.AccelerationX)||0,ay:Number(values?.AccelerationY)||0,angle:Number(values?.Angle)||0,type,src,color,opacity,age:0,lifetime};
+      const p={x,y,px:x,py:y,sx:Number.isFinite(scaleX)?scaleX:1,sy:Number.isFinite(scaleY)?scaleY:1,vx:Number(values?.VelocityX)||0,vy:Number(values?.VelocityY)||0,ax:Number(values?.AccelerationX)||0,ay:Number(values?.AccelerationY)||0,angle:Number(values?.Angle)||0,type,src,color,opacity,age:0,lifetime,emitterNodeId:node?.id||null};
       if(type==='Trail')p.trailPoints=[{x,y}];
       particleArray.push(p);
     }
@@ -7373,6 +7641,7 @@ function updateRuntimeAnimations(dt){
   function drawRuntimeParticles(ctx,cam,halfWorldX,halfWorldY){
     const particles=state.runtime?.particles;if(!Array.isArray(particles)||!particles.length)return;
     for(const p of particles){
+      if(p?.emitterNodeId){const emitter=state.runtime?.nodeById?.get?.(p.emitterNodeId);if(emitter&&!runtimeNodeVisible(emitter))continue;}
       const points=p.type==='Trail'?p.trailPoints:null;
       const anchorX=Number(p.x)||0,anchorY=Number(p.y)||0;
       if(Math.abs(anchorX-(Number(cam?.x)||0))>halfWorldX+64||Math.abs(anchorY-(Number(cam?.y)||0))>halfWorldY+64)continue;
@@ -7439,7 +7708,7 @@ function updateRuntimeAnimations(dt){
     return !!c;
   }
   function runtimeSetComponent(node,type,mutator){
-    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics')body.physics=clone(c);if(type==='collider')body.collider=clone(c);if(type==='joints'){body.joints=clone(c);runtimeRebuildCaches();}if(['sprite','text','input','progressbar','animationsprite'].includes(type))body._renderCache=null;body._shapeDirty=true;body._massDirty=true;const inList=state.runtime.physicsBodies.includes(body),jointed=Array.isArray(state.runtime.joints)&&state.runtime.joints.some(j=>j.bodyA===body||j.bodyB===body),should=!!body.physics||!!body.collider||jointed;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
+    if(!node)return null;let c=component(node,type);if(!c){try{c=createComponent(type);node.components.push(c);}catch{return null;}}mutator(c);normalizeNode(node);const body=state.runtime.bodyById?.get(node.id);if(body){if(type==='physics'){body.physics=clone(c);body._massCache=null;body._massKey='';}if(type==='collider')body.collider=clone(c);if(type==='joints'){body.joints=clone(c);runtimeRebuildCaches();}if(['sprite','text','input','progressbar','animationsprite'].includes(type))body._renderCache=null;body._shapeDirty=true;body._massDirty=true;const inList=state.runtime.physicsBodies.includes(body),jointed=Array.isArray(state.runtime.joints)&&state.runtime.joints.some(j=>j.bodyA===body||j.bodyB===body),should=!!body.physics||!!body.collider||jointed;if(should&&!inList)state.runtime.physicsBodies.push(body);if(!should&&inList)state.runtime.physicsBodies.splice(state.runtime.physicsBodies.indexOf(body),1);}return c;
   }
   async function prepareRuntimeMic(){
     ensureGameSettings();
@@ -7810,7 +8079,7 @@ function updateRuntimeAnimations(dt){
     for(const t of due){
       if(t.kind==='timeout'){
         const frame=rt.frameCounter||0,stillSignaled=!t.cancellable||t.inputFrame===frame||rt.scriptById.get(t.key)?._lastInputFrame===frame;
-        if(now>=t.at){if(stillSignaled){const sn=rt.scriptById.get(t.key);if(sn){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}}
+        if(now>=t.at){if(stillSignaled){const sn=rt.scriptById.get(t.key);const node=sn?.nodeId?rt.nodeById.get(sn.nodeId):null;if(sn&&(!node||runtimeNodeVisible(node))){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');}}}
         else if(!t.cancellable||stillSignaled)rt.timers.push(t);
       }
     }
@@ -7818,6 +8087,7 @@ function updateRuntimeAnimations(dt){
       if(!st.active||now<st.next)continue;
       const sn=rt.scriptById.get(id),node=rt.nodeById.get(st.nodeId);
       if(!sn||!node){delete rt.intervalStates[id];continue;}
+      if(!runtimeNodeVisible(node)){st.active=false;continue;}
       const frame=rt.frameCounter||0;
       if(st.cancellable&&st.lastInputFrame!==frame){st.active=false;continue;}
       if(st.cancellable&&!st.fired){routeRuntimeOutput(sn,'next');routeRuntimeOutput(sn,'out');st.fired=true;st.active=false;continue;}
@@ -7871,6 +8141,7 @@ function updateRuntimeAnimations(dt){
     for(let i=0;i<items.length;i++){
       const item=items[i];
       const node=item.node,sn=item.sn,comp=item.compiled||rt.compiledScriptById?.get(sn?.id),def=comp?.def||scriptNodeDefinition(sn?.defName);
+      if(!runtimeNodeVisible(node))continue;
       if(targetNodeId&&node.id!==targetNodeId)continue;
       if(!def||def.receiver)continue;
       const filter=comp?.eventFilter;
@@ -7983,7 +8254,7 @@ function updateRuntimeAnimations(dt){
   function runtimeNodeAtPoint(x,y){
     const ctx=$('#runtimeCanvas')?.getContext?.('2d');
     for(const {node} of runtimeAllNodes().slice().reverse()){
-      if(node.type!=='node'||nodeRelativeMode(node)==='Screen')continue;
+      if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)==='Screen')continue;
       const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
       const nx=Number(t.position?.[0]||0),ny=Number(t.position?.[1]||0);
       let dx=x-nx,dy=y-ny;
@@ -8001,10 +8272,10 @@ function updateRuntimeAnimations(dt){
     }
     return null;
   }
-  function runtimeScreenNodeAtPoint(x,y){const ctx=$('#runtimeCanvas')?.getContext?.('2d');for(const {node} of runtimeAllNodes().slice().reverse()){if(node.type!=='node'||nodeRelativeMode(node)!=='Screen')continue;const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));dx/=sx;dy/=sy;const geo=spriteLocalGeometry(node);if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}const input=component(node,'input');if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}let size={w:90,h:54};const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;}return null;}
+  function runtimeScreenNodeAtPoint(x,y){const ctx=$('#runtimeCanvas')?.getContext?.('2d');for(const {node} of runtimeAllNodes().slice().reverse()){if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)!=='Screen')continue;const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));dx/=sx;dy/=sy;const geo=spriteLocalGeometry(node);if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}const input=component(node,'input');if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}let size={w:90,h:54};const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;}return null;}
   function runtimeInputNodeAtPoint(x,y){
     for(const {node} of runtimeAllNodes().slice().reverse()){
-      if(node.type!=='node'||nodeRelativeMode(node)==='Screen')continue;
+      if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)==='Screen')continue;
       const input=component(node,'input');
       if(!input)continue;
       const t=component(node,'transform')||{};
@@ -8374,8 +8645,11 @@ function updateRuntimeAnimations(dt){
       runtimeSortRenderBodies();
       const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));
       for(const b of renderBodies){
-        const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;
-        if(Math.abs(x-(Number(source.x)||0))>viewW/2+r||Math.abs(y-(Number(source.y)||0))>viewH/2+r)continue;
+        if(!runtimeNodeVisible(b?.node))continue;
+        if(component(b?.node,'canvas'))continue;
+        const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,liveRadius=b.node?editorNodeCullRadius(b.node,1,1):0,r=Math.max(1,Number(b.renderRadius)||128,Number(liveRadius)||0)*Math.max(Math.abs(Number(b.t?.scale?.[0])||1),Math.abs(Number(b.t?.scale?.[1])||1));
+        const viewRadius=Math.hypot(viewW/2,viewH/2);
+        if(Math.hypot(x-(Number(source.x)||0),y-(Number(source.y)||0))>viewRadius+r)continue;
         let cacheEntry=b._renderCache;if(!cacheEntry&&!runtimeNodeIsAnimated(b.node)){cacheEntry=runtimeBuildStaticVisualCache(b);b._renderCache=cacheEntry;}
         if(cacheEntry){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cacheEntry.canvas,cacheEntry.x,cacheEntry.y);ctx.restore();}
         else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);
@@ -8399,7 +8673,7 @@ function updateRuntimeAnimations(dt){
     const zoom=Math.max(.01,Number(state.runtime.camera?.scale)||1);
     for(const j of (state.runtime.joints||[])){
       const owner=j.bodyA,target=j.bodyB,def=j.def||{};
-      if(!owner||!target)continue;
+      if(!owner||!target||!runtimeNodeVisible(owner.node)||!runtimeNodeVisible(target.node))continue;
       const aLocal=def.type==='Revolute'?(def.parent||[0,0]):(def.anchorA||[0,0]);
       const bLocal=def.type==='Revolute'?(def.child||[0,0]):(def.anchorB||[0,0]);
       const a=runtimeJointWorldAnchor(owner,aLocal),b=runtimeJointWorldAnchor(target,bLocal);
@@ -8454,8 +8728,8 @@ function updateRuntimeAnimations(dt){
     }
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
-    runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
-    for(const b of renderBodies){if(b.relative==='Screen')continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
+    runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom),viewRadius=Math.hypot(halfWorldX,halfWorldY);
+    for(const b of renderBodies){if(b.relative==='Screen'||!runtimeNodeVisible(b?.node)||component(b?.node,'canvas'))continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,liveRadius=b.node?editorNodeCullRadius(b.node,1,1):0,r=Math.max(1,Number(b.renderRadius)||128,Number(liveRadius)||0)*Math.max(Math.abs(Number(b.t?.scale?.[0])||1),Math.abs(Number(b.t?.scale?.[1])||1));if(Math.hypot(x-Number(cam.x||0),y-Number(cam.y||0))>viewRadius+r)continue;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     drawRuntimeParticles(ctx,cam,halfWorldX,halfWorldY);
     drawRuntimeColliders(ctx);
     drawRuntimeJoints(ctx);
@@ -8464,7 +8738,7 @@ function updateRuntimeAnimations(dt){
     ctx.save();
     if(m.type==='Windowboxing'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Stretch'){ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Crop'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else{ctx.scale(m.scaleX,m.scaleY);}
     ctx.translate(m.viewW/2,m.viewH/2);
-    for(const b of renderBodies){if(b.relative!=='Screen')continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
+    for(const b of renderBodies){if(b.relative!=='Screen'||!runtimeNodeVisible(b?.node)||component(b?.node,'canvas'))continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     ctx.restore();
 
     // Screen-space UI uses the logical screen box. Smart Camera expands/contracts
@@ -8560,7 +8834,12 @@ function updateRuntimeAnimations(dt){
       case 'replace': if(!$('#expressionModal')?.hidden) openExpressionReplace(); return;
       case 'contextMenu': { const n=selectedNode(); if(n){ const c=$('#workplaceCanvas')?.getBoundingClientRect(); mainNodeContextMenu(n,c?c.left+c.width/2:20,c?c.top+c.height/2:20); } return; }
       case 'delete': deleteSelectedNodes(); return;
-      case 'selectAll': { const ids=allNodes().map(x=>x.node.id);state.selectedIds=ids;state.selectedId=ids.at(-1)||'scene-camera';state.selectionAnchorId=state.selectedId;renderAll();return; }
+      case 'mode-select': setMode('select'); return;
+      case 'mode-move': setMode('move'); return;
+      case 'mode-rotate': setMode('rotate'); return;
+      case 'mode-scale': setMode('scale'); return;
+      case 'mode-transform': setMode('transform'); return;
+      case 'selectAll': { const ids=allNodes().map(x=>x.node.id);if(JSON.stringify(state.selectedIds||[])!==JSON.stringify(ids))pushHistory('Select All Nodes');state.selectedIds=ids;state.selectedId=ids.at(-1)||'scene-camera';state.selectionAnchorId=state.selectedId;renderAll();return; }
       case 'deselectAll': clearNodeSelection();renderAll();return;
       case 'undo': undo(); return;
       case 'redo': redo(); return;
@@ -8586,8 +8865,8 @@ function updateRuntimeAnimations(dt){
   window.UIXKeyBinds?.registerHandler('script',(command,data)=>{
     switch(command){
       case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':pasteScriptNodes();break;case 'duplicate':duplicateScriptNodes();break;
-      case 'delete':requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id));break;case 'selectAll':state.script.selectedNodeIds=scriptList().map(x=>x.id);state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();break;
-      case 'deselectAll':state.script.selectedNodeIds=[];state.script.selectedNodeId=null;renderScriptCanvas();break;case 'contextMenu':{const sn=selectedScriptNodes().at(-1);if(sn){const el=document.querySelector(`.script-node-card[data-script-id="${sn.id}"]`);const r=el?.getBoundingClientRect();scriptContextMenu(sn,r?r.left+r.width/2:20,r?r.top+r.height/2:20);}break;}case 'undo':undo();break;case 'redo':redo();break;case 'snap':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn) snapScriptToNode(sn);}break;
+      case 'delete':requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id));break;case 'selectAll':{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();break;}
+      case 'deselectAll':if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();break;case 'contextMenu':{const sn=selectedScriptNodes().at(-1);if(sn){const el=document.querySelector(`.script-node-card[data-script-id="${sn.id}"]`);const r=el?.getBoundingClientRect();scriptContextMenu(sn,r?r.left+r.width/2:20,r?r.top+r.height/2:20);}break;}case 'undo':undo();break;case 'redo':redo();break;case 'snap':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn) snapScriptToNode(sn);}break;
       case 'frame':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn)snapScriptToNode(sn);}break;case 'next':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)+1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'previous':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)-1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'escape':closeModal($('#scriptModal'));break;
       case 'zoomIn':state.script.zoom=clamp(state.script.zoom*1.1,.25,3);applyScriptTransform();break;case 'zoomOut':state.script.zoom=clamp(state.script.zoom*.9,.25,3);applyScriptTransform();break;case 'resetZoom':state.script.zoom=1;applyScriptTransform();break;
     }

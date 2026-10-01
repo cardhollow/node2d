@@ -4,7 +4,7 @@
   const PI = Math.PI;
   const EPS = 1e-9;
   const DEG = PI / 180;
-  const ENGINE_BUILD_VERSION = '40.0.0';
+  const ENGINE_BUILD_VERSION = '40.0.11';
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const add = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
@@ -169,14 +169,14 @@
 
   function massProps(body,shape){
     if(body.physics?.body!=='Dynamic')return{invMass:0,invInertia:0};
-    const explicitMass=Math.max(0,Number(body.physics?.mass)||0);const key=`${shape.type}|${shape.w}|${shape.h}|${shape.radius||0}|${body.physics.fixedRotation?'1':'0'}|${explicitMass}`;
+    const rawMass=Number(body.physics?.mass);const explicitMass=Number.isFinite(rawMass)&&rawMass>0?rawMass:0;const key=`${shape.type}|${shape.w}|${shape.h}|${shape.radius||0}|${body.physics.fixedRotation?'1':'0'}|${explicitMass}`;
     if(body._massKey===key&&body._massCache)return body._massCache;
     let mass, inertia;
     if(explicitMass>0){mass=explicitMass;inertia=mass*(shape.type==='Circle'?0.5*shape.radius*shape.radius:shape.type==='Triangle'?(shape.w*shape.w+shape.h*shape.h)/24:(shape.w*shape.w+shape.h*shape.h)/12);}
     else if(shape.type==='Circle'){mass=Math.PI*shape.radius*shape.radius*.001;inertia=.5*mass*shape.radius*shape.radius;}
     else if(shape.type==='Triangle'){mass=Math.max(.001,.5*shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/24;}
     else{mass=Math.max(.001,shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/12;}
-    const out={invMass:1/mass,invInertia:body.physics?.fixedRotation?0:1/Math.max(inertia,.0001)};body._massKey=key;body._massCache=out;return out;
+    const safeMass=Math.max(.000001,mass);const safeInertia=Math.max(.0001,inertia);const out={mass:safeMass,invMass:1/safeMass,inertia:safeInertia,invInertia:body.physics?.fixedRotation?0:1/safeInertia};body._massKey=key;body._massCache=out;return out;
   }
   function pointVelocity(body,r){return add({x:Number(body.vx)||0,y:Number(body.vy)||0},crossSV(Number(body.omega)||0,r));}
   function applyImpulse(body,imp,r,sign,props){if(props.invMass===0)return;body.vx=(Number(body.vx)||0)+imp.x*props.invMass*sign;body.vy=(Number(body.vy)||0)+imp.y*props.invMass*sign;body.omega=(Number(body.omega)||0)+cross(r,imp)*props.invInertia*sign;}

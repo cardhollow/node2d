@@ -27,7 +27,7 @@
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
-      body: 'Static', gravity: 980, friction: 0.5, bounciness: 0, fixedRotation: false, isCollider: false, mass: 0
+      body: 'Static', gravity: 980, friction: 0.5, bounciness: 0, fixedRotation: false, isCollider: true, mass: 1
     },
     collider: {
       default: false, removable: true,
@@ -102,7 +102,12 @@
         component.visible = component.visible !== false;
         component.relative = component.relative === 'Screen' ? 'Screen' : 'World';
       }
-      if (component.type === 'physics') component.mass = Math.max(0, Number(component.mass) || 0);
+      if (component.type === 'physics') {
+        if (!Object.prototype.hasOwnProperty.call(component, 'mass')) component.mass = 1;
+        if (!Object.prototype.hasOwnProperty.call(component, 'isCollider')) component.isCollider = true;
+        const mass = Number(component.mass);
+        component.mass = Number.isFinite(mass) ? Math.max(0, mass) : 1;
+      }
       if (component.type === 'sprite') {
         component.sourceType = component.sourceType || 'Sprite';
         component.animation = component.animation || '';

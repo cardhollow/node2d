@@ -204,11 +204,23 @@
     {name:'stopAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.stopAudio?.();return {out:true};}},
     {name:'clearAudio',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.clearAudio?.();return {out:true};}},
     {name:'Boolean',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Value',type:'bool',value:true}],func:(ctx,v)=>({next:true,truth:!!v.Value,falsy:!v.Value})},
-    {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
-    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
+    {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out',col:'#d56cff'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
+    {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out',col:'#d56cff'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
     {name:'isVisible',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[],func:ctx=>{const yes=!!ctx.isVisible?.();return {next:true,truth:yes,falsy:!yes};}},
     {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,!!(v.applyByName??v['Apply By Name']));return {next:true,truth:yes,falsy:!yes};}}
   ];
+  const SCRIPT_OUTPUT_DEFAULT_COLORS={truth:'#3c9cff',falsy:'#ff4d4d',false:'#ff4d4d',success:'#4cd97b',err:'#ff9d45',error:'#ff9d45'};
+  scriptNodes.forEach(def=>{
+    if(!Array.isArray(def.output))return;
+    def.output.forEach(out=>{
+      const id=String(out?.id||'').toLowerCase();
+      if((def.name==='Interval'||def.name==='Timeout')){
+        if(id==='out')out.col='#d56cff';
+        return;
+      }
+      if(!out.col&&SCRIPT_OUTPUT_DEFAULT_COLORS[id])out.col=SCRIPT_OUTPUT_DEFAULT_COLORS[id];
+    });
+  });
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
   const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
