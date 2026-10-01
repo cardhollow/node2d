@@ -3,7 +3,7 @@
 
   // Change the definitions here to change how newly-created nodes are built.
   const NodeSettings = {
-    node: { default: true, removable: false, index: null, locked: false, visible: true },
+    node: { default: true, removable: false, index: null, locked: false, visible: true, relative: 'World' },
     script: { default: true, removable: false, name: 'Script' },
     transform: {
       default: true, removable: false,
@@ -27,7 +27,7 @@
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
-      body: 'Static', gravity: 980, friction: 0.5, bounciness: 0, fixedRotation: false, isCollider: false
+      body: 'Static', gravity: 980, friction: 0.5, bounciness: 0, fixedRotation: false, isCollider: false, mass: 0
     },
     collider: {
       default: false, removable: true,
@@ -100,7 +100,9 @@
         component.index = Number.isFinite(Number(component.index)) ? Math.max(0, Math.floor(Number(component.index))) : null;
         component.locked = !!component.locked;
         component.visible = component.visible !== false;
+        component.relative = component.relative === 'Screen' ? 'Screen' : 'World';
       }
+      if (component.type === 'physics') component.mass = Math.max(0, Number(component.mass) || 0);
       if (component.type === 'sprite') {
         component.sourceType = component.sourceType || 'Sprite';
         component.animation = component.animation || '';

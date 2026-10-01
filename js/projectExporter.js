@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const ENGINE_BUILD_VERSION='31.0.9';
+  const ENGINE_BUILD_VERSION='40.0.0';
   const te=new TextEncoder();
   const safeName=s=>String(s||'project').trim().replace(/[^a-z0-9._-]+/gi,'_')||'project';
   const u16=v=>[v&255,(v>>>8)&255];

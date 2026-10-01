@@ -5,6 +5,7 @@
     joystick: {
       name: 'Joystick',
       variable: 'joystick',
+      debug: false,
       bgColor: '#333333CC',
       knobColor: '#FFFFFFFF',
       size: [110, 110],

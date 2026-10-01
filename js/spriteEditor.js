@@ -220,7 +220,7 @@
           <section class="sprite-inspector-section">
             <div class="sprite-frames-heading"><strong>Frames</strong><span data-frame-count>1</span></div>
             <div class="sprite-frame-list" data-frame-list></div>
-            <div class="sprite-frame-actions"><button class="btn" data-frame-action="copy" type="button">${glyph('copy')}Copy</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Sprite(s)</button><button class="btn" data-frame-action="import" type="button">＋ Import Sprite</button></div>
+            <div class="sprite-frame-actions"><button class="btn" data-frame-action="copy" type="button">${glyph('copy')}Copy</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Frame</button><button class="btn" data-frame-action="import" type="button">＋ Import Sprite</button></div>
             <div class="sprite-play-row"><button class="btn" data-frame-action="prev" type="button" aria-label="Previous frame">${glyph('prev')}</button><button class="btn" data-frame-action="play" type="button">${glyph('play')}Play</button><button class="btn" data-frame-action="next" type="button" aria-label="Next frame">${glyph('next')}</button><label><span>FPS</span><input data-sprite-fps type="number" min="1" max="120" value="8"></label></div>
             <div class="sprite-frame-hint">Drag frames to reorder. Frames are saved as separate PNG files.</div>
           </section>
@@ -580,7 +580,12 @@
 
   function frameAction(ed,a){
     if(a==='copy'){const f=currentFrame(ed);const copy={name:f.name,width:f.width,height:f.height,pixels:clonePixels(f.pixels),sourceAsset:null};ed.frames.splice(ed.frameIndex+1,0,copy);ed.frameIndex++;ed.undo=[];ed.redo=[];return render(ed);}
-    if(a==='add'){return openSpriteImport(ed,true);}
+    if(a==='add'){
+      const f=currentFrame(ed);if(!f)return;
+      pushUndo(ed);const w=Math.max(1,Number(f.width)||1),h=Math.max(1,Number(f.height)||1);
+      ed.frames.splice(ed.frameIndex+1,0,{name:`Frame ${ed.frames.length+1}`,width:w,height:h,pixels:makePixels(w,h),sourceAsset:null});
+      ed.frameIndex++;ed.redo=[];return render(ed);
+    }
     if(a==='import'){return openSpriteImport(ed,false);}
     if(a==='prev')return selectFrame(ed,ed.frameIndex-1<0?ed.frames.length-1:ed.frameIndex-1);
     if(a==='next')return selectFrame(ed,(ed.frameIndex+1)%ed.frames.length);

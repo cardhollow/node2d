@@ -786,7 +786,7 @@
       acts.append(fold,del); header.append(title,acts); card.append(header);
       const content=document.createElement('div'); content.className='component-body'; const collapsed=!!state.ui.componentCollapsed[key]; content.classList.toggle('hidden',collapsed);
       fold.onclick=e=>{e.stopPropagation();state.ui.componentCollapsed[key]=!state.ui.componentCollapsed[key];content.classList.toggle('hidden',state.ui.componentCollapsed[key]);fold.textContent=state.ui.componentCollapsed[key]?'+':'−';};
-      content.append(field('Variable',joystick.variable,'text',v=>{const n=String(v||'').trim();if(!n)return status('Joystick variable cannot be empty');if(hasJoystickVariable(n,joystick))return status('A joystick variable with that name already exists in this scene');joystick.variable=n;title.textContent=`Joystick · ${n}`;}));
+      content.append(field('Variable',joystick.variable,'text',v=>{const n=String(v||'').trim();if(!n)return status('Joystick variable cannot be empty');if(hasJoystickVariable(n,joystick))return status('A joystick variable with that name already exists in this scene');joystick.variable=n;title.textContent=`Joystick · ${n}`;}));content.append(checkboxField('Debug',joystick.debug===true,v=>{joystick.debug=!!v;drawWorkplace();}));
       content.append(colorField('BG Color',joystick.bgColor,v=>{joystick.bgColor=v;drawWorkplace();}));
       content.append(colorField('Knob Color',joystick.knobColor,v=>{joystick.knobColor=v;drawWorkplace();}));
       content.append(axisVectorField('Size',joystick.size,(x,y)=>{joystick.size=[Math.max(1,x),Math.max(1,y)];drawWorkplace();}));
@@ -1942,7 +1942,7 @@
     activeComponentInspectorContext={node,comp:rawInspectorComponent||comp,type:comp?.type||''};
     let rows = [];
     switch (comp.type) {
-      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();})]; break;
+      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();}), field('Relative',comp.relative||'World','custom-select',v=>{comp.relative=v==='Screen'?'Screen':'World';drawWorkplace();},['World','Screen'])]; break;
       case 'script': rows = [field('Name', comp.name || '', 'text', v => comp.name = v), field('Edit', 'Edit', 'button', () => openScriptEditor(node))]; break;
       case 'transform': rows = [axisVectorField('Position', comp.position, (x,y) => { comp.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.scale, (x,y) => { comp.scale=[Number.isFinite(Number(x))?Number(x):1, Number.isFinite(Number(y))?Number(y):1]; drawWorkplace(); }), field('Angle', comp.angle[0], 'number', v => { comp.angle=[Number(v)||0]; drawWorkplace(); })]; break;
       case 'text': rows = renderTextRows(node, comp); break;
@@ -1980,7 +1980,7 @@
         const radius=Array.isArray(comp.cornerRadius)?comp.cornerRadius:[0,0,0,0];
         rows=[field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),field('Value',comp.value,'number',v=>{comp.value=Number(v)||0;drawWorkplace();}),field('Min',comp.min,'number',v=>{comp.min=Number(v)||0;drawWorkplace();}),field('Max',comp.max,'number',v=>{comp.max=Number(v)||0;drawWorkplace();}),axisVectorField('Position',comp.position,(x,y)=>{comp.position=[x,y];drawWorkplace();}),colorField('BG Color',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),colorField('Fill Color',comp.fillCol,v=>{comp.fillCol=v;drawWorkplace();}),cornerRadiusFields(radius,v=>{comp.cornerRadius=v;drawWorkplace();}),colorField('Outline Color',comp.outline?.color||'#000000FF',v=>{comp.outline.color=v;drawWorkplace();}),field('Outline Size',comp.outline?.size??0,'number',v=>{comp.outline.size=Math.max(0,Number(v)||0);drawWorkplace();}),field('Direction',comp.direction,'custom-select',v=>{comp.direction=v;drawWorkplace();},['left','right'])];
         break; }
-      case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic']), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
+      case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic']), field('Mass', comp.mass??0, 'number', v => { comp.mass=Math.max(0,Number(v)||0); drawWorkplace(); }), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
       case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'])]; break;
       case 'joints': rows = renderJointsRows(node, comp); break;
       case 'canvas': {
@@ -2656,11 +2656,12 @@
     c.append(input);row.append(l,c);if(path)multiMarkerFor(c,row,path);return row;
   }
   // ---------------- Color ----------------
-  function openColorModal(value,onChange,label){try{state.color={rgba:parseColor(value),onChange,label};$('#colorTargetLabel').textContent=label||'RGBA';syncColorUI();renderColorSliders();drawColorWheel();showModal($('#colorModal'));}catch{status('Invalid color');}}
-  function renderColorSliders(){const host=$('#colorSliders');host.innerHTML='';[['R',0],['G',1],['B',2],['A',3]].forEach(([name,i])=>{const row=document.createElement('div');row.className='color-slider-row';const lab=document.createElement('label');lab.textContent=name;const input=document.createElement('input');input.type='range';input.min=0;input.max=255;input.value=Math.round(state.color.rgba[i]*255);const out=document.createElement('output');out.textContent=input.value;input.oninput=()=>{state.color.rgba[i]=Number(input.value)/255;out.textContent=input.value;syncColorUI();};row.append(lab,input,out);host.append(row);});}
-  function syncColorUI(){const hex=rgbaToHex(state.color.rgba);$('#colorTextInput').value=hex;$('#colorHexPreview').textContent=hex;$('#colorPreview').style.background=rgbaCss(state.color.rgba);}
-  function drawColorWheel(){const c=$('#colorWheel'),ctx=c.getContext('2d'),cx=130,cy=130,r=112;ctx.clearRect(0,0,c.width,c.height);for(let i=0;i<360;i++){const a=(i-90)*Math.PI/180;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+Math.PI/180);ctx.closePath();ctx.fillStyle=`hsl(${i},100%,50%)`;ctx.fill();}ctx.globalCompositeOperation='destination-in';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.strokeStyle='#707070';ctx.strokeRect(18,18,224,224);}
-  function pickWheel(e){const wheel=$('#colorWheel');if(!wheel)return;const rect=wheel.getBoundingClientRect(),sx=260/Math.max(1,rect.width),sy=260/Math.max(1,rect.height),x=(e.clientX-rect.left)*sx-130,y=(e.clientY-rect.top)*sy-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),rgb=hsvToRgb(h,s,.9);state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
+  function rgbToHsv(rgba){const r=clamp(Number(rgba?.[0]??0),0,1),g=clamp(Number(rgba?.[1]??0),0,1),b=clamp(Number(rgba?.[2]??0),0,1),max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h=(h*60+360)%360;}return{h,s:max?d/max:0,v:max};}
+  function openColorModal(value,onChange,label){try{const rgba=parseColor(value);state.color={rgba,onChange,label,hsv:rgbToHsv(rgba)};$('#colorTargetLabel').textContent=label||'RGBA';syncColorUI();renderColorSliders();drawColorWheel();showModal($('#colorModal'));}catch{status('Invalid color');}}
+  function renderColorSliders(){const host=$('#colorSliders');host.innerHTML='';[['R',0],['G',1],['B',2],['A',3]].forEach(([name,i])=>{const row=document.createElement('div');row.className='color-slider-row';const lab=document.createElement('label');lab.textContent=name;const input=document.createElement('input');input.type='range';input.min=0;input.max=255;input.value=Math.round(state.color.rgba[i]*255);const out=document.createElement('output');out.textContent=input.value;input.oninput=()=>{state.color.rgba[i]=Number(input.value)/255;out.textContent=input.value;state.color.hsv=rgbToHsv(state.color.rgba);syncColorUI();};row.append(lab,input,out);host.append(row);});}
+  function syncColorUI(){state.color.hsv=state.color.hsv||rgbToHsv(state.color.rgba);const hex=rgbaToHex(state.color.rgba);$('#colorTextInput').value=hex;$('#colorHexPreview').textContent=hex;$('#colorPreview').style.background=rgbaCss(state.color.rgba);$('#colorSliders')?.querySelectorAll('input[type=range]').forEach((input,i)=>input.value=Math.round(clamp(state.color.rgba[i],0,1)*255));$('#colorSliders')?.querySelectorAll('output').forEach((out,i)=>out.textContent=String(Math.round(clamp(state.color.rgba[i],0,1)*255)));drawColorWheel();}
+  function drawColorWheel(){const c=$('#colorWheel'),ctx=c.getContext('2d'),cx=130,cy=130,r=112;ctx.clearRect(0,0,c.width,c.height);for(let i=0;i<360;i++){const a=(i-90)*Math.PI/180;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+Math.PI/180);ctx.closePath();ctx.fillStyle=`hsl(${i},100%,50%)`;ctx.fill();}ctx.globalCompositeOperation='destination-in';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.strokeStyle='#707070';ctx.strokeRect(18,18,224,224);const hsv=state.color?.hsv||rgbToHsv(state.color?.rgba);const a=(Number(hsv?.h||0)-90)*Math.PI/180,s=clamp(Number(hsv?.s||0),0,1),ix=cx+Math.cos(a)*r*s,iy=cy+Math.sin(a)*r*s;ctx.beginPath();ctx.arc(ix,iy,7,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#111';ctx.stroke();}
+  function pickWheel(e){const wheel=$('#colorWheel');if(!wheel)return;const rect=wheel.getBoundingClientRect(),sx=260/Math.max(1,rect.width),sy=260/Math.max(1,rect.height),x=(e.clientX-rect.left)*sx-130,y=(e.clientY-rect.top)*sy-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),v=clamp(Number(state.color.hsv?.v??1),0,1),rgb=hsvToRgb(h,s,v);state.color.hsv={h,s,v};state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
   function hsvToRgb(h,s,v){const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let r=0,g=0,b=0;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];return[r+m,g+m,b+m];}
   function applyColor(){try{const rgba=parseColor($('#colorTextInput').value);state.color.onChange(rgbaToHex(rgba));closeModal($('#colorModal'));renderComponentPanel();drawWorkplace();}catch{status('Invalid color value');}}
   function parseColor(v){let s=String(v||'').trim();if(/^#/.test(s)){let h=s.slice(1);if(h.length===3)h=h.split('').map(c=>c+c).join('');if(h.length===6)h+='ff';if(h.length!==8)throw Error();const n=parseInt(h,16);return[((n>>>24)&255)/255,((n>>>16)&255)/255,((n>>>8)&255)/255,(n&255)/255];}const m=s.match(/^rgba?\(([^)]+)\)$/i);if(m){const p=m[1].split(',').map(Number);return[(p[0]||0)/255,(p[1]||0)/255,(p[2]||0)/255,p[3]===undefined?1:(p[3]>1?p[3]/255:p[3])];}throw Error();}
@@ -3328,6 +3329,8 @@
     }
   }
 
+  function nodeRelativeMode(node){return component(node,'node')?.relative==='Screen'?'Screen':'World';}
+  function editorNodeWorldPosition(node){const t=component(node,'transform')||{position:[0,0]};const px=Number(t.position?.[0]||0),py=Number(t.position?.[1]||0);if(nodeRelativeMode(node)!=='Screen')return{x:px,y:py};const cam=cameraEditorFrame(),q=rotatePoint(px,py,Number(cam.angle||0)*Math.PI/180);return{x:Number(cam.x||0)+q.x,y:Number(cam.y||0)+q.y};}
   function drawWorkplace(){
     
     if(liveValueMutationDepth>0){
@@ -3346,7 +3349,7 @@
     const centerX=-state.pan.x/state.zoom,centerY=-state.pan.y/state.zoom;
     renderNodes.forEach(node=>{
       const t=component(node,'transform');
-      const x=Number(t?.position?.[0]||0),y=Number(t?.position?.[1]||0),sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);
+      const pos=editorNodeWorldPosition(node),x=pos.x,y=pos.y,sx=Number(t?.scale?.[0]||1),sy=Number(t?.scale?.[1]||1),angle=Number(t?.angle?.[0]||0);
       const radius=editorNodeCullRadius(node,sx,sy);
       if(Math.abs(x-centerX)>halfW+radius||Math.abs(y-centerY)>stateHalfH+radius)return;
       let cache=editorVisualCache.get(node),rev=Number(state.ui.editorVisualCacheRevision)||0;
@@ -3372,7 +3375,7 @@
   }
 
   function jointWorldAnchor(node, local){
-    const t=component(node,'transform')||{position:[0,0],angle:[0]};const a=Number(t.angle?.[0]||0)*Math.PI/180;const x=Number(local?.[0])||0,y=Number(local?.[1])||0,c=Math.cos(a),sn=Math.sin(a);return{x:(Number(t.position?.[0])||0)+x*c-y*sn,y:(Number(t.position?.[1])||0)+x*sn+y*c};
+    const t=component(node,'transform')||{position:[0,0],angle:[0]};const a=Number(t.angle?.[0]||0)*Math.PI/180;const base=editorNodeWorldPosition(node),x=Number(local?.[0])||0,y=Number(local?.[1])||0,c=Math.cos(a),sn=Math.sin(a);return{x:base.x+x*c-y*sn,y:base.y+x*sn+y*c};
   }
   function drawSelectedJoints(ctx,selected){
     if(getEditorSettings().showJoints===false)return;
@@ -3555,7 +3558,7 @@
     const nt=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
     const ct=c.transform||{position:[0,0],scale:[1,1],angle:[0]};
     const type=['Rect','Circle','Triangle'].includes(c.shapeType)?c.shapeType:'Rect';
-    const nx=Number(nt.position?.[0]||0),ny=Number(nt.position?.[1]||0);
+    const base=editorNodeWorldPosition(node),nx=base.x,ny=base.y;
     const nsx=Number(nt.scale?.[0]??1),nsy=Number(nt.scale?.[1]??1),na=Number(nt.angle?.[0]||0)*Math.PI/180;
     const localX=Number(ct.position?.[0]||0)*nsx,localY=Number(ct.position?.[1]||0)*nsy;
     const cos=Math.cos(na),sin=Math.sin(na);
@@ -3575,7 +3578,7 @@
     ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();
   }
 
-  function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d'));return {kind:'node',node,component:t,transform:t,center:[Number(t.position?.[0]||0),Number(t.position?.[1]||0)],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
+  function gizmoTarget(node){const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]},size=getNodeVisualSize(node,$('#workplaceCanvas').getContext('2d')),pos=editorNodeWorldPosition(node);return {kind:'node',node,component:t,transform:t,center:[pos.x,pos.y],w:Math.max(70,size.w*Math.abs(t.scale?.[0]||1)),h:Math.max(45,size.h*Math.abs(t.scale?.[1]||1)),angle:Number(t.angle?.[0]||0)*Math.PI/180,baseW:size.w,baseH:size.h};}
   function drawGizmo(ctx,node){const g=gizmoTarget(node);ctx.save();ctx.translate(g.center[0],g.center[1]);ctx.rotate(g.angle);ctx.strokeStyle='#e4ca4e';ctx.lineWidth=1.5/state.zoom;ctx.strokeRect(-g.w/2,-g.h/2,g.w,g.h);if(state.mode==='move'||state.mode==='all'){const handle=66/state.zoom;drawArrow(ctx,0,0,handle,0,'#d85c5c');drawArrow(ctx,0,0,0,-handle,'#67bd67');drawCenter(ctx,'#e4ca4e');}if(state.mode==='scale'||state.mode==='all'){if(getEditorSettings().scaleGizmo==='Full'){const handles=[[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']];handles.forEach(([x,y,id])=>drawScaleHandle(ctx,x,y,id));drawCenter(ctx,'#e4ca4e');}else{const handle=66/state.zoom;drawScaleArrowHandle(ctx,handle,0,'right','#d85c5c');drawScaleArrowHandle(ctx,0,-handle,'top','#67bd67');drawCenter(ctx,'#e4ca4e');}}if(state.mode==='rotate'||state.mode==='all'){const r=58/state.zoom;ctx.beginPath();ctx.arc(0,0,r,-Math.PI*.88,-Math.PI*.12);ctx.stroke();ctx.fillStyle='#e4ca4e';ctx.beginPath();ctx.arc(0,-r,5/state.zoom,0,Math.PI*2);ctx.fill();}ctx.restore();}
 
   function drawArrow(ctx,x1,y1,x2,y2,color){ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2/state.zoom;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();const ang=Math.atan2(y2-y1,x2-x1);const s=7/state.zoom;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-Math.cos(ang-.55)*s,y2-Math.sin(ang-.55)*s);ctx.lineTo(x2-Math.cos(ang+.55)*s,y2-Math.sin(ang+.55)*s);ctx.closePath();ctx.fill();ctx.restore();}
@@ -3604,7 +3607,7 @@
   function getGizmoHit(node, world){const g=gizmoTarget(node),dx=world.x-g.center[0],dy=world.y-g.center[1],c=Math.cos(-g.angle),s=Math.sin(-g.angle),lx=dx*c-dy*s,ly=dx*s+dy*c,mode=state.mode;if(mode==='scale'||mode==='all'){const hit=10/state.zoom;if(getEditorSettings().scaleGizmo==='Full'){for(const p of [[-g.w/2,-g.h/2,'tl'],[0,-g.h/2,'top'],[g.w/2,-g.h/2,'tr'],[-g.w/2,0,'left'],[g.w/2,0,'right'],[-g.w/2,g.h/2,'bl'],[0,g.h/2,'bottom'],[g.w/2,g.h/2,'br']])if(Math.hypot(lx-p[0],ly-p[1])<hit)return {type:'scale',corner:p[2]};}else{const handle=66/state.zoom;if(Math.hypot(lx-handle,ly)<hit*1.5)return {type:'scale',corner:'right'};if(Math.hypot(lx,ly+handle)<hit*1.5)return {type:'scale',corner:'top'};}if(mode==='scale'&&Math.hypot(lx,ly)<hit*1.5)return {type:'scale',corner:'center'};}if(mode==='rotate'||mode==='all'){const r=58/state.zoom;if(Math.abs(Math.hypot(lx,ly)-r)<10/state.zoom&&ly<0)return {type:'rotate',gizmoAngle:g.angle};}if(mode==='move'||mode==='all'){const hit=12/state.zoom,mx=66/state.zoom,my=66/state.zoom;if(Math.hypot(lx,ly)<=hit*1.25)return {type:'move',axis:'free',gizmoAngle:g.angle};if(Math.abs(ly)<hit&&lx>8/state.zoom&&lx<mx+hit)return {type:'move',axis:'x',gizmoAngle:g.angle};if(Math.abs(lx)<hit&&ly<-8/state.zoom&&ly>-my-hit)return {type:'move',axis:'y',gizmoAngle:g.angle};}return null;}
 
   function nodeAt(world){
-    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;let dx=world.x-t.position[0],dy=world.y-t.position[1],rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
+    const ctx=$('#workplaceCanvas').getContext('2d');for(const {node} of allNodes().slice().reverse()){if(node.type!=='node')continue;const t=component(node,'transform');if(!t)continue;const pos=editorNodeWorldPosition(node);let dx=world.x-pos.x,dy=world.y-pos.y,rad=Number(t.angle?.[0]||0)*Math.PI/180,c=Math.cos(-rad),s=Math.sin(-rad),lx=dx*c-dy*s,ly=dx*s+dy*c,sx=Math.abs(Number(t.scale?.[0]||1)),sy=Math.abs(Number(t.scale?.[1]||1));
       const geo=spriteLocalGeometry(node);
       if(geo){if(Math.abs(lx/sx-geo.x)<=geo.w/2&&Math.abs(ly/sy-geo.y)<=geo.h/2)return node;continue;}
       const size=getNodeVisualSize(node,ctx),bw=Math.max(70,size.w*sx),bh=Math.max(45,size.h*sy);if(Math.abs(lx)<=bw/2&&Math.abs(ly)<=bh/2)return node;}return null;
@@ -3766,7 +3769,7 @@
     if(d.multi)return updateMultiGizmoDrag(e);
     const n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=d.settings||getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
     if(d.type==='move'){
-      const ga=Number(d.gizmoAngle||g.angle||0),local=rotatePoint(dx,dy,-ga);let lx=local.x,ly=local.y;if(d.axis==='x')ly=0;if(d.axis==='y')lx=0;if(snap>0){if(d.axis!=='y')lx=snapEditorValue(lx,snap);if(d.axis!=='x')ly=snapEditorValue(ly,snap);}const worldDelta=rotatePoint(lx,ly,ga);const px=Number(d.startTransform.position[0]||0)+worldDelta.x,py=Number(d.startTransform.position[1]||0)+worldDelta.y;t.position=[Number(snapEditorValue(px,snap).toFixed(12)),Number(snapEditorValue(py,snap).toFixed(12))];
+      const ga=Number(d.gizmoAngle||g.angle||0),local=rotatePoint(dx,dy,-ga);let lx=local.x,ly=local.y;if(d.axis==='x')ly=0;if(d.axis==='y')lx=0;if(snap>0){if(d.axis!=='y')lx=snapEditorValue(lx,snap);if(d.axis!=='x')ly=snapEditorValue(ly,snap);}const worldDelta=rotatePoint(lx,ly,ga),delta=nodeRelativeMode(n)==='Screen'?rotatePoint(worldDelta.x,worldDelta.y,-Number(cameraEditorFrame().angle||0)*Math.PI/180):worldDelta;const px=Number(d.startTransform.position[0]||0)+delta.x,py=Number(d.startTransform.position[1]||0)+delta.y;t.position=[Number(snapEditorValue(px,snap).toFixed(12)),Number(snapEditorValue(py,snap).toFixed(12))];
     }else if(d.type==='rotate'){
       const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(g.center[0],g.center[1]),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);
       const raw=d.startTransform.angle[0]+(nowA-startA)*180/Math.PI;t.angle=[rotateSnap?snapEditorValue(raw,rotateSnap):raw];
@@ -4609,6 +4612,8 @@
       const a=keys.indexOf(anchor),b=keys.indexOf(key),lo=Math.min(a,b),hi=Math.max(a,b);state.assetManagerSelection=new Set(keys.slice(lo,hi+1));
     }else if(mods.ctrlKey||mods.metaKey){
       set.has(key)?set.delete(key):set.add(key);state.assetManagerSelection=set;
+    }else if(state.assetManagerSelectMode){
+      set.has(key)?set.delete(key):set.add(key);state.assetManagerSelection=set;
     }else{state.assetManagerSelection=new Set([key]);}
     state.assetManagerSelectionAnchorKey=key;
     updateAssetManagerSelectionUI();
@@ -4787,9 +4792,7 @@
           }else if(mods.ctrlKey||mods.metaKey){
             if(set.has(targetKey)){set.delete(targetKey);selectionOrder.delete(targetSelectionKey);}else{set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}
           }else{
-            selection.forEach((otherSet,otherType)=>{if(otherType===type)return;});
-            set.clear();list.forEach(item=>selectionOrder.delete(selectionKey(type,key(item))));
-            set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);
+            if(set.has(targetKey)){set.delete(targetKey);selectionOrder.delete(targetSelectionKey);}else{set.add(targetKey);selectionOrder.set(targetSelectionKey,nextSelectionOrder++);}
           }
           selectionAnchor.set(type,targetKey);if(refresh)render();
         };
@@ -4947,10 +4950,10 @@
         const listKeys=(state.assets[type]||[]).map(assetKey),set=current.selected,mods=resolvedEditorModifiers(ev||{}),anchor=current.anchorKey;
         if(forceAdd){set.add(targetKey);}
         else if(mods.shiftKey&&anchor&&listKeys.includes(anchor)){
-          const a=listKeys.indexOf(anchor),bIndex=listKeys.indexOf(targetKey),lo=Math.min(a,bIndex),hi=Math.max(a,bIndex);current.selected=new Set(listKeys.slice(lo,hi+1));
+          const a=listKeys.indexOf(anchor),bIndex=listKeys.indexOf(targetKey),lo=Math.min(a,bIndex),hi=Math.max(a,bIndex);listKeys.slice(lo,hi+1).forEach(k=>set.add(k));
         }else if(mods.ctrlKey||mods.metaKey){
           set.has(targetKey)?set.delete(targetKey):set.add(targetKey);
-        }else{current.selected=new Set([targetKey]);}
+        }else{set.has(targetKey)?set.delete(targetKey):set.add(targetKey);}
         current.anchorKey=targetKey;updateSelectorUI();
       };
       let dragState=null;
@@ -5112,7 +5115,7 @@
     e.name=e.name ?? 'Value';
     e.type=String(e.type??'str').toLowerCase();
     if(!['str','bool','int','col','selector'].includes(e.type)) e.type='str';
-    if(e.value===undefined){e.value=e.type==='bool'?false:e.type==='int'?0:e.type==='col'?'#FFFFFFFF':e.type==='selector'?(() => []):'';}
+    if(e.value===undefined){e.value=e.type==='bool'?false:(e.type==='int'||e.type==='number')?0:e.type==='col'?'#FFFFFFFF':e.type==='selector'?(() => []):'';}
     return e;
   }
   function restoreSelectorDefinition(saved,template){
@@ -5257,9 +5260,9 @@
       const current=entry.value===null||entry.value===undefined?'':(entry.value?'true':'false');
       const select=customSelect(current,['','true','false'],v=>finish(v===''?null:v==='true'));return select;
     }
-    const input=document.createElement('input');input.className='script-inline-editor-input';input.type=type==='int'?'number':'text';input.value=String(scriptEditorValue(sn,item)??'');input.step='1';
-    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(type==='int'?(Number(input.value)||0):input.value);}else if(e.key==='Escape'){e.preventDefault();finish('',true);}};
-    input.onblur=()=>finish(type==='int'?(Number(input.value)||0):input.value);
+    const input=document.createElement('input');input.className='script-inline-editor-input';input.type=(type==='int'||type==='number')?'number':'text';input.value=String(scriptEditorValue(sn,item)??'');input.step=type==='int'?'1':'any';
+    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish((type==='int'||type==='number')?(Number(input.value)||0):input.value);}else if(e.key==='Escape'){e.preventDefault();finish('',true);}};
+    input.onblur=()=>finish((type==='int'||type==='number')?(Number(input.value)||0):input.value);
     wrap.append(input);setTimeout(()=>{input.focus();input.select?.();},0);return wrap;
   }
   function scriptInputButton(sn,item){
@@ -5664,13 +5667,13 @@
     const type=String(entry?.type||'str').toLowerCase();
     if(type==='str') return null;
     if(value===null)return null;
-    if(type==='int') return typeof value==='number'&&Number.isFinite(value)?null:'Expected an int expression (the evaluated result must be a number).';
+    if(type==='int'||type==='number') return typeof value==='number'&&Number.isFinite(value)?null:'Expected a numeric expression (the evaluated result must be a number).';
     if(type==='bool') return typeof value==='boolean'?null:'Expected a bool expression (the evaluated result must be true or false).';
     if(type==='col'){if(typeof value!=='string')return 'Expected a color string.';try{parseColor(value);return null;}catch{return 'Expected a valid RGBA/hex color string.';}}
     if(type==='selector'){if(typeof value!=='string')return 'Expected a selector value (string).';const options=evaluateSelector(entry.value);if(options.length&&!options.includes(value))return 'Value is not one of the selector options.';return null;}
     return null;
   }
-  function coerceExpressionValue(entry,value){const type=String(entry?.type||'str').toLowerCase();if(type==='str')return String(value??'');if(type==='int')return Number(value);if(type==='bool')return !!value;if(type==='col')return String(value);if(type==='selector')return String(value);return value;}
+  function coerceExpressionValue(entry,value){const type=String(entry?.type||'str').toLowerCase();if(type==='str')return String(value??'');if(type==='int'||type==='number')return Number(value);if(type==='bool')return !!value;if(type==='col')return String(value);if(type==='selector')return String(value);return value;}
   function validateExpression(){
     const input=$('#expressionInput'),error=$('#expressionError'),save=$('#expressionModal [data-action="apply-expression"]');
     if(!input||!error)return true;const source=input.value.trim();let message='No error.';const edit=state.script.editingInput;
@@ -6157,7 +6160,7 @@
   function runtimeSceneVariables(sceneId=state.runtime.sceneId){ return state.runtime.sceneVariablesByScene?.[sceneId] || []; }
   function buildRuntimeBody(node){
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
-    const j=component(node,'joints'); return {node,t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
+    const j=component(node,'joints'); return {node,relative:component(node,'node')?.relative==='Screen'?'Screen':'World',t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node)};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
@@ -6334,7 +6337,7 @@
   function collisionPolygonPolygon(A,B){const axes=[...polygonAxes(A.vertices),...polygonAxes(B.vertices)];let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pa=projectPolygon(A.vertices,axis),pb=projectPolygon(B.vertices,axis),over=Math.min(pa.max,pb.max)-Math.max(pa.min,pb.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const ca=polygonCenter(A.vertices),cb=polygonCenter(B.vertices);if(dotV(subV(cb,ca),best.normal)<0)best.normal=mulV(best.normal,-1);const n=best.normal,t=perpV(n);const paN=projectPolygon(A.vertices,n),pbN=projectPolygon(B.vertices,n);const ta=projectPolygon(A.vertices,t),tb=projectPolygon(B.vertices,t);const tMin=Math.max(ta.min,tb.min),tMax=Math.min(ta.max,tb.max);const tn=(paN.max+pbN.min)*0.5,tt=(tMin+tMax)*0.5;const point={x:n.x*tn+t.x*tt,y:n.y*tn+t.y*tt};return{normal:n,penetration:best.penetration,point};}
   function collisionCirclePolygon(circle,poly){const axes=polygonAxes(poly.vertices),cp=closestPolygonPoint(poly,{x:circle.x,y:circle.y});if(cp.point){const diff=subV(cp.point,{x:circle.x,y:circle.y}),d=lenV(diff);if(d>1e-7)axes.push(mulV(diff,1/d));}let best={penetration:Infinity,normal:null};for(const axis0 of axes){const axis=normV(axis0),pc=projectCircle(circle,axis),pp=projectPolygon(poly.vertices,axis),over=Math.min(pc.max,pp.max)-Math.max(pc.min,pp.min);if(over<=0)return null;if(over<best.penetration)best={penetration:over,normal:axis};}const toward=cp.point?subV(cp.point,{x:circle.x,y:circle.y}):subV(polygonCenter(poly.vertices),{x:circle.x,y:circle.y});if(lenV(toward)>1e-7&&dotV(toward,best.normal)<0)best.normal=mulV(best.normal,-1);const circleContact={x:circle.x+best.normal.x*circle.radius,y:circle.y+best.normal.y*circle.radius};const polyContact=cp.point||supportPoint(poly,mulV(best.normal,-1));return{normal:best.normal,penetration:best.penetration,point:mulV(addV(circleContact,polyContact),.5)};}
   function collideShapes(A,B){if(!A||!B)return null;if(A.type==='Circle'&&B.type==='Circle')return collisionCircleCircle(A,B);if(A.type==='Circle'&&B.type!=='Circle')return collisionCirclePolygon(A,B);if(A.type!=='Circle'&&B.type==='Circle'){const hit=collisionCirclePolygon(B,A);if(!hit)return null;return{normal:mulV(hit.normal,-1),penetration:hit.penetration,point:hit.point};}return collisionPolygonPolygon(A,B);}
-  function bodyMassProperties(body,shape){const p=body.physics?.body;if(p!=='Dynamic')return{mass:Infinity,invMass:0,inertia:Infinity,invInertia:0};let area=1,inertiaFactor=1;if(shape.type==='Circle'){area=Math.PI*shape.radius*shape.radius;inertiaFactor=.5*shape.radius*shape.radius;}else if(shape.type==='Triangle'){area=Math.max(.01,.5*shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/24;}else{area=Math.max(.01,shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/12;}const mass=Math.max(.01,area/1000),inertia=mass*inertiaFactor;return{mass,invMass:1/mass,inertia,invInertia:body.physics?.fixedRotation?0:1/Math.max(.0001,inertia)};}
+  function bodyMassProperties(body,shape){const p=body.physics?.body;if(p!=='Dynamic')return{mass:Infinity,invMass:0,inertia:Infinity,invInertia:0};let area=1,inertiaFactor=1;if(shape.type==='Circle'){area=Math.PI*shape.radius*shape.radius;inertiaFactor=.5*shape.radius*shape.radius;}else if(shape.type==='Triangle'){area=Math.max(.01,.5*shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/24;}else{area=Math.max(.01,shape.w*shape.h);inertiaFactor=(shape.w*shape.w+shape.h*shape.h)/12;}const mass=Math.max(.01,Number(body.physics?.mass)||area/1000),inertia=mass*inertiaFactor;return{mass,invMass:1/mass,inertia,invInertia:body.physics?.fixedRotation?0:1/Math.max(.0001,inertia)};}
   function torqueScreen(r,f){return-crossV(r,f);}
   function contactState(A,B,hit){const As=runtimeColliderShape(A),Bs=runtimeColliderShape(B);if(!As||!Bs)return null;const ap=bodyMassProperties(A,As),bp=bodyMassProperties(B,Bs);if(ap.invMass===0&&bp.invMass===0)return null;const ac=A.t?.position||[0,0],bc=B.t?.position||[0,0],ra=subV(hit.point,{x:Number(ac[0])||0,y:Number(ac[1])||0}),rb=subV(hit.point,{x:Number(bc[0])||0,y:Number(bc[1])||0});return{A,B,hit,ra,rb,n:normV(hit.normal),ap,bp,friction:Math.sqrt(Math.max(0,Number(A.physics?.friction)||0)*Math.max(0,Number(B.physics?.friction)||0)),restitution:clamp(Math.max(Number(A.physics?.bounciness)||0,Number(B.physics?.bounciness)||0),0,1),normalImpulse:0,tangentImpulse:0};}
   function pointVelocity(body,r){return addV({x:Number(body.vx)||0,y:Number(body.vy)||0},crossSV(Number(body.omega)||0,r));}
@@ -6695,8 +6698,8 @@
   }
   function runtimeValidateExpressionValue(value,type){
     if(value===null)return null;
-    if(type==='int'){
-      if(typeof value!=='number'||!Number.isFinite(value))throw new Error('Type error: int requires a finite number');
+    if(type==='int'||type==='number'){
+      if(typeof value!=='number'||!Number.isFinite(value))throw new Error(`Type error: ${type} requires a finite number`);
       return value;
     }
     if(type==='bool'){
@@ -6778,7 +6781,13 @@
     ctx.inputs=rt.inputs||{};
     ctx.events=rt.events||ctx.events;
     ctx.scene=rt.scene;
-    ctx.joystick=rt.shared?.joystickObject||ctx.joystick;
+    const joystickObject=rt.shared?.joystickObject||ctx.joystick||Object.create(null);
+    for(const st of rt.joysticks||[]){
+      const base=String(st?.variable||'joystick');
+      const row=joystickObject[base] ||= {distance:0,angle:0,value_x:0,value_y:0};
+      row.distance=Number(st.distance)||0;row.angle=Number(st.angle)||0;row.value_x=Number(st.value_x)||0;row.value_y=Number(st.value_y)||0;
+    }
+    ctx.joystick=joystickObject;
     ctx.allNodes=rt.shared?.allNodes||ctx.allNodes;
     ctx.folderOptions=rt.shared?.folderOptions||ctx.folderOptions;
     ctx.spriteAssets=rt.shared?.spriteAssets||ctx.spriteAssets;
@@ -7132,7 +7141,7 @@
   }
   function evaluateRuntimeExpression(source,node,type='str'){
     const text=String(source??'');
-    if(!text.trim())return type==='bool'?false:type==='int'?0:'';
+    if(!text.trim())return type==='bool'?false:(type==='int'||type==='number')?0:'';
     const compiled=runtimeCompileExpression(text,type);
     if(!compiled?.fn)throw new Error(`Expression error: ${compiled?.error?.message||'compile failed'}`);
     const ctx=runtimeGetCachedContext(node);
@@ -7532,7 +7541,7 @@ function updateRuntimeAnimations(dt){
       setInputComponent:(v)=>runtimeSetComponent(node,'input',c=>{const map={'Text':'txt','Placeholder':'placeholder','Width':'width','Height':'height','Multiline':'multiline','FG Color':'fgCol','BG Color':'bgCol','Outline Color':'outlineCol','Font Size':'fontSize','Font Family':'fontFamily','Padding':'padding','Outline Width':'outlineWidth','Border Radius':'borderRadius','Max Length':'maxLength','PosX':'positionX','PosY':'positionY','ScaleX':'scaleX','ScaleY':'scaleY'};Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d==='scaleX')c.scale[0]=Number(v[k]);else if(d==='scaleY')c.scale[1]=Number(v[k]);else if(d)c[d]=d==='multiline'?!!v[k]:d==='width'||d==='height'||d==='fontSize'||d==='padding'||d==='outlineWidth'||d==='borderRadius'||d==='maxLength'?Number(v[k]):v[k];});}),
       focusInput:()=>{const canvas=state.runtime?.renderCanvas||$('#runtimeCanvas');if(canvas&&node)openRuntimeTextInput(node,canvas);},
       blurInput:()=>{const ed=state.runtime?.textInputEditor;if(ed?.nodeId===node?.id)closeRuntimeTextInput();},
-      setPhysics:(v)=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];})),
+      setPhysics:(v)=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];})),
       setCollider:(v)=>runtimeSetComponent(node,'collider',c=>{if(v.Collider!==null&&v.Collider!==undefined)c.collidable=!!v.Collider;if(v.Type!==null&&v.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v.PosX!==null&&v.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v.PosY!==null&&v.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v.ScaleX!==null&&v.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v.ScaleY!==null&&v.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v.Angle!==null&&v.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);}),
       setProgressBar:(v)=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);})),
       setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.vx=Number(x);if(y!==null&&y!==undefined)b.vy=Number(y);if(angular!==null&&angular!==undefined)b.omega=Number(angular)*Math.PI/180;}},
@@ -7751,23 +7760,28 @@ function updateRuntimeAnimations(dt){
   function runtimeIsCollided(node,targetLabel,applyByName=false){
     const rt=state.runtime,body=runtimeBodyForNode(node);if(!body)return false;
     const aShape=runtimeColliderShape(body);if(!aShape)return false;
-    const raw=String(targetLabel||'');
+    const raw=String(targetLabel||'').trim();
+    if(!raw)return false;
     let candidates=[];
     if(applyByName){
       const clean=raw.replace(/\s*\[\d+\]\s*$/,'').trim();
       candidates=rt.bodiesByName?.get(clean)||[];
     }else{
-      const match=raw.match(/\[(\d+)\]\s*$/);
-      if(match){const target=rt.bodyByNumericId?.get(Number(match[1]));if(target)candidates=[target];}
+      const idBody=rt.bodyById?.get(raw);
+      if(idBody) candidates=[idBody];
       else {
-        const exact=rt.bodies?.find(other=>other!==body&&runtimeTargetMatches(other.node,raw,false));
-        if(exact)candidates=[exact];
+        const match=raw.match(/\[(\d+)\]\s*$/);
+        if(match){const target=rt.bodyByNumericId?.get(Number(match[1]));if(target)candidates=[target];}
+        else {
+          const exact=rt.bodies?.find(other=>other!==body&&runtimeTargetMatches(other.node,raw,false));
+          if(exact)candidates=[exact];
+        }
       }
     }
     for(let i=0;i<candidates.length;i++){
       const other=candidates[i];
       if(!other||other===body)continue;
-      if(!applyByName&&!runtimeTargetMatches(other.node,raw,false))continue;
+      if(!applyByName && raw.includes('[') && !runtimeTargetMatches(other.node,raw,false) && other.node?.id!==raw)continue;
       const bShape=runtimeColliderShape(other);
       if(bShape&&collideShapes(aShape,bShape))return true;
     }
@@ -7781,12 +7795,10 @@ function updateRuntimeAnimations(dt){
         const node=body?.node,target=other?.node;if(!node||!target)return;
         const label=`${target.name} [${target.numericId}]`;
         for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){
-          const comp=rt.compiledScriptById?.get(sn.id);
-          const targetSpec=comp?.specs?.find(x=>x.name==='Target');
-          const byNameSpec=comp?.specs?.find(x=>x.name==='applyByName'||x.name==='Apply By Name');
-          const targetSelected=targetSpec?.kind==='const'?targetSpec.value:targetSpec?.selected;
-          const byNameValue=byNameSpec?.kind==='const'?!!byNameSpec.value:!!byNameSpec?.value;
-          if(targetSpec?.kind==='const'&&targetSpec.type==='selector'&&!runtimeTargetMatches(target,targetSelected,byNameValue))continue;
+          const entries=flattenEditor(sn.values);
+          const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
+          const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
+          if(targetEntry?.type==='selector'&&!runtimeTargetMatches(target,targetEntry.selected,!!byNameEntry?.value))continue;
           executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);
         }
       });
@@ -7885,8 +7897,9 @@ function updateRuntimeAnimations(dt){
 
   function runtimeJoystickLayout(j,W=1280,H=720){const size=Array.isArray(j.size)?j.size:[110,110],w=Math.max(1,Number(size[0])||110),h=Math.max(1,Number(size[1])||110),p=j.position||{};const x=p.left!=null?Number(p.left)+w/2:p.right!=null?W-Number(p.right)-w/2:W/2;const y=p.top!=null?Number(p.top)+h/2:p.bottom!=null?H-Number(p.bottom)-h/2:H/2;return{x,y,w,h,radius:Math.min(w,h)/2};}
   function runtimeJoystickAt(x,y){
+    const canvas=$('#runtimeCanvas'),m=canvas?runtimeProjection(canvas):null,W=m?.viewW||1280,H=m?.viewH||720;
     for(const j of sceneJoysticks(state.runtime.scene).slice().reverse()){
-      const r=runtimeJoystickLayout(j),hitRadius=Math.max(r.w,r.h)*0.52;
+      const r=runtimeJoystickLayout(j,W,H),hitRadius=Math.max(r.w,r.h)*0.52;
       if(Math.hypot(x-r.x,y-r.y)<=hitRadius)return{j,r};
     }
     return null;
@@ -7917,7 +7930,13 @@ function updateRuntimeAnimations(dt){
     if(!canvas)return null;
     const r=runtimeProjection(canvas);
     const px=e.clientX-canvas.getBoundingClientRect().left,py=e.clientY-canvas.getBoundingClientRect().top;
-    return {x:(px-r.offsetX)/r.scaleX+((r.viewW-r.baseW)/2),y:(py-r.offsetY)/r.scaleY};
+    return {x:(px-r.offsetX)/r.scaleX,y:(py-r.offsetY)/r.scaleY};
+  }
+  function syncRuntimeJoystickShared(variable){
+    const rt=state.runtime,jv=rt?.shared?.joystickObject;if(!rt||!jv)return;
+    const st=(rt.joysticks||[]).find(v=>v.variable===variable);if(!st)return;
+    const row=jv[variable] ||= {distance:0,angle:0,value_x:0,value_y:0};
+    row.distance=Number(st.distance)||0;row.angle=Number(st.angle)||0;row.value_x=Number(st.value_x)||0;row.value_y=Number(st.value_y)||0;
   }
   function updateRuntimeJoystick(e,type){
     const p=runtimePointerPosition(e); if(!p)return false;
@@ -7937,10 +7956,10 @@ function updateRuntimeAnimations(dt){
     if(!stateEntry)return false;
     const j=sceneJoysticks(state.runtime.scene).find(v=>v.variable===stateEntry.variable);
     if(!j)return false;
-    const r=runtimeJoystickLayout(j);
+    const m=runtimeProjection($('#runtimeCanvas')),r=runtimeJoystickLayout(j,m?.viewW||1280,m?.viewH||720);
     if(type==='up'||type==='cancel'){
       const st=(state.runtime.joysticks||[]).find(v=>v.variable===stateEntry.variable);
-      if(st){st.distance=0;st.angle=0;st.value_x=0;st.value_y=0;}
+      if(st){st.distance=0;st.angle=0;st.value_x=0;st.value_y=0;syncRuntimeJoystickShared(st.variable);}
       delete active[e.pointerId];
       dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
       return true;
@@ -7955,7 +7974,7 @@ function updateRuntimeAnimations(dt){
     st.distance=normalized;
     st.angle=normalized===0?0:(Math.atan2(dy,dx)*180/Math.PI+360)%360;
     st.value_x=clamp(dx/rad,-1,1);
-    st.value_y=clamp(dy/rad,-1,1);
+    st.value_y=clamp(dy/rad,-1,1);syncRuntimeJoystickShared(st.variable);
     dispatchRuntimeEvent('onJoystick',type,{Variable:stateEntry.variable});
     return true;
   }
@@ -7964,7 +7983,7 @@ function updateRuntimeAnimations(dt){
   function runtimeNodeAtPoint(x,y){
     const ctx=$('#runtimeCanvas')?.getContext?.('2d');
     for(const {node} of runtimeAllNodes().slice().reverse()){
-      if(node.type!=='node')continue;
+      if(node.type!=='node'||nodeRelativeMode(node)==='Screen')continue;
       const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
       const nx=Number(t.position?.[0]||0),ny=Number(t.position?.[1]||0);
       let dx=x-nx,dy=y-ny;
@@ -7982,9 +8001,10 @@ function updateRuntimeAnimations(dt){
     }
     return null;
   }
+  function runtimeScreenNodeAtPoint(x,y){const ctx=$('#runtimeCanvas')?.getContext?.('2d');for(const {node} of runtimeAllNodes().slice().reverse()){if(node.type!=='node'||nodeRelativeMode(node)!=='Screen')continue;const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));dx/=sx;dy/=sy;const geo=spriteLocalGeometry(node);if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}const input=component(node,'input');if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}let size={w:90,h:54};const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;}return null;}
   function runtimeInputNodeAtPoint(x,y){
     for(const {node} of runtimeAllNodes().slice().reverse()){
-      if(node.type!=='node')continue;
+      if(node.type!=='node'||nodeRelativeMode(node)==='Screen')continue;
       const input=component(node,'input');
       if(!input)continue;
       const t=component(node,'transform')||{};
@@ -8022,6 +8042,7 @@ function updateRuntimeAnimations(dt){
   function runtimeTextInputScreenGeometry(node,input,canvas){
     const m=runtimeProjection(canvas),cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1};
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
+    if(nodeRelativeMode(node)==='Screen'){const nsx=Number(t.scale?.[0]||1)||1,nsy=Number(t.scale?.[1]||1)||1,na=Number(t.angle?.[0]||0)||0,lp=input.position||[0,0],local=rotatePoint(Number(lp[0]||0)*nsx,Number(lp[1]||0)*nsy,na*Math.PI/180),baseX=m.type==='Windowboxing'?m.offsetX+m.baseW*m.scaleX/2:m.width/2,baseY=m.type==='Windowboxing'?m.offsetY+m.baseH*m.scaleY/2:m.height/2,isx=Math.abs(nsx*(Number(input.scale?.[0]??1)||1))*m.scaleX,isy=Math.abs(nsy*(Number(input.scale?.[1]??1)||1))*m.scaleY;return{cx:baseX+(Number(t.position?.[0]||0)+local.x)*m.scaleX,cy:baseY+(Number(t.position?.[1]||0)+local.y)*m.scaleY,width:Math.max(2,Number(input.width)||260)*isx,height:Math.max(2,Number(input.height)||48)*isy,rotation:na};}
     const nsx=Number(t.scale?.[0]||1)||1,nsy=Number(t.scale?.[1]||1)||1;
     const na=(Number(t.angle?.[0]||0)||0)*Math.PI/180;
     const ca=(Number(cam.angle||0)||0)*Math.PI/180;
@@ -8135,18 +8156,18 @@ function updateRuntimeAnimations(dt){
       canvas.setPointerCapture?.(e.pointerId);
       const screen=screenPoint(e), world=worldPoint(e);
       updateRuntimeJoystick(e,'down');
-      const hitInputNode=runtimeInputNodeAtPoint(world.x,world.y);
+      const hitInputNode=runtimeInputNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
       if(hitInputNode){
         openRuntimeTextInput(hitInputNode,canvas);
       }
       if(e.pointerType==='touch'){
-        const node=runtimeNodeAtPoint(world.x,world.y);
+        const node=runtimeNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
         if(node){
           activeTouchNodes[e.pointerId]=node.id;
           dispatchRuntimeEvent('onTouch','down',nodeInputValues(node,world.x,world.y,'TouchDown'),node.id);
         }
       }else if(e.pointerType==='mouse' || !e.pointerType){
-        const node=runtimeNodeAtPoint(world.x,world.y);
+        const node=runtimeNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
         if(node){
           activeMouseNodes[e.pointerId]=node.id;
           dispatchRuntimeEvent('onMouse','down',nodeInputValues(node,world.x,world.y,'MouseDown'),node.id);
@@ -8269,7 +8290,7 @@ function updateRuntimeAnimations(dt){
       runtimeFail(error,'Runtime frame');
     }
   }
-  function renderRuntimeDebug(){if(!state.runtime.debug)return;const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.serverVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`server.${v.name}: ${v.value}`));(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
+  function renderRuntimeDebug(){if(!state.runtime.debug)return;const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.serverVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`server.${v.name}: ${v.value}`));(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));(state.runtime.joystickDefs||[]).filter(j=>j.debug===true).forEach(j=>{const st=(state.runtime.joysticks||[]).find(v=>v.variable===j.variable)||{};const base=String(j.variable||'joystick');rows.push(`${base}_distance: ${Number(st.distance)||0}`);rows.push(`${base}_angle: ${Number(st.angle)||0}`);rows.push(`${base}_value_x: ${Number(st.value_x)||0}`);rows.push(`${base}_value_y: ${Number(st.value_y)||0}`);});rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
   function runtimeRenderContext(canvas){const rt=state.runtime;if(rt.renderCtx&&rt.renderCanvas===canvas)return rt.renderCtx;let ctx=null;try{ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:false});}catch{}if(!ctx)ctx=canvas.getContext('2d');rt.renderCanvas=canvas;rt.renderCtx=ctx||null;return ctx;}
   function runtimeViewportMetrics(canvas){
@@ -8434,10 +8455,16 @@ function updateRuntimeAnimations(dt){
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
     runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=(m.type==='Smart Camera'?m.viewW:RUNTIME_BASE_WIDTH)/(2*zoom),halfWorldY=(m.type==='Smart Camera'?m.viewH:RUNTIME_BASE_HEIGHT)/(2*zoom);
-    for(const b of renderBodies){const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
+    for(const b of renderBodies){if(b.relative==='Screen')continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,r=b.renderRadius||128;if(Math.abs(x-Number(cam.x||0))>halfWorldX+r||Math.abs(y-Number(cam.y||0))>halfWorldY+r)continue;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     drawRuntimeParticles(ctx,cam,halfWorldX,halfWorldY);
     drawRuntimeColliders(ctx);
     drawRuntimeJoints(ctx);
+    ctx.restore();
+
+    ctx.save();
+    if(m.type==='Windowboxing'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Stretch'){ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Crop'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else{ctx.scale(m.scaleX,m.scaleY);}
+    ctx.translate(m.viewW/2,m.viewH/2);
+    for(const b of renderBodies){if(b.relative!=='Screen')continue;const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0;let cache=b._renderCache;if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     ctx.restore();
 
     // Screen-space UI uses the logical screen box. Smart Camera expands/contracts
@@ -8613,7 +8640,7 @@ function updateRuntimeAnimations(dt){
     $('#expressionInput').addEventListener('select',()=>{if(!$('#expressionReplaceModal')?.hidden)expressionReplaceRefreshFromInputSelection();});
     $('#colorWheel').addEventListener('pointerdown',e=>{e.currentTarget.setPointerCapture(e.pointerId);pickWheel(e);});
     $('#colorWheel').addEventListener('pointermove',e=>{if(e.buttons)pickWheel(e);});
-    $('#colorTextInput').addEventListener('change',()=>{try{state.color.rgba=parseColor($('#colorTextInput').value);syncColorUI();}catch{status('Invalid color');}});
+    $('#colorTextInput').addEventListener('change',()=>{try{const rgba=parseColor($('#colorTextInput').value);state.color.rgba=rgba;state.color.hsv=rgbToHsv(rgba);syncColorUI();}catch{status('Invalid color');}});
     $('#assetFileInput').addEventListener('change',e=>{if(e.target.files.length)importAssets(e.target.files);e.target.value='';});
     $('#assetModal')?.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action==='asset-multiselect-toggle')setAssetManagerSelectMode(!state.assetManagerSelectMode);else if(action==='asset-remove-selected')removeSelectedAssets(true);else if(action==='asset-edit-selected')importSelectedAssetManager();else if(action==='asset-import-local-projects')openAssetImportFromLocalProjects();});
     const assetDropZone=$('#assetModal');

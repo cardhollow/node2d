@@ -120,7 +120,7 @@
     },
     {
       name:'setPhysics', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Body',type:'selector',value:()=>['Static','Kinematic','Dynamic'],selected:null},{name:'Gravity',type:'int',value:null},{name:'Friction',type:'int',value:null},{name:'Bounciness',type:'int',value:null},{name:'Fixed Rotation',type:'bool',value:null},{name:'isCollider',type:'bool',value:null}],
+      editor:[{name:'Body',type:'selector',value:()=>['Static','Kinematic','Dynamic'],selected:null},{name:'Mass',type:'number',value:null},{name:'Gravity',type:'int',value:null},{name:'Friction',type:'int',value:null},{name:'Bounciness',type:'int',value:null},{name:'Fixed Rotation',type:'bool',value:null},{name:'isCollider',type:'bool',value:null}],
       func:(ctx,v)=>{ctx.setPhysics?.(v);return {out:true};}
     },
     {
