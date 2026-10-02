@@ -972,6 +972,7 @@
   });}
   function restoreHistorySnapshot(snap){
     if(!snap)return;
+    projectMutationRevision++;
     state.ui.editorVisualCacheRevision=(Number(state.ui.editorVisualCacheRevision)||0)+1;
     state.ui.renderOrderCache=null;
     state.ui.renderOrderSceneId='';
@@ -1037,14 +1038,8 @@
     const parent=h.currentId||h.root;
     const parentNode=h.nodes[parent];
     const existing=(parentNode?.children||[]).map(id=>h.nodes[id]).find(n=>n&&sameHistoryState(n.snapshot,after)&&String(n.action||'')===String(p.action||''));
-    if(existing){
-      h.currentId=existing.id;
-      if(parentNode)parentNode.preferredChildId=existing.id;
-      syncHistoryUi();
-      renderHistory();
-      return;
-    }
     const id=historyNodeId();
+    projectMutationRevision++;
     const createdOrder=Object.keys(h.nodes).length;
     h.nodes[id]={id,parentId:parent,children:[],preferredChildId:null,snapshot:clone(after),action:p.action,timestamp:Date.now(),createdOrder};
     if(parentNode){
@@ -1054,6 +1049,7 @@
     h.currentId=id;
     syncHistoryUi();
     renderHistory();
+    resetAutoSaveTimer();
   }
   function flushPendingHistory(){
     const p=state.history.pending;
@@ -1370,6 +1366,8 @@
   }
 
   function createProject(name='Untitled Node2D') {
+    projectMutationRevision++;
+    projectGeneration++;
     $('#appShell').classList.remove('exited');
     const scene = makeScene('Main');
     state.project.created = true;
@@ -4317,6 +4315,8 @@
 
   function applyProjectData(data,meta={}){
     if(!data || !Array.isArray(data.scenes) || !data.scenes.length) throw new Error('NDC project contains no scenes');
+    projectMutationRevision++;
+    projectGeneration++;
     stopRuntime();
     const project=clone(data.project||{name:'Untitled Node2D',created:true});
     state.project={name:String(project.name||'Untitled Node2D'),created:true,...project};
@@ -4371,12 +4371,16 @@
 
   async function buildProjectNDC(){
     if(!window.UIXNDCCodec) throw new Error('NDC codec is not loaded');
+    flushPendingValueEditors();
+    flushPendingHistory();
     return window.UIXNDCCodec.encode(collectProjectData());
   }
 
   function hasLoadedProject(){return !!state.project.created&&Array.isArray(state.scenes)&&state.scenes.length>0;}
   function openLoadChoice(){showModal($('#loadModal'));}
 
+  let projectMutationRevision=0;
+  let projectGeneration=0;
   let ndcSaveWorker=null;let ndcSaveRequestId=0;let ndcSaveBusy=false;let ndcSavePending=false;let ndcSavePendingSilent=true;
   let ndcLoadWorker=null;let ndcLoadRequestId=0;let ndcTransferCancelled=false;
   function openNdcTransferModal(title,subtitle){
@@ -4476,17 +4480,33 @@
   }
   async function runQueuedProjectSave(silent){
     if(ndcSaveBusy)return;ndcSaveBusy=true;
+    let capturedRevision=projectMutationRevision;
+    let capturedGeneration=projectGeneration;
+    let sourceName='Untitled Node2D',sourceId=null;
     try{
       ensureProject();
+      flushPendingValueEditors();
+      flushPendingHistory();
+      capturedRevision=projectMutationRevision;
+      capturedGeneration=projectGeneration;
       if(!silent)status('Saving in background…');
       const source=collectProjectData();
+      sourceName=String(source.project?.name||'Untitled Node2D');
+      sourceId=state.project.localNdcId||null;
       let bytes;
       try{bytes=await encodeProjectInWorkerParts(source);}
       catch{await saveBackgroundYield();bytes=window.UIXNDCCodec.encode(cloneSaveValue(source,true));}
-      const saved=await window.UIXNDCCodec.saveCurrent(bytes,state.project.name,state.project.localNdcId||null);
-      state.project.localNdcId=saved?.id||state.project.localNdcId||null;
-      rememberCurrentProjectSession();
-      if(!silent)status(`Saved in Project · ${Math.round(bytes.length/1024)} KB`);
+      const saved=await window.UIXNDCCodec.saveCurrent(bytes,sourceName,sourceId);
+      const sameProject=projectGeneration===capturedGeneration;
+      if(sameProject){
+        state.project.localNdcId=saved?.id||state.project.localNdcId||null;
+        rememberCurrentProjectSession();
+      }else{
+        ndcSavePending=true;
+        ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;
+      }
+      if(projectMutationRevision!==capturedRevision){ndcSavePending=true;ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;}
+      if(!silent&&sameProject)status(`Saved in Project · ${Math.round(bytes.length/1024)} KB`);
     }catch(err){console.error(err);if(!silent)status(`Save failed: ${err.message||err}`);}
     finally{
       ndcSaveBusy=false;
@@ -4494,6 +4514,8 @@
     }
   }
   function saveProjectToProjectStorage(silent=false){
+    flushPendingValueEditors();
+    flushPendingHistory();
     if(ndcSaveBusy){ndcSavePending=true;ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;return;}
     saveBackgroundYield().then(()=>runQueuedProjectSave(!!silent));
   }
@@ -6988,7 +7010,27 @@
     const rt=state.runtime;
     if(!sn?.id)return null;
     const cached=rt.compiledScriptById?.get(sn.id);
-    if(cached)return cached;
+    if(cached){
+      const currentValues=sn.values;
+      const currentExpressions=sn.expressions;
+      const currentExpressionKeys=Object.keys(currentExpressions||{}).sort();
+      const currentFirst=flattenEditor(currentValues||[])[0]?.entry;
+      const currentEventType=currentFirst?.type==='selector'?String(currentFirst?.name||''):'';
+      const currentEventSelected=currentFirst?.type==='selector'?String(currentFirst?.selected??''):'';
+      let fresh=cached.valuesRoot===currentValues&&cached.expressionsRoot===currentExpressions&&Array.isArray(cached.specs);
+      if(fresh&&JSON.stringify(cached.expressionKeys||[])!==JSON.stringify(currentExpressionKeys))fresh=false;
+      if(fresh&&String(cached.eventFilter?.type||'')!==currentEventType)fresh=false;
+      if(fresh&&String(cached.eventFilter?.selected??'')!==currentEventSelected)fresh=false;
+      if(fresh){
+        for(const spec of cached.specs){
+          if(spec.kind!=='expr')continue;
+          const current=String(currentExpressions?.[spec.path]??'');
+          if(current!==spec.source){fresh=false;break;}
+        }
+      }
+      if(fresh)return cached;
+      rt.compiledScriptById.delete(sn.id);
+    }
     const def=scriptNodeDefinition(sn.defName);
     const expressionMap=sn.expressions||{};
     const specs=[];
@@ -7000,44 +7042,73 @@
       if(hasExpression){
         const source=String(expressionMap[item.path]??'');
         const compiled=runtimeCompileExpression(source,entry.type);
-        specs.push({kind:'expr',name:entry.name,type:entry.type,source,compiled,fallback:entry.value});
+        specs.push({kind:'expr',name:entry.name,type:entry.type,path:item.path,source,compiled,fallback:entry.value,entry});
       }else if(entry.type==='selector'){
         if(Object.prototype.hasOwnProperty.call(entry,'selected')){
-          specs.push({kind:'const',name:entry.name,value:entry.selected});
+          specs.push({kind:'const',name:entry.name,value:entry.selected,entry,sourceKey:'selected'});
         }else{
-          specs.push({kind:'selector',name:entry.name,type:entry.type,valueFn:entry.value});
+          specs.push({kind:'selector',name:entry.name,type:entry.type,valueFn:entry.value,entry});
         }
       }else{
-        specs.push({kind:'const',name:entry.name,value:entry.value});
+        specs.push({kind:'const',name:entry.name,value:entry.value,entry,sourceKey:'value'});
       }
     }
     const first=flat[0]?.entry;
     const eventFilter=first?.type==='selector'?{type:first.name,selected:first.selected??''}:null;
     const keySpec=specs.map(x=>({k:x.kind,n:x.name,t:x.type,v:x.kind==='const'?x.value:x.kind==='expr'?x.source:(typeof x.valueFn==='function'?'@fn':'@arr')}));
-    const desc={id:sn.id,sn,def,specs,values:Object.create(null),reuseValues:def?.func?.constructor?.name!=='AsyncFunction',eventFilter,signature:JSON.stringify({def:def?.name||sn.defName,spec:keySpec})};
+    const desc={
+      id:sn.id,
+      sn,
+      def,
+      specs,
+      values:Object.create(null),
+      reuseValues:def?.func?.constructor?.name!=='AsyncFunction',
+      eventFilter,
+      valuesRoot:sn.values,
+      expressionsRoot:sn.expressions,
+      expressionKeys:Object.keys(expressionMap).sort(),
+      signature:JSON.stringify({def:def?.name||sn.defName,spec:keySpec})
+    };
     rt.compiledScriptById.set(sn.id,desc);
     return desc;
   }
   function runtimeFillCompiledValues(desc,node,ctx){
     const values=desc.reuseValues?desc.values:Object.create(null);
     const specs=desc.specs;
+    const expressionMap=desc.sn?.expressions||{};
     for(let i=0;i<specs.length;i++){
       const spec=specs[i];
-      if(spec.kind==='const'){values[spec.name]=spec.value;continue;}
+      if(spec.kind==='const'){
+        values[spec.name]=spec.entry ? spec.entry[spec.sourceKey||'value'] : spec.value;
+        continue;
+      }
       if(spec.kind==='selector'){
         try{
           const raw=typeof spec.valueFn==='function'?spec.valueFn(ctx):Array.isArray(spec.valueFn)?spec.valueFn:[];
           const arr=Array.isArray(raw)?raw.map(v=>String(v)):[];
-          values[spec.name]=arr[0]??'';
-        }catch(error){values[spec.name]='';state.runtime.lastError=String(error?.message||error);}
+          const current=spec.entry&&Object.prototype.hasOwnProperty.call(spec.entry,'selected')?String(spec.entry.selected??''):'';
+          values[spec.name]=current&&arr.includes(current)?current:(current&&!arr.length?current:(arr[0]??''));
+        }catch(error){
+          values[spec.name]='';
+          state.runtime.lastError=String(error?.message||error);
+        }
         continue;
       }
       try{
+        const currentSource=String(expressionMap[spec.path]??'');
+        if(currentSource!==spec.source){
+          spec.source=currentSource;
+          spec.compiled=runtimeCompileExpression(currentSource,spec.type);
+        }
+        if(!currentSource){
+          values[spec.name]=spec.entry?.value ?? spec.fallback;
+          continue;
+        }
         if(!spec.compiled?.fn)throw spec.compiled?.error||new Error('Expression compile failed');
         const value=spec.compiled.fn(ctx,Math);
         values[spec.name]=runtimeValidateExpressionValue(value,spec.type);
       }catch(error){
-        values[spec.name]=spec.fallback;
+        values[spec.name]=spec.entry?.value ?? spec.fallback;
         state.runtime.lastError=String(error?.message||error);
       }
     }
@@ -7074,7 +7145,7 @@
   }
   function runtimeInstallDynamicContextGetters(ctx,node){
     const rt=state.runtime,body=runtimeBodyForNode(node);
-    const inputNames=['TouchUpX','TouchUpY','TouchDownX','TouchDownY','TouchMoveX','TouchMoveY','MouseUpX','MouseUpY','MouseDownX','MouseDownY','MouseMoveX','MouseMoveY','ScreenUpX','ScreenUpY','ScreenDownX','ScreenDownY'];
+    const inputNames=['TouchUpX','TouchUpY','TouchDownX','TouchDownY','TouchMoveX','TouchMoveY','MouseUpX','MouseDownX','MouseMoveX','MouseMoveY','ScreenUpX','ScreenUpY','ScreenDownX','ScreenDownY','ScreenMoveX','ScreenMoveY'];
     for(const name of inputNames){
       try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:()=>Number(rt.inputs?.[name])||0});}catch{}
     }
@@ -7087,6 +7158,14 @@
     };
     for(const [name,getter] of Object.entries(numeric)){
       try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:getter,set:v=>{if(!body)return;if(name==='velocityX')body.vx=Number(v)||0;else if(name==='velocityY')body.vy=Number(v)||0;else if(name==='angularVelocity'||name==='angularX')body.omega=(Number(v)||0)*Math.PI/180;else body.omega=Number(v)||0;}});}catch{}
+    }
+    for(const j of rt.shared?.joysticksList||[]){
+      const base=String(j?.variable||'joystick');
+      const row=()=>((rt.joysticks||[]).find(st=>String(st?.variable||'')===base)||{});
+      for(const [suffix,key] of [['distance','distance'],['angle','angle'],['value_x','value_x'],['value_y','value_y']]){
+        const name=`${base}_${suffix}`;
+        try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:()=>Number(row()[key])||0});}catch{}
+      }
     }
   }
   function runtimeVariableRecord(scope,name,node){
@@ -7125,10 +7204,16 @@
       for(let i=0;i<dirty.length;i++){
         const index=dirty[i],src=base[index],dst=out[index];
         if(!src||!dst)continue;
+        src.value=dst.value;
+        for(const k of Object.keys(dst))if(k!=='value')src[k]=dst[k];
+      }
+      dirty.length=0;
+      for(let i=0;i<base.length;i++){
+        const src=base[i],dst=out[i];
+        if(!src||!dst)continue;
         dst.value=src.value;
         for(const k of Object.keys(src))if(k!=='value')dst[k]=src[k];
       }
-      dirty.length=0;
     }
     return rt.activeSceneVariableOverlay;
   }
@@ -7523,9 +7608,11 @@
     else if(v.dataType==='Int')v.value=Number(value);
     else v.value=String(value);
     if(scope==='Scene'&&state.runtime?.activeSceneVariableOverlayIndexMap){
-      const index=state.runtime.activeSceneVariableOverlayIndexMap.get(String(name));
+      const rt=state.runtime,index=rt.activeSceneVariableOverlayIndexMap.get(String(name));
       if(Number.isInteger(index)){
-        const dirty=state.runtime.activeSceneVariableOverlayDirty||[];
+        const base=rt.sceneVariablesByScene?.[String(rt.sceneId||'')]?.[index];
+        if(base)base.value=v.value;
+        const dirty=rt.activeSceneVariableOverlayDirty||[];
         if(!dirty.includes(index))dirty.push(index);
       }
     }
@@ -7762,6 +7849,15 @@ function updateRuntimeAnimations(dt){
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
         else rec.value=String(value);
+        if(scope==='Scene'&&rt.activeSceneVariableOverlayIndexMap){
+          const index=rt.activeSceneVariableOverlayIndexMap.get(prop);
+          if(Number.isInteger(index)){
+            const base=rt.sceneVariablesByScene?.[String(rt.sceneId||'')]?.[index];
+            if(base)base.value=rec.value;
+            const dirty=rt.activeSceneVariableOverlayDirty||[];
+            if(!dirty.includes(index))dirty.push(index);
+          }
+        }
         return true;
       }
     });
@@ -7803,7 +7899,7 @@ function updateRuntimeAnimations(dt){
       setVariable:(scope,name,value)=>runtimeSetVariable(scope,name,value,node),
       saveVariable:(scope,name,storageType)=>runtimeSaveVariable(scope,name,storageType,node),
       loadVariable:(scope,name,storageType)=>runtimeLoadVariable(scope,name,storageType,node),
-      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.t.position[0]=Number(x);if(y!==null&&y!==undefined)b.t.position[1]=Number(y);if(sx!==null&&sx!==undefined)b.t.scale[0]=Number(sx);if(sy!==null&&sy!==undefined)b.t.scale[1]=Number(sy);if(angle!==null&&angle!==undefined)b.t.angle[0]=Number(angle);b._shapeDirty=true;}},
+      setTransform:(x,y,sx,sy,angle)=>{const b=runtimeBodyForNode(node);if(!b)return;const num=(v,fallback)=>{if(v===null||v===undefined||v==='')return fallback;const n=Number(v);return Number.isFinite(n)?n:fallback;};if(x!==null&&x!==undefined)b.t.position[0]=num(x,Number(b.t.position[0])||0);if(y!==null&&y!==undefined)b.t.position[1]=num(y,Number(b.t.position[1])||0);if(sx!==null&&sx!==undefined)b.t.scale[0]=num(sx,Number(b.t.scale[0])||1);if(sy!==null&&sy!==undefined)b.t.scale[1]=num(sy,Number(b.t.scale[1])||1);if(angle!==null&&angle!==undefined)b.t.angle[0]=num(angle,Number(b.t.angle[0])||0);b._shapeDirty=true;},
       setNode:(name,id)=>{if(node){if(name!==null&&name!==undefined)node.name=String(name);if(id!==null&&id!==undefined){const n=Number(id);if(Number.isFinite(n))node.numericId=n;}}},
       setText:(v)=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});}),
       setSprite:(v)=>runtimeSetComponent(node,'sprite',c=>{if(v.Type!==null&&v.Type!==undefined)c.sourceType=v.Type;if(v.Sprite!==null&&v.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v.Animation!==null&&v.Animation!==undefined)c.animation=v.Animation;if(v.Pixelated!==null&&v.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v.Opacity!==null&&v.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);}),
@@ -7813,7 +7909,7 @@ function updateRuntimeAnimations(dt){
       setPhysics:(v)=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];})),
       setCollider:(v)=>runtimeSetComponent(node,'collider',c=>{if(v.Collider!==null&&v.Collider!==undefined)c.collidable=!!v.Collider;if(v.Type!==null&&v.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v.PosX!==null&&v.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v.PosY!==null&&v.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v.ScaleX!==null&&v.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v.ScaleY!==null&&v.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v.Angle!==null&&v.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);}),
       setProgressBar:(v)=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);})),
-      setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.vx=Number(x);if(y!==null&&y!==undefined)b.vy=Number(y);if(angular!==null&&angular!==undefined)b.omega=Number(angular)*Math.PI/180;}},
+      setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(!b)return;const num=(v,fallback)=>{if(v===null||v===undefined||v==='')return fallback;const n=Number(v);return Number.isFinite(n)?n:fallback;};if(x!==null&&x!==undefined)b.vx=num(x,Number(b.vx)||0);if(y!==null&&y!==undefined)b.vy=num(y,Number(b.vy)||0);if(angular!==null&&angular!==undefined)b.omega=num(angular,Number(b.omega)*180/Math.PI)*Math.PI/180;},
       setCamera:(v)=>{const c=state.runtime.camera||{};if(v.Enabled!==null&&v.Enabled!==undefined)c.enabled=!!v.Enabled;if(v.PosX!==null&&v.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v.PosY!==null&&v.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v.Angle!==null&&v.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v.Horizontal!==null&&v.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v.Vertical!==null&&v.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v.Animation!==null&&v.Animation!==undefined)c.followAnimation=v.Animation;if(v.Speed!==null&&v.Speed!==undefined)c.speed=Number(v.Speed);if(v.Scale!==null&&v.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v['BG Color']!==null&&v['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v.Follow!==null&&v.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}},
       setSubCam:(v)=>runtimeSetSubCamera(node,v||{}),
       setCanvas:(v)=>runtimeSetCanvas(node,v||{}),
