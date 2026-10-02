@@ -34,7 +34,7 @@
       },
       {
         "subtitle": "Version",
-        "contents": "<h2>Node2D version</h2><p>This build reports <code>v31.0.6</code> from <code>manifest.json</code>. The version shown by the editor is read from that manifest at startup, so the manifest is the authoritative UI version source for this package.</p>",
+        "contents": "<h2>Node2D version</h2><p>This build reports <code>v40.0.0</code> from <code>manifest.json</code>. The version shown by the editor is read from that manifest at startup, so the manifest is the authoritative UI version source for this package.</p>",
         "id": "basics-version"
       },
       {

@@ -17,7 +17,7 @@
 </div>
 <script>
 (()=>{
-  let sections=[];let filtered=[];let selected=null;let openState=Object.create(null);
+  let sections=[];let filtered=[];let selected=null;let openState=Object.create(null);let autoSelectBest=false;
   const nav=document.getElementById('helpNav'),main=document.getElementById('helpContent'),search=document.getElementById('helpSearch');
   const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const strip=s=>String(s??'').replace(/<[^>]*>/g,' ');
@@ -29,10 +29,12 @@
   const topicSlug=s=>String(s??'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'topic';
   function normalize(data){return Array.isArray(data)?data.map((s,i)=>({title:String(s.title||`Section ${i+1}`),items:Array.isArray(s.items)?s.items.map((x,ii)=>({id:String(x.id||`${topicSlug(s.title)}--${topicSlug(x.subtitle||`topic-${ii}`)}`),subtitle:String(x.subtitle||''),contents:String(x.contents||'')})):[]})):[];}
   function matches(item,terms){const hay=(item.title+' '+item.subtitle+' '+strip(item.contents)).toLowerCase();return terms.every(t=>hay.includes(t));}
+  function relevance(item,terms){const title=String(item.subtitle||'').toLowerCase(),section=String(item.section||'').toLowerCase(),body=strip(item.contents).toLowerCase();let score=0;for(const t of terms){if(title===t)score+=1000;if(title.startsWith(t))score+=300;if(title.split(/[^a-z0-9]+/).includes(t))score+=200;if(section===t)score+=120;if(section.startsWith(t))score+=80;const p=title.indexOf(t);if(p>=0)score+=100-Math.min(100,p);if(body.includes(t))score+=10;}return score;}
+  function bestRelevantResult(list,terms){let best=list[0],bestScore=-Infinity;for(const x of list){const score=relevance({subtitle:x.item.subtitle,contents:x.item.contents,section:x.section.title},terms);if(score>bestScore){best=x;bestScore=score;}}return best;}
   function render(){
     const terms=search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     filtered=[];sections.forEach((section,si)=>{section.items.forEach((item,ii)=>{if(!terms.length||matches({title:section.title,subtitle:item.subtitle,contents:item.contents},terms))filtered.push({si,ii,section,item});});});
-    const first=filtered[0]; if(first && (!selected || !filtered.some(x=>x.si===selected.si&&x.ii===selected.ii))) selected={si:first.si,ii:first.ii};
+    const first=filtered[0]; if(first && (!selected || !filtered.some(x=>x.si===selected.si&&x.ii===selected.ii) || autoSelectBest)){const preferred=autoSelectBest&&terms.length?bestRelevantResult(filtered,terms):first;selected=preferred?{si:preferred.si,ii:preferred.ii}:null;}autoSelectBest=false;
     if(!first) selected=null;
     nav.innerHTML='';
     sections.forEach((section,si)=>{
@@ -81,8 +83,8 @@
     else selected=null;
     render();
   });
-  search.addEventListener('input',render);
-  fetch('help.json').then(r=>r.json()).then(data=>{sections=normalize(data);sections.push(keybindSection());const q=new URLSearchParams(location.search);search.value=q.get('search')||'';const topic=q.get('topic');if(topic)selectTopic(topic);render();}).catch(e=>{main.textContent='Could not load help.json: '+e.message;});
+  search.addEventListener('input',()=>{autoSelectBest=true;render();});
+  fetch('help.json').then(r=>r.json()).then(data=>{sections=normalize(data);sections.push(keybindSection());const q=new URLSearchParams(location.search);search.value=q.get('search')||'';const topic=q.get('topic');if(topic)selectTopic(topic);else if(search.value.trim())autoSelectBest=true;render();}).catch(e=>{main.textContent='Could not load help.json: '+e.message;});
 })();
 </script>
 </body>
