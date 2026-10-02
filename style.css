@@ -1164,3 +1164,107 @@ html:fullscreen::backdrop,body:fullscreen::backdrop,#appShell:fullscreen::backdr
 
 .uix-invalid-field input{border-color:#e34a4a !important;box-shadow:0 0 0 1px rgba(227,74,74,.25);outline:none}
 .uix-invalid-field input:focus{box-shadow:0 0 0 2px rgba(227,74,74,.22)}
+
+/* ScriptNode semantic colors */
+.script-node-card.script-group-events{border-color:#3c8755;}
+.script-node-card.script-group-events .script-node-title{color:#67c481;}
+.script-node-card.script-group-actions{border-color:#a44747;}
+.script-node-card.script-group-actions .script-node-title{color:#e16d6d;}
+.script-node-card.script-group-controls{border-color:#4774b5;}
+.script-node-card.script-group-controls .script-node-title{color:#69a5ff;}
+.script-output-port[data-output-kind="truth"]{background:#3c9cff!important;border-color:#1c5e99;}
+.script-output-port[data-output-kind="falsy"],.script-output-port[data-output-kind="false"]{background:#ff4d4d!important;border-color:#8e2020;}
+.script-node-card.script-group-controls .script-output-port[data-output-kind="out"]{background:#8a8a8a;}
+
+
+
+/* v40.0.2 Script graph geometry and semantic styling */
+.script-variables-scroll{flex:0 1 44%!important;min-height:96px!important;overflow-y:auto!important;overflow-x:hidden!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important;}
+.local-vars-section,.script-scope-vars{min-width:0;}
+.local-vars-section .local-vars-scroll{max-height:none!important;overflow:visible!important;}
+.script-node-card{overflow:visible!important;padding-left:12px!important;padding-right:12px!important;}
+.script-input-port{left:3px!important;top:50%!important;transform:translateY(-50%)!important;width:12px!important;height:12px!important;}
+.script-output{position:relative!important;padding-right:18px!important;min-height:20px!important;height:20px!important;}
+.script-output-port{right:2px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;width:12px!important;height:12px!important;}
+.script-connections{z-index:6!important;overflow:visible!important;pointer-events:none!important;}
+.script-connections .script-connection{pointer-events:stroke!important;stroke-width:2.5!important;fill:none!important;stroke-linecap:round!important;}
+.script-connections .temp-connection{pointer-events:none!important;fill:none!important;stroke-linecap:round!important;}
+.script-node-card,.script-node-card *{position:relative;}
+.script-node-card .script-input-port,.script-node-card .script-output-port{z-index:30!important;}
+.script-inspector-row.script-group-events .script-inspector-name,.library-node.script-group-events{color:#67c481!important;}
+.script-inspector-row.script-group-actions .script-inspector-name,.library-node.script-group-actions{color:#e16d6d!important;}
+.script-inspector-row.script-group-controls .script-inspector-name,.library-node.script-group-controls{color:#69a5ff!important;}
+.script-output-port[data-output-kind="success"]{background:#4cd97b!important;border-color:#247849!important;}
+.script-output-port[data-output-kind="err"],.script-output-port[data-output-kind="error"]{background:#ff9d45!important;border-color:#9a5b20!important;}
+
+
+
+/* v40.0.4 Explorer-style selection + script graph pin/wire geometry */
+.script-canvas{position:relative;isolation:isolate;}
+.script-canvas-world{z-index:5!important;}
+.script-connections{z-index:1!important;pointer-events:none!important;}
+.script-node-card{z-index:5!important;overflow:visible!important;}
+.script-input-port{left:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border-color:#191919!important;box-shadow:0 0 0 1px #777!important;}
+.script-output{position:relative!important;overflow:visible!important;padding-right:0!important;}
+.script-output-port{right:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border-color:#191919!important;box-shadow:0 0 0 1px #777!important;}
+.script-input-port::after,.script-output-port::after{position:absolute;top:50%;font:700 12px/1 Arial,sans-serif;color:var(--script-port-color,#8a8a8a);text-shadow:0 1px 2px #151515;pointer-events:none;}
+.script-input-port::after{content:'➜';left:-16px;transform:translateY(-50%);}
+.script-output-port::after{content:'➜';right:-16px;transform:translateY(-50%);}
+.script-connections .script-connection{z-index:1;stroke:#888;stroke-width:2.5;fill:none;stroke-linecap:round;vector-effect:non-scaling-stroke;}
+.script-connections .temp-connection{z-index:1;stroke:var(--accent);stroke-width:2.5;fill:none;stroke-linecap:round;vector-effect:non-scaling-stroke;}
+.script-output-port[data-output-kind="truth"]{--script-port-color:#3c9cff!important;}
+.script-output-port[data-output-kind="falsy"],.script-output-port[data-output-kind="false"]{--script-port-color:#ff4d4d!important;}
+.script-output-port[data-output-kind="success"]{--script-port-color:#4cd97b!important;}
+.script-output-port[data-output-kind="err"],.script-output-port[data-output-kind="error"]{--script-port-color:#ff9d45!important;}
+
+
+
+/* v40.0.5 authoritative Script Editor placement */
+.script-variables-scroll{flex:0 0 auto!important;height:auto!important;max-height:52%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important;}
+.local-vars-section,.script-scope-vars{display:block!important;flex:0 0 auto!important;min-height:0!important;}
+.script-scope-vars{margin-top:2px!important;}
+.script-node-library{flex:1 1 0!important;height:0!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;align-self:stretch!important;}
+.script-left{justify-content:flex-start!important;}
+.script-node-card{overflow:visible!important;z-index:5!important;}
+.script-input-port{left:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;z-index:30!important;}
+.script-output-port{right:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;z-index:30!important;}
+.script-input-port::after{content:'➜'!important;left:14px!important;right:auto!important;transform:translateY(-50%)!important;}
+.script-output-port::after{content:'➜'!important;left:-14px!important;right:auto!important;transform:translateY(-50%)!important;}
+.script-connections{z-index:1!important;pointer-events:none!important;}
+.script-connections .script-connection{pointer-events:stroke!important;}
+.script-canvas-world{z-index:5!important;}
+
+
+/* v40.0.7 restore Explorer selection build + authoritative ScriptNode ports/wires */
+.script-canvas{position:relative!important;isolation:isolate!important;}
+.script-canvas-world{z-index:5!important;}
+.script-connections{z-index:1!important;pointer-events:none!important;overflow:visible!important;}
+.script-node-card{z-index:5!important;overflow:visible!important;}
+.script-input-port{left:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border:2px solid #191919!important;box-shadow:0 0 0 1px #777!important;}
+.script-output{position:relative!important;overflow:visible!important;padding-right:0!important;min-height:20px!important;height:20px!important;}
+.script-output-port{right:-19px!important;top:50%!important;transform:translateY(-50%)!important;position:absolute!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border:2px solid #191919!important;box-shadow:0 0 0 1px #777!important;}
+.script-input-port::after,.script-output-port::after{position:absolute!important;top:50%!important;font:700 12px/1 Arial,sans-serif!important;color:var(--script-port-color,#8a8a8a)!important;text-shadow:0 1px 2px #151515!important;pointer-events:none!important;}
+/* Left/input: ➜ ● | Node */
+.script-input-port::after{content:'➜'!important;left:-16px!important;right:auto!important;transform:translateY(-50%)!important;}
+/* Right/output: Node | ● ➜ */
+.script-output-port::after{content:'➜'!important;right:-16px!important;left:auto!important;transform:translateY(-50%)!important;}
+.script-connections .script-connection{pointer-events:stroke!important;stroke-width:2.5!important;fill:none!important;stroke-linecap:round!important;stroke-linejoin:round!important;vector-effect:non-scaling-stroke!important;}
+.script-connections .temp-connection{pointer-events:none!important;stroke:var(--accent)!important;stroke-width:2.5!important;fill:none!important;stroke-linecap:round!important;vector-effect:non-scaling-stroke!important;}
+
+
+/* v40.0.9 authoritative port geometry: port centers lie exactly on the outer node edges. */
+.script-node-card{overflow:visible!important;position:absolute!important;z-index:5!important;}
+.script-connections{position:absolute!important;inset:0!important;z-index:1!important;pointer-events:none!important;overflow:visible!important;}
+.script-input-port{position:absolute!important;left:-15px!important;top:13px!important;transform:none!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border:2px solid #191919!important;box-shadow:0 0 0 1px #777!important;}
+.script-output{position:relative!important;overflow:visible!important;min-height:20px!important;height:20px!important;padding:0!important;}
+.script-output-port{position:absolute!important;right:-15px!important;top:50%!important;transform:translateY(-50%)!important;width:12px!important;height:12px!important;z-index:30!important;background:var(--script-port-color,#8a8a8a)!important;border:2px solid #191919!important;box-shadow:0 0 0 1px #777!important;}
+/* Input: arrow then circle. */
+.script-input-port::after{content:'➜'!important;position:absolute!important;top:50%!important;right:calc(100% + 3px)!important;left:auto!important;transform:translateY(-50%)!important;font:700 12px/1 Arial,sans-serif!important;color:var(--script-port-color,#8a8a8a)!important;text-shadow:0 1px 2px #151515!important;pointer-events:none!important;}
+/* Output: circle then arrow. */
+.script-output-port::after{content:'➜'!important;position:absolute!important;top:50%!important;left:calc(100% + 3px)!important;right:auto!important;transform:translateY(-50%)!important;font:700 12px/1 Arial,sans-serif!important;color:var(--script-port-color,#8a8a8a)!important;text-shadow:0 1px 2px #151515!important;pointer-events:none!important;}
+.script-output-port[data-output-kind="truth"]{--script-port-color:#3c9cff!important;}
+.script-output-port[data-output-kind="falsy"],.script-output-port[data-output-kind="false"]{--script-port-color:#ff4d4d!important;}
+.script-output-port[data-output-kind="success"]{--script-port-color:#4cd97b!important;}
+.script-output-port[data-output-kind="err"],.script-output-port[data-output-kind="error"]{--script-port-color:#ff9d45!important;}
+
+.script-connections .script-connection{stroke-width:2.5!important;fill:none!important;stroke-linecap:round!important;stroke-linejoin:round!important;vector-effect:non-scaling-stroke!important;pointer-events:stroke!important;}

@@ -77,7 +77,7 @@
         <button class="mode-button" data-mode="move" title="Move"><span>↔</span><span class="mode-label">Move</span></button>
         <button class="mode-button" data-mode="rotate" title="Rotate"><span>⟳</span><span class="mode-label">Rotate</span></button>
         <button class="mode-button" data-mode="scale" title="Scale"><span>⤢</span><span class="mode-label">Scale</span></button>
-        <button class="mode-button" data-mode="all" title="All"><span>✣</span><span class="mode-label">All</span></button>
+        <button class="mode-button" data-mode="transform" title="Transform"><span>✣</span><span class="mode-label">Transform</span></button>
       </div>
 
       <div class="top-part part-right" anchor="right">
@@ -260,13 +260,15 @@
           <button class="script-panel-collapse" type="button" data-script-panel-collapse="left" title="Collapse">‹</button>
         </div>
         <div class="script-panel-resize script-panel-resize-left" data-resize-script-panel="left"></div>
-        <div id="localVariablesContent" class="local-vars-scroll"></div>
+        <div id="scriptVariablesScroll" class="script-variables-scroll">
+          <div id="localVariablesContent" class="local-vars-section"></div>
+        </div>
         <div class="script-section-divider"></div>
         <div id="scriptNodeLibrary" class="script-node-library"></div>
       </aside>
       <section id="scriptCanvas" class="script-canvas">
-        <svg id="scriptConnections" class="script-connections"></svg>
         <div id="scriptCanvasWorld" class="script-canvas-world"></div>
+        <svg id="scriptConnections" class="script-connections"></svg>
         <div class="script-canvas-status">Zoom <span id="scriptZoomLabel">100%</span></div>
       </section>
       <aside id="scriptInspector" class="script-right"></aside>
