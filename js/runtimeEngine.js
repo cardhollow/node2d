@@ -4,7 +4,7 @@
   const PI = Math.PI;
   const EPS = 1e-9;
   const DEG = PI / 180;
-  const ENGINE_BUILD_VERSION = '40.0.11';
+  const ENGINE_BUILD_VERSION = '40.0.12';
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const add = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
@@ -252,11 +252,51 @@
 
   function positionalCorrection(c){
     const total=c.ap.invMass+c.bp.invMass;if(total<=EPS)return;
-    const correction=Math.min(.75,Math.max(c.penetration-.15,0)*.22);
+    const correction=Math.max(c.penetration-.01,0)*.5;
     if(correction<=0)return;
     const move=mul(c.normal,correction/total);
-    if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;}
-    if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}
+    if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;c.A._shapeDirty=true;}
+    if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;c.B._shapeDirty=true;}
+  }
+
+  function syncTransformMotion(body,h,type){
+    const t=body?.t;if(!t)return false;
+    const px=Number(t.position?.[0])||0,py=Number(t.position?.[1])||0,pa=Number(t.angle?.[0])||0;
+    if(!body._physicsPoseInitialized){
+      body._physicsPoseInitialized=true;
+      body._physicsPrevPosition=[px,py];
+      body._physicsPrevAngle=pa;
+      return false;
+    }
+    const prev=body._physicsPrevPosition||[px,py],prevAngle=Number(body._physicsPrevAngle)||0;
+    const dx=px-prev[0],dy=py-prev[1],da=(pa-prevAngle)*DEG;
+    const moved=Math.abs(dx)>1e-7||Math.abs(dy)>1e-7,rotated=Math.abs(da)>1e-7;
+    if(!moved&&!rotated)return false;
+
+    // A script, AI controller, or direct ctx.transform edit can move a body without
+    // touching velocity. Treat that real transform delta as the motion for this step
+    // so collision response reacts to what actually moved, not only to setVelocity().
+    const inferredVx=dx/h,inferredVy=dy/h,inferredOmega=da/h;
+    body.vx=Number.isFinite(inferredVx)?inferredVx:0;
+    body.vy=Number.isFinite(inferredVy)?inferredVy:0;
+    body.omega=Number.isFinite(inferredOmega)?inferredOmega:0;
+
+    // Dynamic/Kinematic bodies will be integrated from the inferred motion. Restore
+    // the last simulated pose first so the external transform change is not applied twice.
+    if(type==='Dynamic'||type==='Kinematic'){
+      t.position[0]=prev[0];
+      t.position[1]=prev[1];
+      t.angle[0]=prevAngle;
+      body._shapeDirty=true;
+    }
+    return true;
+  }
+
+  function rememberPhysicsPose(body){
+    const t=body?.t;if(!t)return;
+    body._physicsPrevPosition=[Number(t.position?.[0])||0,Number(t.position?.[1])||0];
+    body._physicsPrevAngle=Number(t.angle?.[0])||0;
+    body._physicsPoseInitialized=true;
   }
 
   function jointMassProperties(body){
@@ -345,8 +385,9 @@
     const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length),entries=[];
     for(let i=0;i<bodies.length;i++){
       const b=bodies[i];b.colliding=false;const type=b.physics?.body;
+      syncTransformMotion(b,h,type);
       if(type==='Dynamic')b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
-      if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;}
+      if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;b._shapeDirty=true;}
       const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const isStatic=!['Dynamic','Kinematic'].includes(type);const cacheValid=isStatic&&b._aabbCache&&!b._shapeDirty&&b._aabbCacheKey===b._shapeKey;const box=cacheValid?b._aabbCache:aabb(shape);if(isStatic){b._aabbCache=box;b._aabbCacheKey=b._shapeKey;}aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
     }
 
@@ -371,9 +412,9 @@
 
     // Fewer solver passes are enough with the cached broadphase/manifold data and avoid
     // multiplying collision work unnecessarily when several objects touch at once.
-    for(let iter=0;iter<4;iter++){for(const c of contacts)solveContact(c);for(const j of joints||[])solveJoint(j,h);}
+    for(let iter=0;iter<8;iter++){for(const c of contacts)solveContact(c);for(const j of joints||[])solveJoint(j,h);}
     for(const j of joints||[])solveJointPositions(j);
-    for(let iter=0;iter<1;iter++)for(const c of contacts)positionalCorrection(c);
+    for(let iter=0;iter<2;iter++)for(const c of contacts)positionalCorrection(c);
 
     for(const b of bodies){
       if(!Number.isFinite(b.vx))b.vx=0;if(!Number.isFinite(b.vy))b.vy=0;if(!Number.isFinite(b.omega))b.omega=0;
@@ -381,6 +422,7 @@
       const maxOmega=Number.isFinite(Number(b.physics?.maxAngularVelocity))&&Number(b.physics?.maxAngularVelocity)>0?Number(b.physics.maxAngularVelocity):60;
       if(Math.abs(b.omega)>maxOmega)b.omega=Math.sign(b.omega)*maxOmega;
       if(b.physics?.fixedRotation)b.omega=0;
+      rememberPhysicsPose(b);
     }
     if(typeof onCollisions==='function'&&detectedPairs.length)onCollisions(detectedPairs.map(pair=>[pair[0],pair[1]]));
     return contacts.length;

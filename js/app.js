@@ -6416,7 +6416,7 @@
     const t=component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]}; const p=component(node,'physics'); const c=component(node,'collider');
     const j=component(node,'joints');
     const renderRadius=editorNodeCullRadius(node,1,1);
-    return {node,relative:component(node,'node')?.relative==='Screen'?'Screen':'World',t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node),renderRadius};
+    return {node,relative:component(node,'node')?.relative==='Screen'?'Screen':'World',t:{position:[...t.position],scale:[...t.scale],angle:[...t.angle]},physics:p?clone(p):null,collider:c?{...clone(c),transform:{...c.transform,position:[...c.transform.position],scale:[...c.transform.scale],angle:[...c.transform.angle]}}:null,joints:j?clone(j):null,vx:0,vy:0,omega:0,colliding:false,renderIndex:nodeIndex(node),renderRadius,_physicsPoseInitialized:true,_physicsPrevPosition:[Number(t.position?.[0])||0,Number(t.position?.[1])||0],_physicsPrevAngle:Number(t.angle?.[0])||0};
   }
   function buildRuntimeState(scene){return runtimeAllNodes(scene).filter(({node})=>node.type==='node').map(({node})=>buildRuntimeBody(node));}
   function runtimeContainerForNode(id,items=state.runtime.scene?.nodes){if(!Array.isArray(items))return null;for(const item of items){if(item.id===id)return items;if(item.type==='folder'){const found=runtimeContainerForNode(id,item.children);if(found)return found;}}return null;}
@@ -6476,7 +6476,8 @@
     const body=buildRuntimeBody(copy);
     body.vx=Number(vx)||0;
     body.vy=Number(vy)||0;
-    body.omega=Number(angularVelocity||0)*Math.PI/180;
+    const angular=Number(angularVelocity);
+    body.omega=Number.isFinite(angular)?angular*Math.PI/180:0;
     rt.bodies.push(body);
     rt.renderBodies.push(body);
     if(body.physics||body.collider)rt.physicsBodies.push(body);
@@ -7086,7 +7087,7 @@
       omega:()=>Number(body?.omega)||0
     };
     for(const [name,getter] of Object.entries(numeric)){
-      try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:getter,set:v=>{if(!body)return;if(name==='velocityX')body.vx=Number(v)||0;else if(name==='velocityY')body.vy=Number(v)||0;else if(name==='angularVelocity'||name==='angularX')body.omega=(Number(v)||0)*Math.PI/180;else body.omega=Number(v)||0;}});}catch{}
+      try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:getter,set:v=>{if(!body)return;const n=Number(v);if(name==='velocityX')body.vx=Number.isFinite(n)?n:0;else if(name==='velocityY')body.vy=Number.isFinite(n)?n:0;else if(name==='angularVelocity'||name==='angularX')body.omega=Number.isFinite(n)?n*Math.PI/180:0;else body.omega=Number.isFinite(n)?n:0;}});}catch{}
     }
   }
   function runtimeVariableRecord(scope,name,node){
@@ -7813,7 +7814,7 @@ function updateRuntimeAnimations(dt){
       setPhysics:(v)=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];})),
       setCollider:(v)=>runtimeSetComponent(node,'collider',c=>{if(v.Collider!==null&&v.Collider!==undefined)c.collidable=!!v.Collider;if(v.Type!==null&&v.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v.PosX!==null&&v.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v.PosY!==null&&v.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v.ScaleX!==null&&v.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v.ScaleY!==null&&v.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v.Angle!==null&&v.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);}),
       setProgressBar:(v)=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);})),
-      setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined)b.vx=Number(x);if(y!==null&&y!==undefined)b.vy=Number(y);if(angular!==null&&angular!==undefined)b.omega=Number(angular)*Math.PI/180;}},
+      setVelocity:(x,y,angular)=>{const b=runtimeBodyForNode(node);if(b){if(x!==null&&x!==undefined){const n=Number(x);b.vx=Number.isFinite(n)?n:0;}if(y!==null&&y!==undefined){const n=Number(y);b.vy=Number.isFinite(n)?n:0;}if(angular!==null&&angular!==undefined){const n=Number(angular);b.omega=Number.isFinite(n)?n*Math.PI/180:0;}}},
       setCamera:(v)=>{const c=state.runtime.camera||{};if(v.Enabled!==null&&v.Enabled!==undefined)c.enabled=!!v.Enabled;if(v.PosX!==null&&v.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v.PosY!==null&&v.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v.Angle!==null&&v.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v.Horizontal!==null&&v.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v.Vertical!==null&&v.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v.Animation!==null&&v.Animation!==undefined)c.followAnimation=v.Animation;if(v.Speed!==null&&v.Speed!==undefined)c.speed=Number(v.Speed);if(v.Scale!==null&&v.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v['BG Color']!==null&&v['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v.Follow!==null&&v.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}},
       setSubCam:(v)=>runtimeSetSubCamera(node,v||{}),
       setCanvas:(v)=>runtimeSetCanvas(node,v||{}),
@@ -7829,7 +7830,7 @@ function updateRuntimeAnimations(dt){
       loadScene:(name)=>requestRuntimeSceneLoad(name),
     };
     Object.defineProperties(ctx,{
-      angularVelocity:{enumerable:true,configurable:true,get:()=>Number(body?.omega||0)*180/Math.PI,set:v=>{if(body&&v!==null&&v!==undefined)body.omega=Number(v||0)*Math.PI/180;}},
+      angularVelocity:{enumerable:true,configurable:true,get:()=>Number(body?.omega||0)*180/Math.PI,set:v=>{if(body&&v!==null&&v!==undefined){const n=Number(v);body.omega=Number.isFinite(n)?n*Math.PI/180:0;}}},
       omega:{enumerable:true,configurable:true,get:()=>Number(body?.omega)||0,set:v=>{if(body&&v!==null&&v!==undefined)body.omega=Number(v)||0;}}
     });
     for(const j of state.runtime.shared?.joysticksList||[]){const st=(state.runtime.joysticks||[]).find(x=>x.variable===j.variable)||{};const base=j.variable||'joystick';ctx[`${base}_distance`]=Number(st.distance)||0;ctx[`${base}_angle`]=Number(st.angle)||0;ctx[`${base}_value_x`]=Number(st.value_x)||0;ctx[`${base}_value_y`]=Number(st.value_y)||0;}
