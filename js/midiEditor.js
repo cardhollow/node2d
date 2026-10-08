@@ -303,7 +303,7 @@
     const notesSeed=Array.isArray(seedNotes)?seedNotes.map(n=>({...n,selected:false})):[];
     const initialCount=notesSeed.length;
     const rs={
-      notes:notesSeed,selected:new Set(),playing:false,recording:false,raf:0,playToken:0,
+      notes:notesSeed,selected:new Set(),playing:false,recording:false,raf:0,playToken:0,playSources:new Set(),
       rangeStart:layout[Math.max(0,layout.length-1)]??60,rangeEnd:layout[0]??72,
       threshold:.045,minMs:90,tolerance:70,wave:mainState.tracks?.[mainState.cur]?.wave||'triangle',
       audio:null,analyser:null,mic:null,buffer:null,freqBuffer:null,recordTimer:0,lastPitch:null,lastPitchAt:0,lastRms:0,lastOnsetAt:-Infinity,pitchHistory:[],pitchConfidence:0,pendingPitch:null,pendingSince:0,
@@ -359,10 +359,66 @@
     };
     const hit=(x,y)=>{const step=(x-KEYW+sx)/zoom,row=Math.floor((y-RULER+sy)/rowH),p=layout[row];if(p===undefined)return null;for(let i=rs.notes.length-1;i>=0;i--){const n=rs.notes[i];if(n.p===p&&step>=n.t&&step<n.t+n.l)return i;}return null;};
     const snapshot=()=>rs.notes.map(n=>({...n}));
-    function recAudio(){if(!rs.audio)rs.audio=new (window.AudioContext||window.webkitAudioContext)();if(rs.audio.state==='suspended')rs.audio.resume();return rs.audio;}
-    function recTone(n,t,d){const a=recAudio(),p=validMidiPitch(n.p),def=mainState.noteDefs?.[String(p)]||normalizeNoteDef(null,p),wave=rs.wave==='track'?(mainState.tracks?.[n.tr]?.wave||'triangle'):rs.wave,o=a.createOscillator(),gain=a.createGain();o.type=NOTE_TYPES.includes(wave)?wave:'triangle';o.frequency.value=Number(def.frequency)||midiFrequency(p);const st=Math.max(t,a.currentTime+.005),dur=Math.max(.03,d),amp=clamp(Number(def.amplitude)||.16,0,1);gain.gain.setValueAtTime(0,st);gain.gain.linearRampToValueAtTime(amp,st+.008);gain.gain.setValueAtTime(amp,st+Math.max(.012,dur-.02));gain.gain.linearRampToValueAtTime(0,st+dur);o.connect(gain).connect(a.destination);o.start(st);o.stop(st+dur+.02);}
-    const stopRecordPlayback=()=>{rs.playing=false;rs.playToken++;cancelAnimationFrame(rs.raf);modal3.querySelector('[data-rec-play]').textContent='▶ Play';};
-    const recordPlay=()=>{if(rs.playing){stopRecordPlayback();draw();return;}if(!rs.notes.length)return;const a=recAudio(),ss=60/(Number(mainState.bpm)||120)/4;let start=Infinity,end=0;for(const n of rs.notes){start=Math.min(start,n.t);end=Math.max(end,n.t+n.l);}const token=++rs.playToken;rs.playing=true;rs.head=start;modal3.querySelector('[data-rec-play]').textContent='■ Stop';const started=a.currentTime;const tick=()=>{if(!rs.playing||token!==rs.playToken)return;rs.head=start+(a.currentTime-started)/ss;let followPitch=null;for(let i=0;i<rs.notes.length;i++){const n=rs.notes[i];if(rs.head>=n.t&&rs.head<n.t+n.l){if(followPitch==null)followPitch=n.p;if(!n._playedToken){n._playedToken=token;recTone(n,a.currentTime+Math.max(0,n.t-rs.head)*ss,n.l*ss);}}}followPosition(rs.head,followPitch==null?layout[Math.floor(layout.length/2)]??60:followPitch);draw();if(rs.head>=end+.25/ss){stopRecordPlayback();rs.head=end;draw();return;}rs.raf=requestAnimationFrame(tick);};tick();};
+    function recAudio(){
+      const AudioContextCtor=window.AudioContext||window.webkitAudioContext;
+      if(!AudioContextCtor)throw new Error('Web Audio is unavailable');
+      if(!rs.audio || rs.audio.state==='closed')rs.audio=new AudioContextCtor({latencyHint:'interactive'});
+      return rs.audio;
+    }
+    function recTone(n,a,t,d){
+      const p=validMidiPitch(n.p),def=mainState.noteDefs?.[String(p)]||normalizeNoteDef(null,p),wave=rs.wave==='track'?(mainState.tracks?.[n.tr]?.wave||'triangle'):rs.wave;
+      const o=a.createOscillator(),gain=a.createGain();
+      o.type=NOTE_TYPES.includes(wave)?wave:'triangle';
+      o.frequency.value=Number(def.frequency)||midiFrequency(p);
+      const st=Math.max(t,a.currentTime+.01),dur=Math.max(.03,d),amp=clamp(Number(def.amplitude)||.16,0,1);
+      gain.gain.setValueAtTime(0,st);
+      gain.gain.linearRampToValueAtTime(amp,st+.008);
+      gain.gain.setValueAtTime(amp,st+Math.max(.012,dur-.02));
+      gain.gain.linearRampToValueAtTime(0,st+dur);
+      o.connect(gain).connect(a.destination);
+      o.start(st);o.stop(st+dur+.03);
+      const source={o,gain};
+      rs.playSources.add(source);
+      const cleanup=()=>{rs.playSources.delete(source);try{o.disconnect();}catch{}try{gain.disconnect();}catch{}};
+      o.addEventListener('ended',cleanup,{once:true});
+      return source;
+    }
+    const stopRecordPlayback=()=>{
+      rs.playing=false;rs.playToken++;cancelAnimationFrame(rs.raf);rs.raf=0;
+      for(const source of rs.playSources){try{source.o.stop();}catch{}try{source.o.disconnect();}catch{}try{source.gain.disconnect();}catch{}}
+      rs.playSources.clear();
+      modal3.querySelector('[data-rec-play]').textContent='▶ Play';
+    };
+    const recordPlay=async()=>{
+      if(rs.playing){stopRecordPlayback();draw();return;}
+      if(!rs.notes.length)return;
+      const a=recAudio();
+      try{if(a.state==='suspended'||a.state==='interrupted')await a.resume();}catch{}
+      if(rs.playing)return;
+      const ss=60/(Number(mainState.bpm)||120)/4;
+      let start=Infinity,end=0;
+      for(const n of rs.notes){start=Math.min(start,n.t);end=Math.max(end,n.t+n.l);}
+      if(!Number.isFinite(start))return;
+      const token=++rs.playToken;
+      rs.playing=true;rs.head=start;
+      modal3.querySelector('[data-rec-play]').textContent='■ Stop';
+      const started=a.currentTime+.03;
+      for(const n of rs.notes){
+        const when=started+Math.max(0,n.t-start)*ss;
+        recTone(n,a,when,n.l*ss);
+      }
+      const tick=()=>{
+        if(!rs.playing||token!==rs.playToken)return;
+        rs.head=start+(a.currentTime-started)/ss;
+        let followPitch=null;
+        for(const n of rs.notes){if(rs.head>=n.t&&rs.head<n.t+n.l){followPitch=n.p;break;}}
+        followPosition(rs.head,followPitch==null?layout[Math.floor(layout.length/2)]??60:followPitch);
+        draw();
+        if(rs.head>=end+.25/ss){stopRecordPlayback();rs.head=end;draw();return;}
+        rs.raf=requestAnimationFrame(tick);
+      };
+      tick();
+    };
     const detectorSettings=()=>({
       threshold:clamp(Number(modal3.querySelector('[data-rec-threshold]')?.value)||.025,.001,1),
       minMs:Math.max(30,Number(modal3.querySelector('[data-rec-min]')?.value)||90),
@@ -489,7 +545,21 @@
     };
     const stopRecord=()=>{if(!rs.recording)return;rs.recording=false;clearTimeout(rs.recordTimer);finishDetected(performance.now());rs.lastPitch=null;rs.currentStart=null;try{rs.mic?.getTracks().forEach(t=>t.stop());}catch{}rs.mic=null;rs.analyser=null;modal3.querySelector('[data-rec-record]').textContent='● Start Record';draw();};
     const startRecord=async()=>{if(rs.recording){stopRecord();return;}try{const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});const a=recAudio(),src=a.createMediaStreamSource(stream),an=a.createAnalyser();an.fftSize=4096;an.smoothingTimeConstant=0;an.minDecibels=-100;an.maxDecibels=-10;src.connect(an);rs.mic=stream;rs.analyser=an;rs.audio=a;rs.buffer=new Float32Array(an.fftSize);rs.freqBuffer=new Float32Array(an.frequencyBinCount);rs.recording=true;rs.lastPitch=null;rs.currentStart=null;rs.pendingPitch=null;rs.pendingSince=0;rs.lastPitchAt=performance.now();rs.lastRms=0;rs.lastOnsetAt=-Infinity;rs.pitchHistory.length=0;rs.recordStartAt=performance.now();rs.recordStartStep=Math.max(0,Math.round(Number(rs.head)||Number(mainState.head)||0));rs.head=rs.recordStartStep;modal3.querySelector('[data-rec-record]').textContent='■ Stop Record';autoPan();draw();recordTick();}catch(err){window.UIXApp?.status?.(`Could not start microphone: ${err.message||err}`);}};
-    const copyBack=()=>{if(!rs.notes.length){window.UIXApp?.status?.('No notes to copy');return;}const chosen=rs.notes.map(n=>({...n,selected:false}));let minT=Infinity;for(const n of chosen)minT=Math.min(minT,n.t);const prepared=chosen.map(n=>({...n,t:n.t-minT,tr:mainState.cur||0,velocity:100}));const before=mainState.notes.map(n=>({...n}));if(editMode&&seedNotes?.length){const seedKey=new Set(seedNotes.map(n=>`${n.t}|${n.p}|${n.l}|${n.tr}`));mainState.notes=mainState.notes.filter(n=>!seedKey.has(`${n.t}|${n.p}|${n.l}|${n.tr}`));}const target=editMode&&seedNotes?.length?Math.min(...seedNotes.map(n=>n.t)):mainState.head??0;for(const n of prepared){n.t+=Math.max(0,target);mainState.notes.push(n);}mainState.noteLayout=ensureNotePitches(mainState.noteLayout,prepared.map(n=>n.p));mainState.noteDefs=ensureNoteDefs(mainState.noteDefs||{},prepared.map(n=>n.p));saveNoteLayout(mainState.noteLayout);saveNoteDefs(mainState.noteDefs);mainState.history.push({bpm:mainState.bpm,ppq:mainState.ppq,start:mainState.start,head:mainState.head,cur:mainState.cur,tool:mainState.tool,sx:mainState.sx,sy:mainState.sy,zoom:mainState.zoom,notes:before,tracks:mainState.tracks.map(t=>({...t})),noteLayout:mainState.noteLayout.slice(),noteDefs:cloneNoteDefs(mainState.noteDefs)});window.UIXApp?.status?.(`${prepared.length} note${prepared.length===1?'':'s'} copied to the DAW`);close();};
+    const copyBack=()=>{
+      const chosen=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);
+      if(!chosen.length){
+        modal3.querySelector('[data-rec-message]').textContent='Select at least one note.';
+        window.UIXApp?.status?.('Select at least one Record Note to copy');
+        return;
+      }
+      let minT=Infinity,maxP=-Infinity;
+      for(const n of chosen){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}
+      mainState.clipboard=chosen.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:n.velocity||100}));
+      mainState.pasteTarget={step:minT,p:maxP};
+      const message=`${chosen.length} note${chosen.length===1?'':'s'} copied to clipboard. Use Paste in the MIDI Editor.`;
+      modal3.querySelector('[data-rec-message]').textContent=message;
+      window.UIXApp?.status?.(message);
+    };
     const deleteSelected=()=>{if(!rs.selected.size)return;rs.notes=rs.notes.filter((n,i)=>!rs.selected.has(i));rs.selected.clear();rs.changed=true;draw();};
     c.addEventListener('contextmenu',e=>{e.preventDefault();const r=c.getBoundingClientRect(),i=hit(e.clientX-r.left,e.clientY-r.top);if(i!=null)rs.selected.has(i)||rs.selected.add(i);window.UIXApp?.showContextMenu?.([{label:'Copy',icon:'⧉',disabled:rs.selected.size===0,action:()=>{const s=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);if(!s.length)return;let minT=Infinity,maxP=-Infinity;for(const n of s){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}mainState.clipboard=s.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:100}));mainState.pasteTarget={step:minT,p:maxP};host.textContent='Note copied.';}},{label:'Paste',icon:'▣',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));const p=validMidiPitch(mainState.pasteTarget?.p??72);rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(p-n.dp),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Paste Origin Note',icon:'↥',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(n.op??n.p),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Delete',icon:'×',disabled:rs.selected.size===0,action:deleteSelected},{label:'Select All',icon:'☑',action:()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();}}],e.clientX,e.clientY);});
     c.addEventListener('pointerdown',e=>{active.set(e.pointerId,{x:e.clientX,y:e.clientY});c.setPointerCapture?.(e.pointerId);if(active.size>=2){drag=null;box=null;const pts=[...active.values()];two={last:{x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}};return;}const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(y<RULER&&x>=KEYW){rs.head=Math.max(0,Math.round(((x-KEYW+sx)/zoom)));rs.recordStartStep=rs.head;followPosition(rs.head,layout[Math.floor(layout.length/2)]??60);draw();return;}const i=hit(x,y);if(i!=null){if(e.ctrlKey||e.metaKey){rs.selected.has(i)?rs.selected.delete(i):rs.selected.add(i);}else{rs.selected.clear();rs.selected.add(i);}draw();}});
