@@ -219,7 +219,7 @@
 
   <section id="assetModal" class="modal asset-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
     <div class="modal-header"><div><h3>Assets Manager</h3><p>Project assets are saved with the project and included in project exports.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
-    <div class="asset-toolbar"><div class="asset-tabs"><button class="asset-tab active" data-asset-tab="Sprite">Sprites</button><button class="asset-tab" data-asset-tab="Audio">Audio</button><button class="asset-tab" data-asset-tab="MIDI">MIDI</button></div><div class="asset-actions"><button class="btn" data-action="import-assets">Import</button><button class="btn" data-action="create-asset">Create</button><span id="assetDropHint" class="asset-drop-hint">Drag &amp; Drop your file</span></div></div>
+    <div class="asset-toolbar"><div class="asset-tabs"><button class="asset-tab active" data-asset-tab="Sprite">Sprites</button><button class="asset-tab" data-asset-tab="Audio">Audio</button><button class="asset-tab" data-asset-tab="MIDI">MIDI</button><button class="asset-tab" data-asset-tab="Font">Fonts</button></div><div class="asset-actions"><button class="btn" data-action="import-assets">Import</button><button class="btn" data-action="create-asset">Create</button><span id="assetDropHint" class="asset-drop-hint">Drag &amp; Drop your file</span></div></div>
     <div id="assetContent" class="asset-content"></div>
   </section>
 
@@ -332,7 +332,7 @@
   </section>
 
   <div id="floatingContextMenu" class="context-menu floating-context" data-close-outside="true" hidden></div>
-  <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.gif,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi" multiple hidden>
+  <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.gif,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi,font/ttf,font/otf,font/woff,font/woff2,.ttf,.otf,.woff,.woff2" multiple hidden>
   <input id="projectFileInput" type="file" accept=".ndc,application/x-ndc" hidden>
   <script src="js/node.js"></script>
   <script src="js/assets.js"></script>
