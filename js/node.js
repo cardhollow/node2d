@@ -27,7 +27,7 @@
       fontSize: 24, fontFamily: 'sans-serif', align: 'Center', justify: 'Left', padding: 10,
       outlineWidth: 1, borderRadius: 6, maxLength: 0
     },
-    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', renderType: 'Image', scaleType: 'Stretch', modulate: '#FFFFFFFF', strength: 1, animation: '', opacity: 1, position: [0, 0], size: [0, 0] },
+    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', renderType: 'Image', scaleType: 'Stretch', modulate: '#FFFFFFFF', strength: 1, animation: '', opacity: 1, textureSize: [0, 0], position: [0, 0], size: [0, 0] },
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
@@ -129,6 +129,8 @@
         component.pixelated = component.pixelated !== false;
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
         component.size = Array.isArray(component.size) ? component.size : [0, 0];
+        component.textureSize = Array.isArray(component.textureSize) ? component.textureSize : [0, 0];
+        component.textureSize = [Math.max(0, Number(component.textureSize[0]) || 0), Math.max(0, Number(component.textureSize[1]) || 0)];
         component.renderType = component.renderType === 'Texture' ? 'Texture' : 'Image';
         component.scaleType = component.scaleType === 'Crop' ? 'Crop' : 'Stretch';
         component.modulate = component.modulate || '#FFFFFFFF';

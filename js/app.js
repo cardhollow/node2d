@@ -2302,6 +2302,7 @@
       case 'sprite': {
         const animComp=component(node,'animationsprite');
         rows=[field('Type',comp.renderType||'Image','custom-select',v=>{comp.renderType=v==='Texture'?'Texture':'Image';renderComponentPanel();drawWorkplace();},['Image','Texture'],()=>comp.renderType||'Image'),field('Source',comp.sourceType||'Sprite','custom-select',v=>{comp.sourceType=v==='Animation'?'Animation':'Sprite';renderComponentPanel();drawWorkplace();},['Sprite','Animation'],()=>comp.sourceType||'Sprite'),field('Scale Type',comp.scaleType||'Stretch','custom-select',v=>{comp.scaleType=v==='Crop'?'Crop':'Stretch';drawWorkplace();},['Stretch','Crop'],()=>comp.scaleType||'Stretch'),colorField('Modulate',comp.modulate||'#FFFFFFFF',v=>{comp.modulate=v;markEditorVisualsDirty();drawWorkplace();}),field('Strength',Math.round(clamp(Number(comp.strength??1),0,1)*100),'number',v=>{comp.strength=clamp(Number(v)/100,0,1);markEditorVisualsDirty();drawWorkplace();}),field('Opacity',Math.round(clamp(Number(comp.opacity??1),0,1)*100),'number',v=>{comp.opacity=clamp(Number(v)/100,0,1);markEditorVisualsDirty();drawWorkplace();}),checkboxField('Pixelated',!!comp.pixelated,v=>{comp.pixelated=v;drawWorkplace();}),axisVectorField('Position',comp.position||[0,0],(x,y)=>{comp.position=[x,y];drawWorkplace();}),axisVectorField('Size',comp.size||[0,0],(x,y)=>{comp.size=[Math.max(0,Number(x)||0),Math.max(0,Number(y)||0)];drawWorkplace();})];
+        if((comp.renderType||'Image')==='Texture') rows.splice(1,0,axisVectorField('Texture Size',comp.textureSize||[0,0],(x,y)=>{comp.textureSize=[Math.max(0,Number(x)||0),Math.max(0,Number(y)||0)];markEditorVisualsDirty();drawWorkplace();}));
         if((comp.sourceType||'Sprite')==='Animation'){
           const opts=(animComp?.animations||[]).map(a=>a.name);rows.push(field('Animation',comp.animation||opts[0]||'','custom-select',v=>{comp.animation=v;drawWorkplace();},opts,()=>comp.animation||opts[0]||''));
           if(!animComp)rows.push(readOnlyField('Animation','Add Animation Sprite component first'));
@@ -3659,7 +3660,17 @@
     if(!sprite||!visual.src)return null;
     const img=getAssetImage(visual.src);if(!img?.complete||!img.naturalWidth)return null;
     const base=constrainImageSize(img),p=Array.isArray(sprite.position)?sprite.position:[0,0],size=Array.isArray(sprite.size)?sprite.size:[0,0];
-    return {x:Number(p[0])||0,y:Number(p[1])||0,w:Number(size[0])>0?Number(size[0]):base.w,h:Number(size[1])>0?Number(size[1]):base.h};
+    let autoW=base.w,autoH=base.h;
+    if(sprite.renderType==='Texture'){
+      // Texture with no explicit Size: show a 3x3 grid of tiles instead of a single tile (which looks identical to Image).
+      const t=spriteTextureTile(img,sprite);autoW=t.w*3;autoH=t.h*3;
+    }
+    return {x:Number(p[0])||0,y:Number(p[1])||0,w:Number(size[0])>0?Number(size[0]):autoW,h:Number(size[1])>0?Number(size[1]):autoH};
+  }
+  // Size of ONE repeated Texture tile: Texture Size if set, otherwise the image's normal (constrained) size.
+  function spriteTextureTile(img,sprite){
+    const ts=Array.isArray(sprite?.textureSize)?sprite.textureSize:[0,0],base=constrainImageSize(img)||{w:img.naturalWidth||1,h:img.naturalHeight||1};
+    return {w:Math.max(1,Number(ts[0])>0?Number(ts[0]):base.w),h:Math.max(1,Number(ts[1])>0?Number(ts[1]):base.h)};
   }
   function hasAnimatedVisuals(){
     return allNodes().some(({node})=>{if(node.type!=='node')return false;const visual=nodeVisualSource(node);return !!visual?.animated;});
@@ -3775,7 +3786,7 @@
       const margin=96;
       if(maxX<centerX-halfW-margin||minX>centerX+halfW+margin||maxY<centerY-stateHalfH-margin||minY>centerY+stateHalfH+margin)return;
       let cache=editorVisualCache.get(node),rev=Number(state.ui.editorVisualCacheRevision)||0;
-      const liveTexture=component(node,'sprite')?.renderType==='Texture';
+      const liveTexture=!!(component(node,'sprite')||component(node,'input'));
       if(liveTexture)cache=null;
       else if(!cache||cache.rev!==rev){cache=buildEditorVisualCache(node,ctx);if(cache)editorVisualCache.set(node,cache);}
       if(cache){
@@ -3985,7 +3996,10 @@
     }
     ctx.restore();
   }
-  function drawEditorInputVisual(ctx,input){
+  // Scroll offsets (content-space px) per Input component; follows the caret, and the mouse wheel in Play.
+  const inputScrollStore=new WeakMap();
+  function inputScrollFor(input){let st=inputScrollStore.get(input);if(!st){st={x:0,y:0};inputScrollStore.set(input,st);}return st;}
+  function drawEditorInputVisual(ctx,input,node){
     if(!ctx||!input)return;
     let saved=false;
     try{
@@ -3998,13 +4012,9 @@
       const align=['Top','Center','Bottom'].includes(input.align)?input.align:'Center';
       const multiline=!!input.multiline;
       const display=String(input.txt??'')||String(input.placeholder??'');
-      const lines=(multiline?display.split('\n'):[display]).slice(0,512);
-      const lineH=fontSize*1.25,maxW=Math.max(1,w-pad*2);
-      const x=justify==='Left'?(-w/2+pad):(justify==='Right'?(w/2-pad):0);
-      const contentLineCount=Math.max(1,lines.length),textH=contentLineCount*lineH;
-      const contentH=Math.max(1,h-pad*2);
-      const extra=Math.max(0,contentH-textH);
-      const topOffset=align==='Top'?0:(align==='Bottom'?extra:extra/2);
+      const lines=(multiline?display.split('\n'):[display.replace(/\n/g,' ')]).slice(0,2048);
+      const lineH=fontSize*1.25,maxW=Math.max(1,w-pad*2),contentH=Math.max(1,h-pad*2);
+      const cx0=-w/2+pad,cy0=-h/2+pad;
       ctx.save();saved=true;
       ctx.translate(Number(pos[0])||0,Number(pos[1])||0);
       ctx.scale(sx,sy);
@@ -4013,24 +4023,136 @@
       const outline=Number(input.outlineWidth)||0;
       if(outline>0){ctx.strokeStyle=colorCss(input.outlineCol,'#fff');ctx.lineWidth=outline;ctx.stroke();}
       ctx.font=`${fontSize}px ${String(input.fontFamily||'sans-serif')}`;
-      ctx.textAlign=justify==='Left'?'left':justify==='Right'?'right':'center';
-      ctx.textBaseline='middle';
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      // Live editor state (Play only): selection + caret come from the hidden DOM element.
+      const ed=node&&state.runtime?.running?state.runtime.textInputEditors?.get?.(node.id):null;
+      const focused=!!(ed?.el&&document.activeElement===ed.el);
+      let vlines=null,s0=0,s1=0;
+      if(focused){const val=String(ed.el.value??'');s0=ed.el.selectionStart??val.length;s1=ed.el.selectionEnd??s0;vlines=multiline?val.split('\n'):[val];}
+      const widths=lines.map(l=>ctx.measureText(l).width);
+      let widest=0;for(const v of widths)if(v>widest)widest=v;
+      if(vlines)for(const l of vlines){const v=ctx.measureText(l).width;if(v>widest)widest=v;}
+      const contentW=Math.max(maxW,widest+2);
+      const lineCount=Math.max(1,vlines?Math.max(lines.length,vlines.length):lines.length),textH=lineCount*lineH;
+      const extra=Math.max(0,contentH-textH);
+      const topOffset=align==='Top'?0:(align==='Bottom'?extra:extra/2);
+      const offFor=wd=>justify==='Left'?0:(justify==='Right'?contentW-wd:(contentW-wd)/2);
+      // Caret / selection geometry in content space (before scrolling).
+      let caret=null;const sel=[];
+      if(vlines){
+        const a=Math.min(s0,s1),b=Math.max(s0,s1);
+        let off=0,found=false;
+        for(let i=0;i<vlines.length;i++){
+          const ln=vlines[i],ls=off,le=off+ln.length;off=le+1;
+          const lw=ctx.measureText(ln).width,l0=offFor(lw),yy=topOffset+i*lineH;
+          if(a!==b&&b>ls&&a<=le){
+            const sa=Math.max(a,ls)-ls,sb=Math.min(b,le)-ls;
+            const x0=l0+ctx.measureText(ln.slice(0,sa)).width,x1=l0+ctx.measureText(ln.slice(0,sb)).width;
+            sel.push([x0,yy,Math.max(2,x1-x0),lineH]);
+          }
+          if(!found&&s0<=le){caret={x:l0+ctx.measureText(ln.slice(0,s0-ls)).width,y:yy};found=true;}
+        }
+        if(!found){const ln=vlines.at(-1)||'';caret={x:offFor(ctx.measureText(ln).width)+ctx.measureText(ln).width,y:topOffset+(vlines.length-1)*lineH};}
+      }
+      // Scroll: keep the caret inside the visible content box, clamp to content size.
+      const st=inputScrollFor(input),maxSX=Math.max(0,contentW-maxW),maxSY=Math.max(0,textH-contentH);
+      if(caret){
+        if(caret.x-st.x>maxW-1)st.x=caret.x-maxW+1;
+        if(caret.x-st.x<0)st.x=caret.x;
+        if(caret.y+lineH-st.y>contentH)st.y=caret.y+lineH-contentH;
+        if(caret.y-st.y<0)st.y=caret.y;
+      }
+      st.x=clamp(st.x,0,maxSX);st.y=clamp(st.y,0,maxSY);
+      // Everything below is clipped to the padded content box so text/caret never leave the container.
+      ctx.save();
+      ctx.beginPath();ctx.rect(cx0,cy0,maxW,contentH);ctx.clip();
+      ctx.translate(cx0-st.x,cy0-st.y);
+      ctx.fillStyle='rgba(80,140,255,.45)';
+      for(const r of sel)ctx.fillRect(r[0],r[1],r[2],r[3]);
       ctx.globalAlpha=String(input.txt??'')?1:.58;
+      ctx.fillStyle=colorCss(input.fgCol,'#fff');
       for(let i=0;i<lines.length;i++){
-        let line=String(lines[i]??'');
-        while(line&&ctx.measureText(line).width>maxW)line=line.slice(0,-1);
-        ctx.fillStyle=colorCss(input.fgCol,'#fff');
-        const y=-h/2+pad+topOffset+lineH/2+i*lineH;
-        if(y>h/2-pad+lineH/2)break;
-        ctx.fillText(line,x,y);
+        const y=topOffset+i*lineH+lineH/2;
+        if(y+lineH<st.y||y-lineH>st.y+contentH)continue;
+        ctx.fillText(lines[i],offFor(widths[i]),y);
       }
       ctx.globalAlpha=1;
+      if(caret&&s0===s1&&Math.floor(performance.now()/530)%2===0){
+        ctx.fillStyle=colorCss(input.fgCol,'#fff');ctx.fillRect(caret.x-.75,caret.y+2,1.5,Math.max(2,lineH-4));
+      }
+      ctx.restore();
     }catch{
       // Input is an editor visual only; a malformed legacy value must never stop the node/sprite render.
       if(!saved){try{ctx.save();saved=true;}catch{}}
     }finally{if(saved)try{ctx.restore();}catch{}}
   }
 
+  // ---- Shared sprite fitting / texture tiling (used by editor AND runtime) ----
+  // Crop: keep aspect ratio, fill the box, centre, cut off the overflow. Stretch: fill exactly.
+  function spriteDrawFitted(c,img,dx,dy,dw,dh,scaleType){
+    const iw=img.naturalWidth,ih=img.naturalHeight;
+    if(!(dw>0&&dh>0&&iw>0&&ih>0))return;
+    if(scaleType==='Crop'){
+      const fit=Math.max(dw/iw,dh/ih),sw=dw/fit,sh=dh/fit;
+      c.drawImage(img,(iw-sw)/2,(ih-sh)/2,sw,sh,dx,dy,dw,dh);
+    }else c.drawImage(img,dx,dy,dw,dh);
+  }
+  const spriteTileCache=new WeakMap();
+  // Builds ONE tile (Texture Size) with Scale Type + modulate applied, plus a repeating pattern for it.
+  function spriteTileEntry(img,tileW,tileH,scaleType,modulate,strength,pixelated){
+    const key=[tileW,tileH,scaleType,modulate,strength,pixelated?1:0,img.naturalWidth,img.naturalHeight].join('|');
+    let list=spriteTileCache.get(img);if(!list){list=new Map();spriteTileCache.set(img,list);}
+    let e=list.get(key);if(e)return e;
+    if(list.size>8)list.clear();
+    const oversample=Math.max(1,Math.ceil(img.naturalWidth/tileW),Math.ceil(img.naturalHeight/tileH));
+    let cw=Math.max(1,Math.round(tileW*oversample)),ch=Math.max(1,Math.round(tileH*oversample));
+    const cap=2048,k=Math.min(1,cap/cw,cap/ch);cw=Math.max(1,Math.round(cw*k));ch=Math.max(1,Math.round(ch*k));
+    const tile=document.createElement('canvas');tile.width=cw;tile.height=ch;
+    const tc=tile.getContext('2d');
+    tc.imageSmoothingEnabled=!pixelated;tc.imageSmoothingQuality=pixelated?'low':'high';
+    spriteDrawFitted(tc,img,0,0,cw,ch,scaleType);
+    if(modulate&&modulate!=='#FFFFFFFF'&&strength>0){
+      const tint=document.createElement('canvas');tint.width=cw;tint.height=ch;
+      const xc=tint.getContext('2d');
+      xc.drawImage(tile,0,0);
+      xc.globalCompositeOperation='source-in';xc.fillStyle=colorCss(modulate,'rgba(255,255,255,1)');xc.fillRect(0,0,cw,ch);
+      tc.globalAlpha=strength;tc.drawImage(tint,0,0);tc.globalAlpha=1;
+    }
+    let pattern=null;
+    try{pattern=document.createElement('canvas').getContext('2d').createPattern(tile,'repeat');if(pattern&&pattern.setTransform)pattern.setTransform(new DOMMatrix().scale(tileW/cw,tileH/ch));}catch{pattern=null;}
+    e={tile,pattern,cw,ch};list.set(key,e);return e;
+  }
+  // Rasterises the WHOLE textured region once (tiles pixel-aligned, no seams) and caches it.
+  // Editor and runtime both blit this exact bitmap, so they cannot render differently.
+  function spriteRegionCanvas(img,regionW,regionH,tileW,tileH,sprite,pixelated){
+    const strength=clamp(Number(sprite?.strength??1),0,1);
+    const e=spriteTileEntry(img,tileW,tileH,sprite?.scaleType==='Crop'?'Crop':'Stretch',sprite?.modulate||'#FFFFFFFF',strength,pixelated);
+    if(e.region&&e.regionKey===regionW+'|'+regionH)return e.region;
+    const own=e.cw/tileW;
+    const k=Math.min(own,4096/regionW,4096/regionH);
+    const RW=Math.max(1,Math.round(regionW*k)),RH=Math.max(1,Math.round(regionH*k));
+    const rc=document.createElement('canvas');rc.width=RW;rc.height=RH;
+    const rx=rc.getContext('2d');rx.imageSmoothingEnabled=!pixelated;
+    const cols=Math.ceil(regionW/tileW),rows=Math.ceil(regionH/tileH);
+    if(cols*rows<=40000){
+      for(let r=0;r<rows;r++){
+        const y0=Math.round(r*tileH*k),y1=Math.round((r+1)*tileH*k);
+        for(let c=0;c<cols;c++){
+          const x0=Math.round(c*tileW*k),x1=Math.round((c+1)*tileW*k);
+          if(x0>=RW||y0>=RH)continue;
+          rx.drawImage(e.tile,x0,y0,Math.max(1,x1-x0),Math.max(1,y1-y0));
+        }
+      }
+    }else if(e.pattern){
+      rx.fillStyle=e.pattern;rx.setTransform(k,0,0,k,0,0);rx.fillRect(0,0,regionW,regionH);
+    }
+    e.region=rc;e.regionKey=regionW+'|'+regionH;return rc;
+  }
+  function drawSpriteTexture(ctx,img,x,y,regionW,regionH,tileW,tileH,sprite,pixelated){
+    const rc=spriteRegionCanvas(img,regionW,regionH,tileW,tileH,sprite,pixelated);
+    // Region origin = top-left of the sprite box; tiles start at (0,0) and repeat every tileW / tileH.
+    ctx.drawImage(rc,x,y,regionW,regionH);
+  }
   function drawNodeVisual(ctx,node,x,y,sx,sy,angle){
     if(!runtimeNodeVisible(node))return;
     ctx.save();ctx.translate(x,y);ctx.rotate(angle*Math.PI/180);ctx.scale(sx,sy);
@@ -4059,7 +4181,7 @@
       ctx.restore();
     }
     const input=component(node,'input');
-    if(input&&!state.runtime?.running)drawEditorInputVisual(ctx,input);
+    if(input)drawEditorInputVisual(ctx,input,node);
     const visual=nodeVisualSource(node);
     if(visual.src){
       const img=getAssetImage(visual.src);
@@ -4073,61 +4195,19 @@
         ctx.imageSmoothingEnabled=!visual.pixelated;
         ctx.imageSmoothingQuality=visual.pixelated?'nearest':'low';
         ctx.globalAlpha=clamp(Number(sprite?.opacity??1),0,1)*prevAlpha;
-        let tintCanvas=null,tintCtx=null;
-        if(needsModulate){
-          tintCanvas=drawNodeVisual._modulationCanvas||(drawNodeVisual._modulationCanvas=document.createElement('canvas'));
-          tintCtx=tintCanvas.getContext('2d');
-        }
         const drawOne=(dx,dy,dw,dh)=>{
-          if(!needsModulate){
-            if(sprite?.scaleType==='Crop'){
-              ctx.save();ctx.beginPath();ctx.rect(dx,dy,dw,dh);ctx.clip();
-              const fit=Math.max(dw/img.naturalWidth,dh/img.naturalHeight);
-              ctx.drawImage(img,dx,dy,img.naturalWidth*fit,img.naturalHeight*fit);
-              ctx.restore();
-            }else ctx.drawImage(img,dx,dy,dw,dh);
-            return;
-          }
-          const cw=Math.max(1,Math.ceil(Math.abs(dw))),ch=Math.max(1,Math.ceil(Math.abs(dh)));
-          if(tintCanvas.width!==cw)tintCanvas.width=cw;
-          if(tintCanvas.height!==ch)tintCanvas.height=ch;
-          tintCtx.setTransform(1,0,0,1,0,0);
-          tintCtx.globalAlpha=1;
-          tintCtx.globalCompositeOperation='source-over';
-          tintCtx.clearRect(0,0,cw,ch);
-          tintCtx.imageSmoothingEnabled=!visual.pixelated;
-          tintCtx.imageSmoothingQuality=visual.pixelated?'nearest':'low';
-          if(sprite?.scaleType==='Crop'){
-            const fit=Math.max(Math.abs(dw)/img.naturalWidth,Math.abs(dh)/img.naturalHeight);
-            const tw=img.naturalWidth*fit,th=img.naturalHeight*fit;
-            tintCtx.save();tintCtx.beginPath();tintCtx.rect(0,0,Math.abs(dw),Math.abs(dh));tintCtx.clip();
-            tintCtx.drawImage(img,0,0,tw,th);tintCtx.restore();
-          }else tintCtx.drawImage(img,0,0,Math.abs(dw),Math.abs(dh));
-          tintCtx.globalCompositeOperation='source-in';
-          tintCtx.fillStyle=colorCss(modulate,'rgba(255,255,255,1)');
-          tintCtx.fillRect(0,0,cw,ch);
-          tintCtx.globalCompositeOperation='source-over';
-          const baseAlpha=clamp(Number(sprite?.opacity??1),0,1)*prevAlpha;
-          ctx.save();
-          ctx.globalAlpha=baseAlpha;
-          // Draw the original first, then blend the modulated image on top.
-          // This makes Strength a true 0..1 modulation amount while the
-          // modulation color's alpha remains part of the final result.
-          if(sprite?.scaleType==='Crop'){
-            ctx.beginPath();ctx.rect(dx,dy,dw,dh);ctx.clip();
-            const fit=Math.max(Math.abs(dw)/img.naturalWidth,Math.abs(dh)/img.naturalHeight);
-            const tw=img.naturalWidth*fit,th=img.naturalHeight*fit;
-            ctx.drawImage(img,dx,dy,tw*Math.sign(dw||1),th*Math.sign(dh||1));
-          }else ctx.drawImage(img,dx,dy,dw,dh);
-          ctx.globalAlpha=baseAlpha*modulateStrength;
-          ctx.drawImage(tintCanvas,dx,dy,dw,dh);
-          ctx.restore();
+          if(!(dw>0&&dh>0))return;
+          if(!needsModulate){spriteDrawFitted(ctx,img,dx,dy,dw,dh,sprite?.scaleType);return;}
+          const e=spriteTileEntry(img,dw,dh,sprite?.scaleType==='Crop'?'Crop':'Stretch',modulate,modulateStrength,visual.pixelated);
+          ctx.drawImage(e.tile,dx,dy,dw,dh);
         };
         if(m){
           const x=m.x-m.w/2,y=m.y-m.h/2;
           if(sprite?.renderType==='Texture'){
-            const tx=Math.max(1,Math.ceil(Math.abs(Number(sx)||1))),ty=Math.max(1,Math.ceil(Math.abs(Number(sy)||1))),tw=m.w/tx,th=m.h/ty;
-            for(let yy=0;yy<ty;yy++)for(let xx=0;xx<tx;xx++)drawOne(x+xx*tw,y+yy*th,tw,th);
+            const regionW=Math.max(1,Math.abs(Number(m.w)||1)),regionH=Math.max(1,Math.abs(Number(m.h)||1));
+            // Texture Size = size of EACH repeated tile (0 = the image's normal size).
+            const tile=spriteTextureTile(img,sprite),tileW=tile.w,tileH=tile.h;
+            drawSpriteTexture(ctx,img,x,y,regionW,regionH,tileW,tileH,sprite,visual.pixelated);
           }else drawOne(x,y,m.w,m.h);
         }else drawOne(base.x-base.w/2,base.y-base.h/2,base.w,base.h);
         ctx.globalAlpha=prevAlpha;ctx.imageSmoothingEnabled=prevSmooth;
@@ -4972,6 +5052,20 @@
     }catch(err){console.error(err);status(`Could not load Flappy Bird sample: ${err.message||err}`);openLocalNDCModal();}
   }
 
+  async function openDuplicateLocalProject(record){
+    const existing=document.querySelector('#localNdcDuplicateModal');if(existing)existing.remove();
+    const sourceName=String(record?.name||'Untitled Node2D').trim()||'Untitled Node2D';
+    const list=await window.UIXNDCCodec.listLocal();
+    const taken=new Set(list.map(x=>String(x.name||'').trim().toLowerCase()));
+    let x=1,name;
+    do{name=`${sourceName} (Copy ${x++})`;}while(taken.has(name.toLowerCase()));
+    const modal=document.createElement('section');modal.id='localNdcDuplicateModal';modal.className='modal';modal.innerHTML=`<div class="modal-header"><div><h3>Duplicate Project</h3><p>Create a backup copy of this Local NDC.</p></div></div><div class="modal-body"><label class="field-label">Name<input data-duplicate-name type="text" value="${esc(name)}" autocomplete="off"></label></div><div class="modal-actions"><button class="btn" data-duplicate-cancel type="button">Cancel</button><button class="btn primary" data-duplicate-confirm type="button">Duplicate</button></div>`;document.body.append(modal);showModal(modal);
+    const close=()=>{closeModal(modal);modal.remove();};
+    modal.querySelector('[data-duplicate-cancel]').onclick=close;
+    modal.querySelector('[data-duplicate-confirm]').onclick=async()=>{const newName=String(modal.querySelector('[data-duplicate-name]').value||'').trim()||name;const btn=modal.querySelector('[data-duplicate-confirm]');btn.disabled=true;try{const saved=await window.UIXNDCCodec.loadLocal(record.id);if(!saved)throw new Error('Project not found');const result=await window.UIXNDCCodec.saveCurrent(saved.bytes,newName,null);close();openLocalNDCModal();status(`Project duplicated as ${result?.name||newName}`);}catch(err){btn.disabled=false;status(`Duplicate failed: ${err.message||err}`);}};
+    const input=modal.querySelector('[data-duplicate-name]');input.focus();input.select();
+  }
+
   async function openLocalNDCModal(){
     const host=$('#localNdcList');if(!host)return;
     host.innerHTML='<div class="local-ndc-empty">Loading local projects…</div>';showModal($('#localNdcModal'));
@@ -4992,6 +5086,8 @@
       for(const record of list){
         const row=document.createElement('div');row.className='local-ndc-row';
         const open=document.createElement('button');open.type='button';open.className='local-ndc-name';open.textContent=record.name||'Untitled Node2D';open.title='Load this project';open.onclick=()=>loadLocalNDC(record.id);
+        const dup=document.createElement('button');dup.type='button';dup.className='local-ndc-edit';dup.textContent='⧉';dup.title='Duplicate Project';
+        dup.onclick=()=>openDuplicateLocalProject(record);
         const edit=document.createElement('button');edit.type='button';edit.className='local-ndc-edit';edit.textContent='✎';edit.title='Rename';
         edit.onclick=()=>promptModal('Rename Local NDC','Edit the saved project name.',record.name||'',async value=>{
           const name=String(value||'').trim();if(!name){status('Name is required');return;}
@@ -9007,7 +9103,7 @@ function updateRuntimeAnimations(dt){
       if(v?.AngularVelocity!==null&&v?.AngularVelocity!==undefined)b.omega=num(v.AngularVelocity,Number(b.omega||0)*180/Math.PI)*Math.PI/180;
     };
     const applySetText=v=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});});
-    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{if(v?.Type!==null&&v?.Type!==undefined){if(v.Type==='Sprite'||v.Type==='Animation')c.sourceType=v.Type;else c.renderType=v.Type==='Texture'?'Texture':'Image';}if(v?.Source!==null&&v?.Source!==undefined)c.sourceType=v.Source==='Animation'?'Animation':'Sprite';if(v?.Sprite!==null&&v?.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v?.Animation!==null&&v?.Animation!==undefined)c.animation=v.Animation;if(v?.['Scale Type']!==null&&v?.['Scale Type']!==undefined)c.scaleType=v['Scale Type']==='Crop'?'Crop':'Stretch';if(v?.Modulate!==null&&v?.Modulate!==undefined)c.modulate=v.Modulate;if(v?.Pixelated!==null&&v?.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v?.Opacity!==null&&v?.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);});
+    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{if(v?.Type!==null&&v?.Type!==undefined&&v.Type!=='Keep'){if(v.Type==='Sprite'||v.Type==='Animation')c.sourceType=v.Type;else c.renderType=v.Type==='Texture'?'Texture':'Image';}if(v?.Source!==null&&v?.Source!==undefined)c.sourceType=v.Source==='Animation'?'Animation':'Sprite';if(v?.Sprite!==null&&v?.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v?.Animation!==null&&v?.Animation!==undefined)c.animation=v.Animation;if(v?.['Scale Type']!==null&&v?.['Scale Type']!==undefined&&v['Scale Type']!=='Keep')c.scaleType=v['Scale Type']==='Crop'?'Crop':'Stretch';if(v?.Modulate!==null&&v?.Modulate!==undefined)c.modulate=v.Modulate;{const cur=Array.isArray(c.textureSize)?c.textureSize:[0,0],tw=Number(v?.['Texture Width']),th=Number(v?.['Texture Height']);if(tw>0||th>0)c.textureSize=[tw>0?tw:(Number(cur[0])||0),th>0?th:(Number(cur[1])||0)];}if(v?.TextureSize!==null&&v?.TextureSize!==undefined){const ts=Array.isArray(v.TextureSize)?v.TextureSize:[v.TextureSize,v.TextureSize];c.textureSize=[Math.max(0,Number(ts[0])||0),Math.max(0,Number(ts[1])||0)];}if(v?.Pixelated!==null&&v?.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v?.Opacity!==null&&v?.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);});
     const applySetInputComponent=v=>runtimeSetComponent(node,'input',c=>{const map={'Text':'txt','Placeholder':'placeholder','Width':'width','Height':'height','Multiline':'multiline','FG Color':'fgCol','BG Color':'bgCol','Outline Color':'outlineCol','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','Padding':'padding','Outline Width':'outlineWidth','Border Radius':'borderRadius','Max Length':'maxLength','PosX':'positionX','PosY':'positionY','ScaleX':'scaleX','ScaleY':'scaleY'};Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d==='scaleX')c.scale[0]=Number(v[k]);else if(d==='scaleY')c.scale[1]=Number(v[k]);else if(d)c[d]=d==='multiline'?!!v[k]:d==='width'||d==='height'||d==='fontSize'||d==='padding'||d==='outlineWidth'||d==='borderRadius'||d==='maxLength'?Number(v[k]):v[k];});});
     const applySetPhysics=v=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];}));
     const applySetCollider=v=>runtimeSetComponent(node,'collider',c=>{if(v?.Collider!==null&&v?.Collider!==undefined)c.collidable=!!v.Collider;if(v?.Type!==null&&v?.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v?.PosX!==null&&v?.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v?.PosY!==null&&v?.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v?.ScaleX!==null&&v?.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v?.ScaleY!==null&&v?.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v?.Angle!==null&&v?.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);});
@@ -9635,7 +9731,7 @@ function updateRuntimeAnimations(dt){
       if(tag==='input')el.type='text';
       el.autocomplete='off';el.autocapitalize='off';el.spellcheck=false;
       el.tabIndex=0;
-      Object.assign(el.style,{position:'fixed',zIndex:'1000',boxSizing:'border-box',margin:'0',resize:'none',overflow:'hidden',outline:'none',touchAction:'auto',pointerEvents:'auto'});
+      Object.assign(el.style,{position:'fixed',zIndex:'1',boxSizing:'border-box',margin:'0',resize:'none',overflow:'hidden',outline:'none',touchAction:'none',pointerEvents:'none',opacity:'0',background:'transparent',color:'transparent',caretColor:'transparent',border:'0',padding:'0'});
       const commit=()=>{
         const nodeNow=runtimeFindNode(node.id),compNow=nodeNow?component(nodeNow,'input'):null;
         if(compNow)compNow.txt=String(el.value??'');
@@ -9688,16 +9784,8 @@ function updateRuntimeAnimations(dt){
     const extraBefore=align==='Top'?0:align==='Bottom'?extra:extra/2;
     const topPad=basePad+extraBefore;
     const bottomPad=Math.max(0,basePad+(extra-extraBefore));
-    Object.assign(el.style,{
-      background:colorCss(input.bgCol,'#202020'),color:colorCss(input.fgCol,'#ffffff'),
-      font:`${fontSize}px ${input.fontFamily||'sans-serif'}`,
-      textAlign:justify==='Left'?'left':justify==='Right'?'right':'center',
-      lineHeight:`${lineH}px`,
-      padding:`${topPad}px ${basePad}px ${bottomPad}px`,
-      border:`${outline}px solid ${colorCss(input.outlineCol,'#ffffff')}`,
-      borderRadius:`${Math.max(0,Number(input.borderRadius)||0)}px`,
-      display:'block',visibility:'visible',opacity:'1'
-    });
+    // Visual is drawn on the canvas; keep this element invisible (it only receives typing).
+    el.style.font=`${fontSize}px ${input.fontFamily||'sans-serif'}`;
     return editor;
   }
   function closeRuntimeTextInput(remove=true){
@@ -9741,7 +9829,6 @@ function updateRuntimeAnimations(dt){
       const editor=ensureRuntimeTextInputEditor(node,input);
       // Runtime HTML Inputs follow the same Node render index as canvas-rendered components.
       // They must not all sit above every other Node regardless of Node index.
-      editor.el.style.zIndex=String(10000+Math.max(0,nodeIndex(node)));
       const g=runtimeTextInputScreenGeometry(node,input,canvas),rect=canvas.getBoundingClientRect(),el=editor.el;
       el.style.left=`${rect.left+g.cx-g.width/2}px`;el.style.top=`${rect.top+g.cy-g.height/2}px`;el.style.width=`${g.width}px`;el.style.height=`${g.height}px`;el.style.transform=`rotate(${g.rotation}deg)`;el.style.transformOrigin='center center';
     }
@@ -9760,6 +9847,22 @@ function updateRuntimeAnimations(dt){
     const canvas=$('#runtimeCanvas',overlay);if(!canvas)return;
     canvas.style.touchAction='none';
     overlay.tabIndex=0;overlay.focus?.();
+    canvas.addEventListener('wheel',e=>{
+      const rt=state.runtime;if(!rt?.running)return;
+      const r=canvas.getBoundingClientRect();
+      for(const {node} of runtimeAllNodes()){
+        if(node?.type!=='node'||!runtimeNodeVisible(node))continue;
+        const input=component(node,'input');if(!input)continue;
+        const g=runtimeTextInputScreenGeometry(node,input,canvas);
+        const px=e.clientX-r.left-g.cx,py=e.clientY-r.top-g.cy,a=-(g.rotation||0)*Math.PI/180;
+        const lx=px*Math.cos(a)-py*Math.sin(a),ly=px*Math.sin(a)+py*Math.cos(a);
+        if(Math.abs(lx)>g.width/2||Math.abs(ly)>g.height/2)continue;
+        const st=inputScrollFor(input);
+        if(input.multiline&&!e.shiftKey&&Math.abs(e.deltaY)>=Math.abs(e.deltaX))st.y=Math.max(0,st.y+e.deltaY);
+        else st.x=Math.max(0,st.x+(e.shiftKey?e.deltaY:e.deltaX||e.deltaY));
+        e.preventDefault();drawRuntime();return;
+      }
+    },{passive:false});
     const screenPoint=(e)=>{
       const m=runtimeProjection(canvas),r=canvas.getBoundingClientRect();
       const px=e.clientX-r.left,py=e.clientY-r.top;
@@ -9806,6 +9909,7 @@ function updateRuntimeAnimations(dt){
       }else{
         const hitInputNode=runtimeInputNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
         if(hitInputNode)openRuntimeTextInput(hitInputNode,canvas);
+        else{const ed=state.runtime.textInputEditor;if(ed?.el)try{ed.el.blur();}catch{}}
       }
       const hitNode=runtimeNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
       if(e.pointerType==='touch'){
@@ -10113,7 +10217,7 @@ function updateRuntimeAnimations(dt){
       if(b&&bIndex<=gIndex){
         bi++;if(b.relative==='Screen'||!runtimeNodeVisible(b?.node)||component(b?.node,'canvas'))continue;
         const x=Number(b.t?.position?.[0])||0,y=Number(b.t?.position?.[1])||0,liveRadius=b.node?editorNodeCullRadius(b.node,1,1):0,r=Math.max(1,Number(b.renderRadius)||128,Number(liveRadius)||0)*Math.max(Math.abs(Number(b.t?.scale?.[0])||1),Math.abs(Number(b.t?.scale?.[1])||1));if(Math.hypot(x-Number(cam.x||0),y-Number(cam.y||0))>viewRadius+r)continue;
-        let cache=b._renderCache;const liveTexture=component(b.node,'sprite')?.renderType==='Texture';if(liveTexture)cache=null;else if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}
+        let cache=b._renderCache;const liveTexture=!!(component(b.node,'sprite')||component(b.node,'input'));if(liveTexture)cache=null;else if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}
         if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);
       }else if(g){gi++;drawRuntimeParticleGroup(ctx,g,cam,halfWorldX,halfWorldY);}
       else break;
@@ -10125,7 +10229,7 @@ function updateRuntimeAnimations(dt){
     ctx.save();
     if(m.type==='Windowboxing'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Stretch'){ctx.scale(m.scaleX,m.scaleY);}else if(m.type==='Crop'){ctx.translate(m.offsetX,m.offsetY);ctx.scale(m.scaleX,m.scaleY);}else{ctx.scale(m.scaleX,m.scaleY);}
     ctx.translate(m.viewW/2,m.viewH/2);
-    for(const b of renderBodies){if(b.relative!=='Screen'||!runtimeNodeVisible(b?.node)||component(b?.node,'canvas'))continue;const screenPos=runtimeScreenNodePosition(b.node,b.t,m),x=screenPos.x,y=screenPos.y;let cache=b._renderCache;const liveTexture=component(b.node,'sprite')?.renderType==='Texture';if(liveTexture)cache=null;else if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
+    for(const b of renderBodies){if(b.relative!=='Screen'||!runtimeNodeVisible(b?.node)||component(b?.node,'canvas'))continue;const screenPos=runtimeScreenNodePosition(b.node,b.t,m),x=screenPos.x,y=screenPos.y;let cache=b._renderCache;const liveTexture=!!(component(b.node,'sprite')||component(b.node,'input'));if(liveTexture)cache=null;else if(!cache&&!runtimeNodeIsAnimated(b.node)){cache=runtimeBuildStaticVisualCache(b);b._renderCache=cache;}if(cache){ctx.save();ctx.translate(x,y);ctx.rotate(Number(b.t.angle?.[0]||0)*Math.PI/180);ctx.scale(Number(b.t.scale?.[0])||1,Number(b.t.scale?.[1])||1);ctx.drawImage(cache.canvas,cache.x,cache.y);ctx.restore();}else drawNodeVisual(ctx,b.node,x,y,b.t.scale[0],b.t.scale[1],b.t.angle[0]);}
     ctx.restore();
 
     // Screen-space UI uses the logical screen box. Smart Camera expands/contracts

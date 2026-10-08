@@ -114,7 +114,7 @@
     },
     {
       name:'setSprite', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Type',type:'selector',value:()=>['Image','Texture'],selected:'Image'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Stretch','Crop'],selected:'Stretch'},{name:'Modulate',type:'col',value:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
+      editor:[{name:'Type',type:'selector',value:()=>['Keep','Image','Texture'],selected:'Keep'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Keep','Stretch','Crop'],selected:'Keep'},{name:'Texture Width',type:'int',value:0},{name:'Texture Height',type:'int',value:0},{name:'Modulate',type:'col',value:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
       func:(ctx,v)=>{ctx.setSprite?.(v);return {out:true};}
     },
     {name:'stopAnimation',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:(ctx)=>{ctx.stopAnimation?.();return {out:true};}},
