@@ -6,6 +6,13 @@
   const COLORS = ['#e4ca4e','#6fb8e4','#e47f7f','#8fd18f','#c79be4','#e4a24e'];
   const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
   const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
+  const mapMidiPitch = value => {
+    let p = Math.round(Number(value));
+    if (!Number.isFinite(p)) p = 60;
+    while (p < LO) p += 12;
+    while (p > HI) p -= 12;
+    return clamp(p, LO, HI);
+  };
   const $ = (id, root) => (root || document).getElementById ? (root || document).getElementById(id) : null;
   const safeName = value => String(value || 'MIDI').replace(/\.[^.]+$/, '').trim() || 'MIDI';
   const isBlack = p => [1,3,6,8,10].includes(p % 12);
@@ -224,7 +231,7 @@
     function selectedMidiNotes(){return state.notes.filter(n=>n.selected);}
     function noteSelectionBounds(notes){
       if(!notes.length)return null;
-      return {minT:Math.min(...notes.map(n=>n.t)),maxP:Math.max(...notes.map(n=>n.p)),maxT:Math.max(...notes.map(n=>n.t+n.l)),minP:Math.min(...notes.map(n=>n.p))};
+      let minT=Infinity,maxP=-Infinity,maxT=-Infinity,minP=Infinity;for(const n of notes){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);maxT=Math.max(maxT,n.t+n.l);minP=Math.min(minP,n.p);}return {minT,maxP,maxT,minP};
     }
     function copyMidi(){
       const s=selectedMidiNotes();if(!s.length)return status('Nothing selected to copy');
@@ -251,7 +258,7 @@
       const baseT=Math.max(0,Math.floor(Math.max(0,t.step)/snap())*snap());
       const baseP=Math.max(LO,Math.min(HI,Math.round(t.p)));
       let pasted=state.clipboard.map(n=>({t:baseT+n.dt,l:n.l,p:baseP-n.dp,tr:state.cur,velocity:n.velocity||100,selected:true}));
-      const minP=Math.min(...pasted.map(n=>n.p)),maxP=Math.max(...pasted.map(n=>n.p));
+      let minP=Infinity,maxP=-Infinity;for(const n of pasted){minP=Math.min(minP,n.p);maxP=Math.max(maxP,n.p);}
       let dp=0;if(minP<LO)dp=LO-minP;if(maxP+dp>HI)dp=HI-maxP;
       pasted=pasted.map(n=>({...n,p:n.p+dp}));
       const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:baseP};pushHistory(before);draw();
@@ -285,9 +292,13 @@
     }
     let drag=null;
     let longPressTimer=0,longPressPointer=null,longPressFired=false,longPressStart=null;
+    const activePointers=new Map();let twoFingerPan=null;
+    const midiPointerMidpoint=()=>{const pts=[...activePointers.values()];return pts.length>=2?{x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2}:null;};
     const cancelMidiLongPress=()=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=0;}longPressPointer=null;longPressStart=null;};
     canvas.addEventListener('contextmenu',e=>{if(longPressFired){e.preventDefault();e.stopPropagation();return;}const c=cell(e);if(c.x>=KEYW&&c.y>=RULER)state.pasteTarget={step:Math.max(0,c.step),p:Math.max(LO,Math.min(HI,c.p))};e.preventDefault();e.stopPropagation();showMidiContextMenu(e.clientX,e.clientY);});
     canvas.addEventListener('pointerdown',e=>{
+      activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(activePointers.size>=2){cancelMidiLongPress();longPressFired=false;drag=null;state.selectionBox=null;twoFingerPan={last:midiPointerMidpoint(),sx:state.sx,sy:state.sy};draw();return;}
       if(e.button===2){e.preventDefault();e.stopPropagation();const c=cell(e);state.pasteTarget={step:Math.max(0,c.step),p:Math.max(LO,Math.min(HI,c.p))};return;}
       longPressFired=false;cancelMidiLongPress();
       if(e.pointerType==='touch'){longPressStart={x:e.clientX,y:e.clientY};longPressPointer=e.pointerId;longPressTimer=setTimeout(()=>{longPressTimer=0;longPressFired=true;drag=null;state.selectionBox=null;const c=cell(e);state.pasteTarget={step:Math.max(0,c.step),p:Math.max(LO,Math.min(HI,c.p))};showMidiContextMenu(e.clientX,e.clientY);},550);}
@@ -300,7 +311,7 @@
       if(state.tool==='erase'){if(n){const ask=window.UIXApp?.askConfirm;const remove=()=>{const before=beginHistory();state.notes.splice(state.notes.indexOf(n),1);pushHistory(before);draw();};if(ask)ask('Delete MIDI Note',`Delete note ${NN[n.p%12]}${Math.floor(n.p/12)-1}?`,remove,'Delete');else if(confirm('Delete this MIDI note?'))remove();}return;}
       if(n){
         if(e.shiftKey||e.ctrlKey||e.metaKey)selectMidiNote(n,e);else if(!n.selected){clearMidiSelection();n.selected=true;state.noteAnchor=n;draw();}
-        const edge=(n.t+n.l)*state.zoom-(c.step*state.zoom)<8;
+        const edge=Math.min(Math.abs(c.step-n.t),Math.abs((n.t+n.l)-c.step))*state.zoom<14;
         drag={k:edge?'resize':'move',n,off:c.step-n.t,changed:false,before:beginHistory(),startX:e.clientX,startY:e.clientY};
         preview(n.p);return;
       }
@@ -309,11 +320,23 @@
     canvas.addEventListener('pointermove',e=>{
       if(longPressTimer&&longPressPointer===e.pointerId&&e.pointerType==='touch'){if(Math.hypot(e.clientX-(longPressStart?.x||e.clientX),e.clientY-(longPressStart?.y||e.clientY))>8)cancelMidiLongPress();}
       const c=cell(e);state.pasteTarget={step:Math.max(0,c.step),p:Math.max(LO,Math.min(HI,c.p))};
+      if(activePointers.size>=2){
+        const pt=midiPointerMidpoint();
+        if(pt&&twoFingerPan?.last){state.sx+=pt.x-twoFingerPan.last.x;state.sy+=pt.y-twoFingerPan.last.y;view.clampView();twoFingerPan.last=pt;draw();}
+        return;
+      }
       if(!drag){status((c.p>=LO&&c.p<=HI?NN[c.p%12]+(Math.floor(c.p/12)-1)+' ('+c.p+') ':'')+'step '+Math.max(0,Math.floor(c.step))+' notes '+state.notes.length);draw();return;}
       if(drag.k==='pan'){state.sx=drag.sx-(e.clientX-drag.x);state.sy=drag.sy-(e.clientY-drag.y);view.clampView();draw();return;}
       if(drag.k==='pending'){
         const moved=Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>4;
-        if(moved){drag.k='marquee';drag.before=beginHistory();drag.baseSelected=new Set(selectedMidiNotes());drag.box={x1:drag.x,y1:drag.y,x2:e.clientX,y2:e.clientY};}
+        if(moved){
+          cancelMidiLongPress();
+          if(!drag.mod&&state.tool==='draw'){
+            const step=snap(),before=beginHistory(),nn={t:Math.max(0,Math.round(drag.c0.step/step)*step),l:step,p:drag.c0.p,tr:state.cur,velocity:100,selected:true};
+            clearMidiSelection();state.notes.push(nn);state.noteAnchor=nn;drag={k:'createResize',n:nn,changed:true,before,lastStep:nn.t};preview(nn.p);draw();return;
+          }
+          drag.k='marquee';drag.before=beginHistory();drag.baseSelected=new Set(selectedMidiNotes());drag.box={x1:drag.x,y1:drag.y,x2:e.clientX,y2:e.clientY};
+        }
         else return;
       }
       if(drag.k==='marquee'){drag.box.x2=e.clientX;drag.box.y2=e.clientY;state.selectionBox={a:{x:drag.box.x1-canvas.getBoundingClientRect().left,y:drag.box.y1-canvas.getBoundingClientRect().top},b:{x:drag.box.x2-canvas.getBoundingClientRect().left,y:drag.box.y2-canvas.getBoundingClientRect().top}};selectInBox(drag.box,e,drag.baseSelected);return;}
@@ -323,12 +346,15 @@
         selectedMidiNotes().forEach(x=>{x.t=Math.max(0,x.t+dt);x.p=Math.max(LO,Math.min(HI,x.p+dp));});
         state.noteAnchor=n;draw();return;
       }
-      if(drag.k==='resize'){
-        const n=drag.n,nl=Math.max(1,Math.round((c.step-n.t)/snap())*snap()||1);if(nl!==n.l)drag.changed=true;n.l=nl;draw();return;
+      if(drag.k==='resize'||drag.k==='createResize'){
+        const n=drag.n,step=snap(),nl=Math.max(step,Math.round((c.step-n.t)/step)*step||step);
+        if(nl!==n.l){n.l=nl;drag.changed=true;}draw();return;
       }
       status((c.p>=LO&&c.p<=HI?NN[c.p%12]+(Math.floor(c.p/12)-1)+' ('+c.p+') ':'')+'step '+Math.max(0,Math.floor(c.step))+' notes '+state.notes.length);
     });
     canvas.addEventListener('pointerup',e=>{
+      activePointers.delete(e.pointerId);if(activePointers.size<2)twoFingerPan=null;
+      if(activePointers.size){cancelMidiLongPress();return;}
       if(e.pointerType==='touch'){const fired=longPressFired;cancelMidiLongPress();longPressFired=false;if(fired){drag=null;state.selectionBox=null;draw();return;}}
       if(!drag)return;
       if(drag.k==='pending'){addMidiNoteAt(drag.c0);drag=null;return;}
@@ -338,7 +364,7 @@
       if(drag.before&&drag.changed)pushHistory(drag.before);
       drag=null;updateHistoryUI();draw();
     });
-    canvas.addEventListener('pointercancel',()=>{cancelMidiLongPress();longPressFired=false;drag=null;state.selectionBox=null;updateHistoryUI();draw();});
+    canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size<2)twoFingerPan=null;cancelMidiLongPress();longPressFired=false;drag=null;state.selectionBox=null;updateHistoryUI();draw();});
     canvas.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey)state.zoom=Math.max(6,Math.min(80,state.zoom*(e.deltaY<0?1.1:.9)));else if(e.shiftKey)state.sx+=e.deltaY;else{state.sy+=e.deltaY;state.sx+=e.deltaX;}view.clampView();draw();},{passive:false});
 
 
@@ -350,7 +376,7 @@
       try {
         const a=audio();
         stopOscs();clearScheduler();cancelAnimationFrame(state.raf);
-        const ss=stepSec(),from=restart?state.start:state.head,end=Math.max(...state.notes.map(n=>n.t+n.l),0);
+        const ss=stepSec(),from=restart?state.start:state.head;let end=0;for(const n of state.notes)end=Math.max(end,Number(n.t)||0,((Number(n.t)||0)+(Number(n.l)||0)));
         if(!state.notes.length){state.head=state.start;status('No notes to play');draw();return;}
         state.playing=true;state.fromStep=from;state.startedAt=a.currentTime-from*ss;
         const token=++state.playToken,lookAhead=.4,pollMs=40;
@@ -379,7 +405,7 @@
     const bytes=()=>window.UIXMIDIParser.encode({ppq:state.ppq,bpm:Number(modal.querySelector('[data-midi-bpm]').value)||120,tracks:state.tracks.map((t,i)=>({name:t.name,channel:t.channel,notes:state.notes.filter(n=>n.tr===i)}))});
     function download(bytesData,name='song.mid'){const blob=new Blob([bytesData],{type:'audio/midi'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
     function save(){const name=state.name||'Song', data=window.UIXMIDIParser.bytesToDataURL(bytes()), existing=state.sourceAsset;const list=Assets.MIDI||(Assets.MIDI=[]);if(existing&&list.includes(existing)){existing.name=name;existing.filename=`${name}.mid`;existing.value=data;existing.type='audio/midi';existing.kind='MIDI';existing.editable=true;}else{let finalName=name,i=2;while(list.some(a=>a.name===finalName))finalName=`${name} ${i++}`;list.push({name:finalName,filename:`${finalName}.mid`,value:data,type:'audio/midi',kind:'MIDI',editable:true});}window.UIXApp?.refreshAssets?.();window.UIXApp?.status?.('MIDI saved');closeEditor();}
-    function importFile(file){const reader=new FileReader();reader.onload=()=>{try{const song=window.UIXMIDIParser.parse(new Uint8Array(reader.result));stop();const nextNotes=[],nextTracks=[];const importedTracks=song.tracks.filter(track=>Array.isArray(track.notes)&&track.notes.length);importedTracks.forEach((track,i)=>{const index=nextTracks.length;nextTracks.push({name:track.name||`Track ${i+1}`,color:COLORS[index%COLORS.length],wave:'triangle',channel:track.channel??index%16});track.notes.forEach(n=>{nextNotes.push({t:Math.max(0,Math.round(n.tick*4/song.ppq)),l:Math.max(1,Math.round(n.duration*4/song.ppq)),p:Math.max(0,Math.min(127,Number(n.pitch)||0)),tr:index,velocity:Math.max(1,Math.min(127,Number(n.velocity)||100)),selected:false});});});const before=beginHistory();state.ppq=song.ppq||480;state.bpm=Math.round(song.bpm||120);state.notes=nextNotes;state.tracks=nextTracks.length?nextTracks:[{name:'Track 1',color:COLORS[0],wave:'triangle',channel:0}];pushHistory(before);state.cur=0;state.sx=0;state.sy=Math.max(0,Math.min((HI-72)*RH,Math.max(0,((HI-LO+1)*RH-state.H)*0.5)));modal.querySelector('[data-midi-bpm]').value=state.bpm;renderTracks();view.clampView();draw();state.name=safeName(file.name);modal.querySelector('[data-midi-name]').textContent=`${state.name}`;}catch{window.UIXApp?.status?.('Could not read MIDI file');}};reader.readAsArrayBuffer(file);}
+    function importFile(file){const reader=new FileReader();reader.onload=()=>{try{const song=window.UIXMIDIParser.parse(new Uint8Array(reader.result));stop();const nextNotes=[],nextTracks=[];const importedTracks=song.tracks.filter(track=>Array.isArray(track.notes)&&track.notes.length);importedTracks.forEach((track,i)=>{const index=nextTracks.length;nextTracks.push({name:track.name||`Track ${i+1}`,color:COLORS[index%COLORS.length],wave:'triangle',channel:track.channel??index%16});track.notes.forEach(n=>{nextNotes.push({t:Math.max(0,Math.round(n.tick*4/song.ppq)),l:Math.max(1,Math.round(n.duration*4/song.ppq)),p:mapMidiPitch(n.pitch),tr:index,velocity:Math.max(1,Math.min(127,Number(n.velocity)||100)),selected:false});});});const before=beginHistory();state.ppq=song.ppq||480;state.bpm=Math.round(song.bpm||120);state.notes=nextNotes;state.tracks=nextTracks.length?nextTracks:[{name:'Track 1',color:COLORS[0],wave:'triangle',channel:0}];pushHistory(before);state.cur=0;state.sx=0;state.sy=Math.max(0,Math.min((HI-72)*RH,Math.max(0,((HI-LO+1)*RH-state.H)*0.5)));modal.querySelector('[data-midi-bpm]').value=state.bpm;renderTracks();view.clampView();draw();state.name=safeName(file.name);modal.querySelector('[data-midi-name]').textContent=`${state.name}`;}catch{window.UIXApp?.status?.('Could not read MIDI file');}};reader.readAsArrayBuffer(file);}
     const midiNameEl=modal.querySelector('[data-midi-name]');
     midiNameEl.textContent=state.name;
     const beginMidiNameEdit=()=>{

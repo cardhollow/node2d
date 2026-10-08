@@ -86,19 +86,27 @@
           } else if (type === 0x58 && metaLen >= 2) {
             timeSignatures.push({ tick, numerator: b[pos], denominator: 2 ** b[pos + 1] });
           }
+          runningStatus = 0;
           pos += metaLen;
           continue;
         }
         if (status === 0xF0 || status === 0xF7) {
           const vlq = readVLQ(b, pos);
-          pos = vlq.next + vlq.value;
+          if (pos + (vlq.next - pos) + vlq.value > end + 1) throw new Error('Invalid MIDI SysEx event');
+          pos = Math.min(end, vlq.next + vlq.value);
+          runningStatus = 0;
+          continue;
+        }
+        if (status >= 0xF8 && status <= 0xFE) {
+          // Real-time/reserved one-byte events can legally occur in some MIDI files.
           continue;
         }
         if (status >= 0xF1) {
-          const systemLengths = { 0xF1: 1, 0xF2: 2, 0xF3: 1, 0xF6: 0 };
+          const systemLengths = { 0xF1: 1, 0xF2: 2, 0xF3: 1, 0xF4: 0, 0xF5: 0, 0xF6: 0 };
           const consume = systemLengths[status];
-          if (consume === undefined) throw new Error('Unsupported MIDI system event');
+          if (consume === undefined) { pos = Math.min(end, pos + 1); runningStatus = 0; continue; }
           pos = Math.min(end, pos + consume);
+          runningStatus = 0;
           continue;
         }
 
@@ -127,7 +135,9 @@
 
       for (const [key, queue] of open) {
         for (const started of queue) {
-          const pitch = Number(key.split(':')[1]);
+          const parts = String(key).split(':');
+          const channel = Number(parts[0]) || 0;
+          const pitch = Number(parts[1]) || 0;
           notes.push({ tick: started.tick, duration: Math.max(1, ppq / 4), pitch, velocity: started.velocity, channel });
         }
       }

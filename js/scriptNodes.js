@@ -7,11 +7,13 @@
     { name:'onKeybind', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Keybind',type:'selector',value:ctx=>(ctx?.keybinds||['Enter',...Array.from({length:10},(_,i)=>String(i)),...Array.from({length:26},(_,i)=>String.fromCharCode(65+i))]),selected:'Enter'}], func:()=>({out:true}) },
     { name:'onTouch', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onMouse', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
+    { name:'onPointer', label:'OnPointer', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onScreenInput', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Event',type:'selector',value:()=>['up','down','move'],selected:'down'}], func:()=>({out:true}) },
     { name:'onJoystick', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Variable',type:'selector',value:ctx=>(ctx?.joysticksList||[]).map(j=>j.variable),selected:''}], func:()=>({out:true}) },
     { name:'onAudioPickup', require:'Use Mic', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputFocus', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
+    { name:'onColorChange', label:'OnColorChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputBlur', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
     { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
@@ -19,14 +21,16 @@
     { name:'onClientJoined', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onClientLeft', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     {
-      name:'loadScene', receiver:true, group:'Actions', output:[{id:'out'}],
+      name:'loadScene', receiver:true, group:'Actions',
       editor:[{name:'Scene',type:'selector',value:ctx=>(ctx?.sceneList||[]).map(s=>s.name),selected:'Main'}],
-      func:(ctx,v)=>{ ctx.loadScene?.(v.Scene); return {out:true}; }
+      func:(ctx,v)=>{ ctx.loadScene?.(v.Scene); return {}; }
     },
     {name:'saveState',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Name',type:'str',value:''}],func:(ctx,v)=>{ctx.saveState?.(v.Name);return {out:true};}},
-    {name:'loadState',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Name',type:'str',value:''}],func:(ctx,v)=>{ctx.loadState?.(v.Name);return {out:true};}},
+    {name:'loadState',receiver:true,group:'Actions',editor:[{name:'Name',type:'str',value:''}],func:(ctx,v)=>{ctx.loadState?.(v.Name);return {}; }},
     {name:'removeState',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Name',type:'str',value:''}],func:(ctx,v)=>{ctx.removeState?.(v.Name);return {out:true};}},
     {name:'clearState',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:(ctx)=>{ctx.clearState?.();return {out:true};}},
+    {name:'duplicateFolder',label:'Duplicate Folder',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Folder',type:'selector',value:ctx=>(ctx?.folderOptions||[]).map(v=>String(v)),selected:''},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null},{name:'Angle',type:'int',value:null},{name:'MUE',type:'bool',value:null}],func:(ctx,v)=>{if(v?.Folder)ctx.duplicateFolder?.(v.Folder,v?.PosX,v?.PosY,v?.ScaleX,v?.ScaleY,v?.Angle,v?.MUE===true);return {out:true};}},
+    {name:'setTransformFolder',label:'setTransformFolder',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Folder',type:'selector',value:ctx=>(ctx?.folderOptions||[]).map(v=>String(v)),selected:''},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null},{name:'Angle',type:'int',value:null},{name:'MUE',type:'bool',value:null}],func:(ctx,v)=>{ctx.setTransformFolder?.(v?.Folder,v?.PosX,v?.PosY,v?.ScaleX,v?.ScaleY,v?.Angle,v?.MUE===true);return {out:true};}},
     {
       name:'setVariable', receiver:true, group:'Actions', output:[{id:'out'}],
       editor:[
@@ -80,9 +84,12 @@
         {name:'AccelerationX',type:'int',value:0},{name:'AccelerationY',type:'int',value:0},
         {name:'Angle',type:'int',value:0},
         {name:'Type',type:'selector',value:()=>['Circle','Trail','Box','Sprite'],selected:'Circle'},
+        {name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},
         {name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:''},
-        {name:'Color',type:'col',value:'#FFFFFFFF'},{name:'Opacity',type:'int',value:100},
-        {name:'Lifetime',type:'int',value:1000},{name:'Count',type:'int',value:1}
+        {name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a?.name).filter(Boolean),selected:''},
+        {name:'Strength',type:'int',value:100},
+        {name:'Color',type:'col',value:'#FFFFFFFF'},
+        {name:'Lifetime',type:'int',value:1000},{name:'Count',type:'int',value:1},{name:'Index',type:'int',value:0}
       ],
       func:(ctx,v)=>{ctx.createParticles?.(v);return {out:true};}
     },
@@ -102,12 +109,12 @@
     },
     {
       name:'setText', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Text',type:'str',value:'text'},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'FontSize',type:'int',value:null},{name:'FontFamily',type:'str',value:null},{name:'FG Color',type:'col',value:null},{name:'BG Color',type:'col',value:null},{name:'Border',type:'bool',value:null},{name:'Border Color',type:'col',value:null},{name:'Border Width',type:'int',value:null}],
+      editor:[{name:'Text',type:'str',value:'text'},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'FontSize',type:'int',value:null},{name:'FontFamily',type:'str',value:null},{name:'Align',type:'selector',value:()=>['Top','Center','Bottom'],selected:'Center'},{name:'Justify',type:'selector',value:()=>['Left','Center','Right'],selected:'Center'},{name:'FG Color',type:'col',value:null},{name:'BG Color',type:'col',value:null},{name:'Border',type:'bool',value:null},{name:'Border Color',type:'col',value:null},{name:'Border Width',type:'int',value:null}],
       func:(ctx,v)=>{ctx.setText?.(v);return {out:true};}
     },
     {
       name:'setSprite', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Type',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
+      editor:[{name:'Type',type:'selector',value:()=>['Image','Texture'],selected:'Image'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Stretch','Crop'],selected:'Stretch'},{name:'Modulate',type:'col',value:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
       func:(ctx,v)=>{ctx.setSprite?.(v);return {out:true};}
     },
     {name:'stopAnimation',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:(ctx)=>{ctx.stopAnimation?.();return {out:true};}},
@@ -115,7 +122,7 @@
     {name:'stepAnimation',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'forward',type:'bool',value:true}],func:(ctx,v)=>{ctx.stepAnimation?.(!!v.forward);return {out:true};}},
     {
       name:'setInputComponent', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Text',type:'str',value:null},{name:'Placeholder',type:'str',value:null},[{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null}],[{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null}],{name:'Width',type:'int',value:null},{name:'Height',type:'int',value:null},{name:'Multiline',type:'bool',value:null},{name:'FG Color',type:'col',value:null},{name:'BG Color',type:'col',value:null},{name:'Outline Color',type:'col',value:null},{name:'Font Size',type:'int',value:null},{name:'Font Family',type:'str',value:null},{name:'Padding',type:'int',value:null},{name:'Outline Width',type:'int',value:null},{name:'Border Radius',type:'int',value:null},{name:'Max Length',type:'int',value:null}],
+      editor:[{name:'Text',type:'str',value:null},{name:'Placeholder',type:'str',value:null},[{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null}],[{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null}],{name:'Width',type:'int',value:null},{name:'Height',type:'int',value:null},{name:'Multiline',type:'bool',value:null},{name:'FG Color',type:'col',value:null},{name:'BG Color',type:'col',value:null},{name:'Outline Color',type:'col',value:null},{name:'Font Size',type:'int',value:null},{name:'Font Family',type:'str',value:null},{name:'Align',type:'selector',value:()=>['Top','Center','Bottom'],selected:null},{name:'Justify',type:'selector',value:()=>['Left','Center','Right'],selected:null},{name:'Padding',type:'int',value:null},{name:'Outline Width',type:'int',value:null},{name:'Border Radius',type:'int',value:null},{name:'Max Length',type:'int',value:null}],
       func:(ctx,v)=>{ctx.setInputComponent?.(v);return {out:true};}
     },
     {
@@ -138,7 +145,7 @@
       editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'Speed',type:'int',value:100}],
       func:(ctx,v)=>{ctx.followObject?.(v.Target,v.Speed);return {out:true};}
     },
-    {name:'Destroy Object',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.destroyObject?.();return {out:true};}},
+    {name:'Destroy Object',receiver:true,group:'Actions',editor:[],func:ctx=>{ctx.destroyObject?.();return {}; }},
     {name:'focusInput',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.focusInput?.();return {out:true};}},
     {name:'blurInput',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:ctx=>{ctx.blurInput?.();return {out:true};}},
     {
@@ -222,7 +229,7 @@
     });
   });
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
   window.UIXScriptNodes={scriptNodes};
 })();

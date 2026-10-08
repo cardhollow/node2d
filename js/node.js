@@ -12,18 +12,22 @@
     text: {
       default: false, removable: true,
       fgcol: '#FFFFFFFF', bg: '#00000000', txt: 'Text', position: [0, 0],
-      fontSize: 32, fontFamily: 'sans-serif',
+      fontSize: 32, fontFamily: 'sans-serif', align: 'Center', justify: 'Center',
       border: { enabled: false, color: '#FFFFFFFF', width: 1, radius: [0, 0, 0, 0] }
+    },
+    colorinput: {
+      default: false, removable: true,
+      color: '#FFFFFFFF', width: 72, height: 42, position: [0, 0], scale: [1, 1]
     },
     input: {
       default: false, removable: true,
       txt: '', placeholder: 'Input', width: 260, height: 48,
       position: [0, 0], scale: [1, 1], multiline: false,
       fgCol: '#FFFFFFFF', bgCol: '#202020FF', outlineCol: '#FFFFFFFF',
-      fontSize: 24, fontFamily: 'sans-serif', padding: 10,
+      fontSize: 24, fontFamily: 'sans-serif', align: 'Center', justify: 'Left', padding: 10,
       outlineWidth: 1, borderRadius: 6, maxLength: 0
     },
-    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', animation: '', opacity: 1, position: [0, 0], size: [0, 0] },
+    sprite: { default: false, removable: true, name: '', src: '', pixelated: true, sourceType: 'Sprite', renderType: 'Image', scaleType: 'Stretch', modulate: '#FFFFFFFF', strength: 1, animation: '', opacity: 1, position: [0, 0], size: [0, 0] },
     animationsprite: { default: false, removable: true, name: 'Animation', animations: [{ name: 'Default', fps: 8, sprites: [] }], activeAnimation: 'Default', sprites: [] },
     physics: {
       default: false, removable: true,
@@ -55,8 +59,18 @@
     }
   };
 
+  // Folder components are separate from Node components. They form a layout/transform
+  // layer that overrides the effective transforms of a folder's immediate children.
+  function normalizeFolder(folder){
+    if(!folder||folder.type!=='folder')return folder;
+    folder.children=Array.isArray(folder.children)?folder.children:[];
+    folder.folderId=Number.isInteger(Number(folder.folderId))&&Number(folder.folderId)>0?Number(folder.folderId):null;
+    delete folder.overrideChildren;
+    return folder;
+  }
+
   const COMPONENT_LABELS = {
-    node: 'Node', script: 'Script', transform: 'Transform', text: 'Text', input: 'Input Component',
+    node: 'Node', script: 'Script', transform: 'Transform', text: 'Text', colorinput: 'Color Input', input: 'Input Component',
     sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', joints: 'Joints', subcamera: 'Sub Camera', canvas: 'Canvas', progressbar: 'Progress Bar'
   };
 
@@ -115,6 +129,15 @@
         component.pixelated = component.pixelated !== false;
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
         component.size = Array.isArray(component.size) ? component.size : [0, 0];
+        component.renderType = component.renderType === 'Texture' ? 'Texture' : 'Image';
+        component.scaleType = component.scaleType === 'Crop' ? 'Crop' : 'Stretch';
+        component.modulate = component.modulate || '#FFFFFFFF';
+        component.strength = Number.isFinite(Number(component.strength)) ? Math.max(0, Math.min(1, Number(component.strength))) : 1;
+      }
+      if (component.type === 'text') {
+        component.fontFamily = String(component.fontFamily || 'sans-serif');
+        component.align = ['Top','Center','Bottom'].includes(component.align) ? component.align : 'Center';
+        component.justify = ['Left','Center','Right'].includes(component.justify) ? component.justify : 'Center';
       }
       if (component.type === 'animationsprite') {
         if (!Array.isArray(component.animations)) component.animations = [];
@@ -141,6 +164,13 @@
         component.border = component.border || { enabled: false, color: component.fgcol || '#FFFFFFFF', width: 1, radius: [0,0,0,0] };
         component.border.radius = Array.isArray(component.border.radius) ? component.border.radius : [0,0,0,0];
       }
+      if (component.type === 'colorinput') {
+        component.color = String(component.color || '#FFFFFFFF');
+        component.width = Math.max(1, Number(component.width) || 72);
+        component.height = Math.max(1, Number(component.height) || 42);
+        component.position = Array.isArray(component.position) ? component.position : [0, 0];
+        component.scale = Array.isArray(component.scale) ? component.scale : [1, 1];
+      }
       if (component.type === 'input') {
         component.txt = String(component.txt ?? '');
         component.placeholder = String(component.placeholder ?? 'Input');
@@ -156,6 +186,8 @@
         component.outlineCol = component.outlineCol || '#FFFFFFFF';
         component.fontSize = Math.max(1, Number(component.fontSize) || 24);
         component.fontFamily = component.fontFamily || 'sans-serif';
+        component.align = ['Top','Center','Bottom'].includes(component.align) ? component.align : 'Center';
+        component.justify = ['Left','Center','Right'].includes(component.justify) ? component.justify : 'Left';
         component.padding = Math.max(0, Number(component.padding) || 0);
         component.outlineWidth = Math.max(0, Number(component.outlineWidth) || 0);
         component.borderRadius = Math.max(0, Number(component.borderRadius) || 0);
@@ -276,6 +308,7 @@
     createComponent,
     createDefaultComponents,
     createNode,
-    normalizeNode
+    normalizeNode,
+    normalizeFolder
   };
 })();

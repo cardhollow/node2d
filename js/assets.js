@@ -5,7 +5,8 @@
   const Assets = {
     Sprite: [],
     Audio: [],
-    MIDI: []
+    MIDI: [],
+    Font: []
   };
 
   window.UIXAssets = { Assets };
