@@ -7,8 +7,13 @@
   const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
   const NOTE_TYPES = ['track','sine','triangle','square','sawtooth'];
   const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
-  const MIDI_NOTE_LAYOUT_KEY = 'node2d.midi.customNotes.v2';
-  const MIDI_NOTE_DEFS_KEY = 'node2d.midi.customNoteDefs.v1';
+  // One persisted note-definition bank is shared by the DAW, Record Note, and
+  // Pad Editor. Older separate keys are read only for one-time migration.
+  const MIDI_NOTE_BANK_KEY = 'node2d.midi.notes.v1';
+  const MIDI_NOTE_LAYOUT_LEGACY_KEY = 'node2d.midi.noteLayout.v3';
+  const MIDI_NOTE_LAYOUT_OLDER_KEY = 'node2d.midi.customNotes.v2';
+  const MIDI_NOTE_DEFS_LEGACY_KEY = 'node2d.midi.noteDefs.v2';
+  const MIDI_NOTE_DEFS_OLDER_KEY = 'node2d.midi.customNoteDefs.v1';
   const noteName = p => NN[(p % 12 + 12) % 12] + (Math.floor(p / 12) - 1);
   const midiFrequency = p => 440 * Math.pow(2, (validMidiPitch(p) - 69) / 12);
   const validMidiPitch = value => {
@@ -43,21 +48,39 @@
     }
     return out.length?out:defaultNoteLayout();
   };
-  const loadNoteLayout = () => {
-    try { return normalizeNoteLayout(JSON.parse(localStorage.getItem(MIDI_NOTE_LAYOUT_KEY)||'null')); }
-    catch { return defaultNoteLayout(); }
+  const normalizeNoteBank = values => {
+    const seen=new Set(),out=[];
+    for(const value of Array.isArray(values)?values:[]){
+      if(!value||typeof value!=='object')continue;
+      const p=Math.round(Number(value.pitch));
+      if(!Number.isFinite(p)||p<0||p>127||seen.has(p))continue;
+      seen.add(p);out.push(normalizeNoteDef(value,p));
+    }
+    return out.length?out:defaultNoteLayout().map(p=>normalizeNoteDef(null,p));
   };
-  const saveNoteLayout = layout => {
-    try { localStorage.setItem(MIDI_NOTE_LAYOUT_KEY,JSON.stringify(normalizeNoteLayout(layout))); } catch {}
-  };
-  const loadNoteDefs = () => {
+  const readNoteBank = () => {
     try {
-      const raw=JSON.parse(localStorage.getItem(MIDI_NOTE_DEFS_KEY)||'null');
-      return raw&&typeof raw==='object'?raw:{};
-    } catch { return {}; }
+      const saved=JSON.parse(localStorage.getItem(MIDI_NOTE_BANK_KEY)||'null');
+      if(saved&&Array.isArray(saved.notes)&&saved.notes.length)return normalizeNoteBank(saved.notes);
+      const layoutRaw=localStorage.getItem(MIDI_NOTE_LAYOUT_LEGACY_KEY)??localStorage.getItem(MIDI_NOTE_LAYOUT_OLDER_KEY);
+      const defs=JSON.parse(localStorage.getItem(MIDI_NOTE_DEFS_LEGACY_KEY)??localStorage.getItem(MIDI_NOTE_DEFS_OLDER_KEY)??'null');
+      const layout=normalizeNoteLayout(JSON.parse(layoutRaw??'null'));
+      return normalizeNoteBank(layout.map(p=>normalizeNoteDef(defs?.[String(p)],p)));
+    } catch { return defaultNoteLayout().map(p=>normalizeNoteDef(null,p)); }
   };
+  const writeNoteBank = notes => {
+    try { localStorage.setItem(MIDI_NOTE_BANK_KEY,JSON.stringify({version:1,notes:normalizeNoteBank(notes)})); } catch {}
+  };
+  const loadNoteLayout = () => readNoteBank().map(note=>note.pitch);
+  const saveNoteLayout = layout => {
+    const current=new Map(readNoteBank().map(note=>[String(note.pitch),note]));
+    const pitches=normalizeNoteLayout(layout);
+    writeNoteBank(pitches.map(p=>normalizeNoteDef(current.get(String(p)),p)));
+  };
+  const loadNoteDefs = () => Object.fromEntries(readNoteBank().map(note=>[String(note.pitch),note]));
   const saveNoteDefs = defs => {
-    try { localStorage.setItem(MIDI_NOTE_DEFS_KEY,JSON.stringify(defs||{})); } catch {}
+    const bank=readNoteBank();
+    writeNoteBank(bank.map(note=>normalizeNoteDef((defs||{})[String(note.pitch)]||note,note.pitch)));
   };
   const cloneNoteDefs = defs => {
     const out={};
@@ -96,11 +119,7 @@
   let activeShortcutHandler = null;
 
   const makeGrid = (state) => {
-    const total = () => {
-      let m = 0;
-      state.notes.forEach(n => m = Math.max(m, n.t + n.l));
-      return Math.max(64, Math.ceil((m + 1) / 16) * 16 + 16);
-    };
+    const total = () => Math.max(16, Math.round(Number(state.timelineLength) || 64));
     const refreshRows = () => {
       state.noteLayout = normalizeNoteLayout(state.noteLayout);
       state.noteRowByPitch = new Map(state.noteLayout.map((p,i)=>[p,i]));
@@ -186,7 +205,7 @@
     modal2.className='modal uix-midi-notes-modal';
     modal2.innerHTML=`
       <div class="uix-midi-notes-header">
-        <div><strong>Customize Notes</strong><small>Add, edit, remove, and arrange the notes available to the editor.</small></div>
+        <div><strong>Notes</strong><small>Shared note definitions used by the DAW and Record Note. Pad assignments are derived from actual DAW note events.</small></div>
         <button class="btn" data-notes-close type="button">Done</button>
       </div>
       <div class="uix-midi-notes-toolbar">
@@ -208,93 +227,93 @@
           <button class="btn primary" data-note-done-editor type="button">Done</button>
           <button class="btn danger" data-note-delete type="button">Remove Note</button>
         </div>
+        <small class="uix-midi-note-editor-hint" data-note-editor-hint></small>
       </div>
       <div class="uix-midi-notes-list" data-note-list></div>`;
     document.body.append(modal2);
     window.UIXApp?.showModal?.(modal2);
     const list=modal2.querySelector('[data-note-list]');
     const editor=modal2.querySelector('[data-note-editor]');
-    let selectedPitch=state.noteLayout[0]??60;
+    let selectedPitch=normalizeNoteLayout(state.noteLayout)[0]??60;
     let editMode='edit';
-    let editPitch=selectedPitch;
+    let editPitch=null;
+    const noteOrder=()=>normalizeNoteLayout(state.noteLayout);
+    const nextUnusedPitch=()=>{const used=new Set(noteOrder());for(let p=0;p<128;p++)if(!used.has(p))return p;return null;};
     const close=()=>{try{window.UIXApp?.closeModal?.(modal2);}catch{}modal2.remove();};
     const persist=()=>{state.noteLayout=normalizeNoteLayout(state.noteLayout);state.noteDefs=ensureNoteDefs(state.noteDefs||{},state.noteLayout);saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);refresh();};
     const setEditor=(mode,p)=>{
-      editMode=mode;editPitch=validMidiPitch(p);selectedPitch=editPitch;editor.hidden=false;
+      editMode=mode;editPitch=mode==='edit'?validMidiPitch(p):null;selectedPitch=editPitch;editor.hidden=false;
+      const candidate=mode==='edit'?editPitch:(nextUnusedPitch()??60);
+      const d=mode==='edit'?normalizeNoteDef((state.noteDefs||{})[String(editPitch)],editPitch):normalizeNoteDef(null,candidate);
       modal2.querySelector('[data-note-editor-mode]').textContent=mode==='add'?'Add Note':'Edit Note';
-      const d=normalizeNoteDef((state.noteDefs||{})[String(editPitch)],editPitch);
-      modal2.querySelector('[data-note-editor-pitch]').textContent=`MIDI ${editPitch}`;
+      modal2.querySelector('[data-note-done-editor]').textContent=mode==='add'?'Add':'Done';
+      modal2.querySelector('[data-note-editor-pitch]').textContent=mode==='edit'?`MIDI ${editPitch}`:(nextUnusedPitch()===null?'All MIDI pitches are already listed':'New MIDI note');
       modal2.querySelector('[data-note-name]').value=d.name;
-      modal2.querySelector('[data-note-pitch]').value=editPitch;
-      modal2.querySelector('[data-note-frequency]').value=d.frequency;
-      modal2.querySelector('[data-note-amplitude]').value=d.amplitude;
+      modal2.querySelector('[data-note-pitch]').value=String(candidate);
+      modal2.querySelector('[data-note-frequency]').value=String(d.frequency);
+      modal2.querySelector('[data-note-amplitude]').value=String(d.amplitude);
       modal2.querySelector('[data-note-type]').value=d.type;
       modal2.querySelector('[data-note-delete]').hidden=mode==='add';
+      modal2.querySelector('[data-note-editor-hint]').textContent=mode==='add'&&nextUnusedPitch()===null?'All 128 MIDI pitches already exist in this shared list. Edit a pitch or remove one before adding a different pitch.':'The same definition is used everywhere this MIDI pitch appears.';
+      requestAnimationFrame(()=>editor.scrollIntoView({block:'start',behavior:'smooth'}));
     };
     const finishEditor=()=>{
-      const oldPitch=editPitch;
-      const newPitch=validMidiPitch(modal2.querySelector('[data-note-pitch]').value);
-      const base=normalizeNoteDef((state.noteDefs||{})[String(oldPitch)],oldPitch);
-      const next={
-        pitch:newPitch,
-        name:String(modal2.querySelector('[data-note-name]').value||noteName(newPitch)).trim()||noteName(newPitch),
-        frequency:Math.max(0.01,Number(modal2.querySelector('[data-note-frequency]').value)||midiFrequency(newPitch)),
-        amplitude:clamp(Number(modal2.querySelector('[data-note-amplitude]').value)||0,0,1),
-        type:NOTE_TYPES.includes(modal2.querySelector('[data-note-type]').value)?modal2.querySelector('[data-note-type]').value:'track'
-      };
+      const rawPitch=String(modal2.querySelector('[data-note-pitch]').value||'').trim();
+      if(!/^\d+$/.test(rawPitch)||Number(rawPitch)<0||Number(rawPitch)>127){window.UIXApp?.status?.('Enter a MIDI pitch from 0 to 127');modal2.querySelector('[data-note-pitch]').focus();return;}
+      const newPitch=Number(rawPitch),oldPitch=editPitch;
+      const nameValue=String(modal2.querySelector('[data-note-name]').value||'').trim();
+      const frequencyValue=String(modal2.querySelector('[data-note-frequency]').value||'').trim();
+      const amplitudeValue=String(modal2.querySelector('[data-note-amplitude]').value||'').trim();
+      const next={pitch:newPitch,name:nameValue||noteName(newPitch),frequency:Math.max(.01,frequencyValue===''?midiFrequency(newPitch):(Number(frequencyValue)||midiFrequency(newPitch))),amplitude:clamp(amplitudeValue===''?.16:(Number(amplitudeValue)||0),0,1),type:NOTE_TYPES.includes(modal2.querySelector('[data-note-type]').value)?modal2.querySelector('[data-note-type]').value:'track'};
       if(editMode==='add'){
-        if(state.noteLayout.includes(newPitch)){window.UIXApp?.status?.('That MIDI note is already in the layout');return;}
-        state.noteLayout=ensureNotePitches(state.noteLayout,[newPitch]);
-        state.noteDefs[String(newPitch)]=normalizeNoteDef(next,newPitch);
-        selectedPitch=newPitch;persist();editor.hidden=true;render();return;
+        if(noteOrder().includes(newPitch)){window.UIXApp?.status?.('That MIDI pitch already exists in the shared Notes list. Edit it instead, or remove it first.');modal2.querySelector('[data-note-pitch]').focus();return;}
+        const layout=noteOrder();let inserted=false;for(let i=0;i<layout.length;i++){if(newPitch>layout[i]){layout.splice(i,0,newPitch);inserted=true;break;}}if(!inserted)layout.push(newPitch);
+        state.noteLayout=layout;state.noteDefs[String(newPitch)]=normalizeNoteDef(next,newPitch);selectedPitch=newPitch;persist();editor.hidden=true;render();return;
       }
-      if(newPitch!==oldPitch && state.noteLayout.includes(newPitch)){window.UIXApp?.status?.('That MIDI note is already in the layout');return;}
-      if(newPitch!==oldPitch){
-        const i=state.noteLayout.indexOf(oldPitch);if(i>=0)state.noteLayout[i]=newPitch;
-        state.notes.forEach(n=>{if(n.p===oldPitch)n.p=newPitch;});
-        delete state.noteDefs[String(oldPitch)];
-      }
-      state.noteDefs[String(newPitch)]=normalizeNoteDef({...base,...next},newPitch);
-      selectedPitch=newPitch;persist();editor.hidden=true;render();
+      if(newPitch!==oldPitch&&noteOrder().includes(newPitch)){window.UIXApp?.status?.('That MIDI pitch already exists in the shared Notes list.');return;}
+      const layout=noteOrder(),idx=layout.indexOf(oldPitch);
+      if(newPitch!==oldPitch){if(idx>=0)layout[idx]=newPitch;state.noteLayout=layout;delete state.noteDefs[String(oldPitch)];state.notes.forEach(n=>{if(Number(n.p)===oldPitch)n.p=newPitch;});}
+      state.noteDefs[String(newPitch)]=normalizeNoteDef(next,newPitch);selectedPitch=newPitch;persist();editor.hidden=true;render();
     };
     const cancelEditor=()=>{editor.hidden=true;render();};
     const removeCurrent=()=>{
-      const p=editPitch,i=state.noteLayout.indexOf(p);
-      if(i<0||state.noteLayout.length<=1)return;
-      state.noteLayout.splice(i,1);delete state.noteDefs[String(p)];
-      persist();editor.hidden=true;selectedPitch=state.noteLayout[Math.min(i,state.noteLayout.length-1)]??60;render();
+      const p=editPitch;if(p===null)return;
+      const layout=noteOrder();const idx=layout.indexOf(p);if(idx<0)return;
+      if(layout.length<=1){window.UIXApp?.status?.('At least one note definition must remain.');return;}
+      layout.splice(idx,1);state.noteLayout=layout;delete state.noteDefs[String(p)];
+      persist();editor.hidden=true;selectedPitch=layout[Math.min(idx,layout.length-1)]??null;render();
     };
     const render=()=>{
       state.noteLayout=normalizeNoteLayout(state.noteLayout);state.noteDefs=ensureNoteDefs(state.noteDefs||{},state.noteLayout);
-      list.innerHTML='';modal2.querySelector('[data-note-count]').textContent=`${state.noteLayout.length} notes`;
-      state.noteLayout.forEach((p,i)=>{
+      const pitches=noteOrder();list.innerHTML='';modal2.querySelector('[data-note-count]').textContent=`${pitches.length} note${pitches.length===1?'':'s'}`;
+      pitches.forEach((p,i)=>{
         const d=state.noteDefs[String(p)]||normalizeNoteDef(null,p);
         const row=document.createElement('div');row.className='uix-midi-note-row'+(p===selectedPitch?' selected':'');row.draggable=true;row.dataset.pitch=p;
         row.innerHTML=`<div class="uix-midi-note-key"></div><div class="uix-midi-note-info"><strong></strong><span></span></div><button class="btn" data-edit type="button">Edit</button><button class="btn" data-up type="button">↑</button><button class="btn" data-down type="button">↓</button><button class="btn danger" data-remove type="button">×</button>`;
         row.querySelector('.uix-midi-note-key').textContent=d.name;
         row.querySelector('.uix-midi-note-info strong').textContent=`MIDI ${p} · ${Number(d.frequency).toFixed(2)} Hz`;
         row.querySelector('.uix-midi-note-info span').textContent=`Amplitude ${Number(d.amplitude).toFixed(2)} · ${d.type}`;
-        row.querySelector('[data-up]').disabled=i===0;row.querySelector('[data-down]').disabled=i===state.noteLayout.length-1;
+        row.querySelector('[data-up]').disabled=i===0;row.querySelector('[data-down]').disabled=i===pitches.length-1;
         row.onclick=e=>{if(e.target.closest('button'))return;selectedPitch=p;render();};
         row.querySelector('[data-edit]').onclick=e=>{e.stopPropagation();setEditor('edit',p);render();};
-        row.querySelector('[data-up]').onclick=e=>{e.stopPropagation();const v=state.noteLayout[i];state.noteLayout.splice(i,1);state.noteLayout.splice(i-1,0,v);persist();render();};
-        row.querySelector('[data-down]').onclick=e=>{e.stopPropagation();const v=state.noteLayout[i];state.noteLayout.splice(i,1);state.noteLayout.splice(i+1,0,v);persist();render();};
-        row.querySelector('[data-remove]').onclick=e=>{e.stopPropagation();if(state.noteLayout.length<=1)return;state.noteLayout.splice(i,1);delete state.noteDefs[String(p)];persist();if(editPitch===p)editor.hidden=true;render();};
+        row.querySelector('[data-up]').onclick=e=>{e.stopPropagation();const layout=noteOrder();const v=layout[i];layout.splice(i,1);layout.splice(i-1,0,v);state.noteLayout=layout;persist();render();};
+        row.querySelector('[data-down]').onclick=e=>{e.stopPropagation();const layout=noteOrder();const v=layout[i];layout.splice(i,1);layout.splice(i+1,0,v);state.noteLayout=layout;persist();render();};
+        row.querySelector('[data-remove]').onclick=e=>{e.stopPropagation();editPitch=p;removeCurrent();};
         row.addEventListener('dragstart',e=>{e.dataTransfer?.setData('text/plain',String(p));row.dataset.dragPitch=String(p);});
         row.addEventListener('dragover',e=>e.preventDefault());
-        row.addEventListener('drop',e=>{e.preventDefault();const from=state.noteLayout.indexOf(p);const raw=e.dataTransfer?.getData('text/plain')||row.dataset.dragPitch;const source=validMidiPitch(raw);const a=state.noteLayout.indexOf(source);if(a<0||from<0||a===from)return;state.noteLayout.splice(a,1);state.noteLayout.splice(from,0,source);persist();render();});
+        row.addEventListener('drop',e=>{e.preventDefault();const from=noteOrder().indexOf(p);const source=Number(e.dataTransfer?.getData('text/plain')||row.dataset.dragPitch);const layout=noteOrder(),a=layout.indexOf(source);if(a<0||from<0||a===from)return;layout.splice(a,1);layout.splice(from,0,source);state.noteLayout=layout;persist();render();});
         list.append(row);
       });
+      if(!pitches.length){const empty=document.createElement('div');empty.className='uix-midi-notes-empty';empty.textContent='No note definitions available.';list.append(empty);}
     };
-    modal2.querySelector('[data-note-add-btn]').onclick=()=>{let p=60;for(let d=0;d<128&&state.noteLayout.includes(p);d++)p=(60+d)%128;if(state.noteLayout.includes(p)){for(p=0;p<128&&state.noteLayout.includes(p);p++);}if(p>127)return;setEditor('add',p);render();};
-    modal2.querySelector('[data-note-reset]').onclick=()=>{state.noteLayout=defaultNoteLayout();state.noteDefs=ensureNoteDefs({},state.noteLayout);persist();selectedPitch=60;editor.hidden=true;render();};
+    modal2.querySelector('[data-note-add-btn]').onclick=()=>{setEditor('add',null);render();modal2.querySelector('[data-note-name]').focus();};
+    modal2.querySelector('[data-note-reset]').onclick=()=>{state.noteLayout=defaultNoteLayout();state.noteDefs=ensureNoteDefs({},state.noteLayout);saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);refresh();selectedPitch=state.noteLayout[0]??null;editPitch=null;editor.hidden=true;render();};
     modal2.querySelector('[data-note-done-editor]').onclick=finishEditor;
     modal2.querySelector('[data-note-cancel-editor]').onclick=cancelEditor;
     modal2.querySelector('[data-note-delete]').onclick=removeCurrent;
     modal2.querySelector('[data-notes-close]').onclick=close;
     render();
   }
-
 
   function openRecordNoteModal(mainState, seedNotes=null, editMode=false){
     const modal3=document.createElement('section');
@@ -313,11 +332,11 @@
     modal3.innerHTML=`
       <div class="uix-midi-record-head">
         <div><strong>RECORD NOTE</strong><small>${editMode?'Edit the selected notes using microphone/reference input.':'Record a new melody into an empty note stage.'}</small></div>
-        <div class="uix-midi-record-head-actions"><button class="btn" data-rec-record>● Start Record</button><button class="btn" data-rec-play>▶ Play</button></div>
+        <div class="uix-midi-record-head-actions"><div class="uix-midi-grp uix-midi-zoom-controls"><button class="btn" type="button" data-rec-zoom-out aria-label="Zoom out">−</button><span data-rec-zoom-label>100%</span><button class="btn" type="button" data-rec-zoom-in aria-label="Zoom in">＋</button></div><button class="btn" data-rec-record>● Start Record</button><button class="btn" data-rec-play>▶ Play</button></div>
       </div>
       <div class="uix-midi-record-controls">
-        <label>Start Note<select data-rec-start>${pitchRows.map(p=>`<option value="${p}">${noteName(p)} (${p})</option>`).join('')}</select></label>
-        <label>End Note<select data-rec-end>${pitchRows.map(p=>`<option value="${p}">${noteName(p)} (${p})</option>`).join('')}</select></label>
+        <label>Start Note<select data-rec-start>${pitchRows.map(p=>`<option value="${p}">${mainState.noteDefs?.[String(p)]?.name||noteName(p)} (${p})</option>`).join('')}</select></label>
+        <label>End Note<select data-rec-end>${pitchRows.map(p=>`<option value="${p}">${mainState.noteDefs?.[String(p)]?.name||noteName(p)} (${p})</option>`).join('')}</select></label>
         <label>Threshold<input data-rec-threshold type="number" min="0.001" max="1" step="0.001" value="0.008"></label>
         <label>Min Note (ms)<input data-rec-min type="number" min="30" max="1000" value="80"></label>
         <label>Tolerance (cents)<input data-rec-tolerance type="number" min="1" max="300" value="90"></label>
@@ -329,7 +348,7 @@
         <aside class="uix-midi-record-tools"><button class="btn" data-rec-select-all>Select All</button><button class="btn" data-rec-clear-selection>Clear Selection</button><div class="uix-midi-record-hint">Tap notes to select. Use the context menu for Copy, Paste, Paste Origin, Delete, and Select All.</div></aside>
         <div class="uix-midi-record-stage"><canvas data-rec-canvas></canvas><div class="uix-midi-record-status" data-rec-status></div></div>
       </div>
-      <div class="uix-midi-record-foot"><span data-rec-message></span><button class="btn primary" data-rec-copy>Copy</button><button class="btn" data-rec-cancel>Cancel</button></div>`;
+      <div class="uix-midi-record-foot"><span data-rec-message></span><button class="btn" data-rec-pad-editor>Edit (Pad Editor)</button><button class="btn primary" data-rec-copy>Copy</button><button class="btn" data-rec-cancel>Cancel</button></div>`;
     document.body.append(modal3);window.UIXApp?.showModal?.(modal3);
     const c=modal3.querySelector('[data-rec-canvas]'),g=c.getContext('2d'),host=modal3.querySelector('[data-rec-status]');
     modal3.querySelector('[data-rec-start]').value=String(rs.rangeStart);modal3.querySelector('[data-rec-end]').value=String(rs.rangeEnd);
@@ -339,6 +358,9 @@
     const rowH=16,rowFor=p=>layout.indexOf(validMidiPitch(p));
     const total=()=>{let m=64;for(const n of rs.notes)m=Math.max(m,n.t+n.l);return Math.max(64,Math.ceil((m+17)/16)*16);};
     const clampRecordView=()=>{const maxT=total(),maxX=Math.max(0,maxT*zoom-(W-KEYW)),maxY=Math.max(0,layout.length*rowH-(H-RULER));sx=Math.max(0,Math.min(sx,maxX));sy=Math.max(0,Math.min(sy,maxY));};
+    const updateRecordZoomUI=()=>{const el=modal3.querySelector('[data-rec-zoom-label]');if(el)el.textContent=`${Math.round(zoom/22*100)}%`;};
+    const zoomRecordBy=factor=>{const old=zoom,anchor=(sx+Math.max(0,(W-KEYW)/2))/old;zoom=clamp(old*factor,6,80);sx=Math.max(0,anchor*zoom-Math.max(0,(W-KEYW)/2));clampRecordView();updateRecordZoomUI();draw();};
+    modal3.querySelector('[data-rec-zoom-out]').onclick=()=>zoomRecordBy(.82);modal3.querySelector('[data-rec-zoom-in]').onclick=()=>zoomRecordBy(1.22);updateRecordZoomUI();
     const followPosition=(step,p)=>{const rp=rowFor(p),targetX=KEYW+step*zoom-sx,targetY=RULER+(rp<0?Math.floor(layout.length/2):rp)*rowH-sy;if(targetX>W-40)sx=step*zoom-W+KEYW+40;else if(targetX<KEYW+20)sx=Math.max(0,step*zoom-20);if(rp>=0){if(targetY>H-rowH*2)sy=Math.max(0,rp*rowH-(H-RULER)+rowH*2);else if(targetY<RULER+rowH)sy=Math.max(0,rp*rowH);}clampRecordView();};
     const resize=()=>{const r=c.parentElement.getBoundingClientRect();W=r.width;H=r.height;dpr=window.devicePixelRatio||1;c.width=W*dpr;c.height=H*dpr;clampRecordView();draw();};
     const autoPan=()=>followPosition(rs.head,rs.lastPitch==null?layout[Math.floor(layout.length/2)]??60:rs.lastPitch);
@@ -353,7 +375,7 @@
       if(box){const x=Math.min(box.x1,box.x2),y=Math.min(box.y1,box.y2),w=Math.abs(box.x2-box.x1),h=Math.abs(box.y2-box.y1);g.fillStyle='rgba(228,202,78,.08)';g.fillRect(x,y,w,h);g.strokeStyle='#e4ca4e';g.strokeRect(x+.5,y+.5,w,h);}
       const hx=KEYW+rs.head*zoom-sx;g.fillStyle='#e4ca4e';g.fillRect(hx,RULER,1.5,H-RULER);g.restore();
       g.fillStyle='#222';g.fillRect(0,0,KEYW,H);
-      for(let i=0;i<layout.length;i++){const p=layout[i],y=RULER+i*rowH-sy;if(y>H||y+rowH<RULER)continue;const disabled=!inRange(p),playing=rs.playing&&rs.notes.some(n=>n.p===p&&rs.head>=n.t&&rs.head<n.t+n.l);g.fillStyle=playing?'#050505':(disabled?'#080808':'#e7e7e7');g.fillRect(0,y,KEYW-1,rowH-1);g.fillStyle=playing||disabled?'#fff':(isBlack(p)?'#666':'#222');g.fillText(noteName(p),4,y+rowH/2);}
+      for(let i=0;i<layout.length;i++){const p=layout[i],y=RULER+i*rowH-sy;if(y>H||y+rowH<RULER)continue;const disabled=!inRange(p),playing=rs.playing&&rs.notes.some(n=>n.p===p&&rs.head>=n.t&&rs.head<n.t+n.l);g.fillStyle=playing?'#050505':(disabled?'#080808':'#e7e7e7');g.fillRect(0,y,KEYW-1,rowH-1);g.fillStyle=playing||disabled?'#fff':(isBlack(p)?'#666':'#222');g.fillText(mainState.noteDefs?.[String(p)]?.name||noteName(p),4,y+rowH/2);}
       g.fillStyle='#292929';g.fillRect(0,0,KEYW,RULER);
       host.textContent=rs.recording?'Listening…':rs.playing?'Playing…':'';
     };
@@ -564,8 +586,8 @@
     c.addEventListener('contextmenu',e=>{e.preventDefault();const r=c.getBoundingClientRect(),i=hit(e.clientX-r.left,e.clientY-r.top);if(i!=null)rs.selected.has(i)||rs.selected.add(i);window.UIXApp?.showContextMenu?.([{label:'Copy',icon:'⧉',disabled:rs.selected.size===0,action:()=>{const s=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);if(!s.length)return;let minT=Infinity,maxP=-Infinity;for(const n of s){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}mainState.clipboard=s.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:100}));mainState.pasteTarget={step:minT,p:maxP};host.textContent='Note copied.';}},{label:'Paste',icon:'▣',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));const p=validMidiPitch(mainState.pasteTarget?.p??72);rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(p-n.dp),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Paste Origin Note',icon:'↥',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(n.op??n.p),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Delete',icon:'×',disabled:rs.selected.size===0,action:deleteSelected},{label:'Select All',icon:'☑',action:()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();}}],e.clientX,e.clientY);});
     c.addEventListener('pointerdown',e=>{active.set(e.pointerId,{x:e.clientX,y:e.clientY});c.setPointerCapture?.(e.pointerId);if(active.size>=2){drag=null;box=null;const pts=[...active.values()];two={last:{x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}};return;}const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(y<RULER&&x>=KEYW){rs.head=Math.max(0,Math.round(((x-KEYW+sx)/zoom)));rs.recordStartStep=rs.head;followPosition(rs.head,layout[Math.floor(layout.length/2)]??60);draw();return;}const i=hit(x,y);if(i!=null){if(e.ctrlKey||e.metaKey){rs.selected.has(i)?rs.selected.delete(i):rs.selected.add(i);}else{rs.selected.clear();rs.selected.add(i);}draw();}});
     c.addEventListener('pointermove',e=>{if(!active.has(e.pointerId))return;active.set(e.pointerId,{x:e.clientX,y:e.clientY});if(active.size>=2){const pts=[...active.values()],m={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};if(two){sx-=m.x-two.last.x;sy-=m.y-two.last.y;clampRecordView();two.last=m;draw();}return;}if(box){box.x2=e.clientX-c.getBoundingClientRect().left;box.y2=e.clientY-c.getBoundingClientRect().top;draw();}});
-    c.addEventListener('pointerup',e=>{active.delete(e.pointerId);if(active.size<2&&two){two=null;draw();}});c.addEventListener('pointercancel',e=>{active.delete(e.pointerId);if(active.size<2)two=null;});c.addEventListener('wheel',e=>{e.preventDefault();sx+=e.deltaX;sy+=e.deltaY;clampRecordView();draw();},{passive:false});
-    modal3.querySelector('[data-rec-record]').onclick=startRecord;modal3.querySelector('[data-rec-play]').onclick=recordPlay;modal3.querySelector('[data-rec-copy]').onclick=copyBack;modal3.querySelector('[data-rec-select-all]').onclick=()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();};modal3.querySelector('[data-rec-clear-selection]').onclick=()=>{rs.selected.clear();draw();};
+    c.addEventListener('pointerup',e=>{active.delete(e.pointerId);if(active.size<2&&two){two=null;draw();}});c.addEventListener('pointercancel',e=>{active.delete(e.pointerId);if(active.size<2)two=null;});c.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const r=c.getBoundingClientRect(),x=e.clientX-r.left-KEYW,anchor=(sx+x)/zoom;zoom=clamp(zoom*(e.deltaY<0?1.1:.9),6,80);sx=Math.max(0,anchor*zoom-x);updateRecordZoomUI();}else{sx+=e.deltaX;sy+=e.deltaY;}clampRecordView();draw();},{passive:false});
+    modal3.querySelector('[data-rec-record]').onclick=startRecord;modal3.querySelector('[data-rec-play]').onclick=recordPlay;modal3.querySelector('[data-rec-pad-editor]').textContent='Edit (Pad Editor)';modal3.querySelector('[data-rec-pad-editor]').onclick=()=>{const opener=document.querySelector('.uix-midi-modal')?._uixMidiOpenPadEditor;if(typeof opener!=='function'){window.UIXApp?.status?.('Open the MIDI Editor before using Pad Editor');return;}const selected=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);if(!selected.length){modal3.querySelector('[data-rec-message]').textContent='Select one or more recorded notes before editing them in Pad Editor.';window.UIXApp?.status?.('Select one or more Record Note notes first');return;}opener(selected.map(n=>({...n})),{fromRecord:true});};modal3.querySelector('[data-rec-copy]').onclick=copyBack;modal3.querySelector('[data-rec-select-all]').onclick=()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();};modal3.querySelector('[data-rec-clear-selection]').onclick=()=>{rs.selected.clear();draw();};
     ['start','end','threshold','min','tolerance','onset','mode','wave'].forEach(k=>modal3.querySelector(`[data-rec-${k}]`).addEventListener('change',draw));
     const close=()=>{stopRecord();stopRecordPlayback();try{rs.audio?.suspend?.();}catch{}window.removeEventListener('resize',resize);try{window.UIXApp?.closeModal?.(modal3);}catch{}modal3.remove();};
     modal3.querySelector('[data-rec-cancel]').onclick=()=>{const changed=rs.changed||rs.notes.length!==initialCount;if(changed&&window.UIXApp?.askConfirm)window.UIXApp.askConfirm('Cancel Record Note','Discard Record Note changes?',close,'Cancel Record');else close();};
@@ -589,46 +611,92 @@
           <div class="uix-midi-sep"></div>
           <div class="uix-midi-grp"><button class="uix-midi-tb active" data-midi-tool="draw" type="button">✎ <span>Draw</span></button><button class="uix-midi-tb" data-midi-tool="select" type="button">▦ <span>Select</span></button><button class="uix-midi-tb" data-midi-tool="erase" type="button">⌫ <span>Erase</span></button><button class="uix-midi-tb" data-midi-tool="pan" type="button">✥ <span>Pan</span></button><button class="uix-midi-tb" data-midi-undo type="button" title="Undo (Ctrl+Z)" disabled>↶</button><button class="uix-midi-tb" data-midi-redo type="button" title="Redo (Ctrl+Y)" disabled>↷</button></div>
           <div class="uix-midi-sep"></div>
-          <label class="uix-midi-lbl">BPM <input data-midi-bpm type="number" value="${config.bpm || 120}" min="30" max="300"></label>
+          <div class="uix-midi-grp uix-midi-zoom-controls"><button class="uix-midi-tb" data-midi-zoom-out type="button" title="Zoom out" aria-label="Zoom out">−</button><span data-midi-zoom-label>100%</span><button class="uix-midi-tb" data-midi-zoom-in type="button" title="Zoom in" aria-label="Zoom in">＋</button></div><label class="uix-midi-lbl">BPM <input data-midi-bpm type="number" value="${config.bpm || 120}" min="30" max="300"></label>
           <label class="uix-midi-lbl">Snap <select data-midi-snap><option value="1" selected>1/16</option><option value="2">1/8</option><option value="4">1/4</option><option value="8">1/2</option><option value="16">Bar</option></select></label>
           <label class="uix-midi-lbl">Length <select data-midi-len><option value="1">1/16</option><option value="2" selected>1/8</option><option value="4">1/4</option><option value="8">1/2</option><option value="16">Bar</option></select></label>
           <label class="uix-midi-lbl">Wave <select data-midi-wave><option>triangle</option><option>sine</option><option>square</option><option>sawtooth</option></select></label>
-          <button class="uix-midi-tb uix-midi-icon-only" data-midi-custom-notes type="button" title="Customize Notes" aria-label="Customize Notes">⚙</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-copy-local type="button" title="Copy Local Notes" aria-label="Copy Local Notes">⧉</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-note-selector type="button" title="Note Selector" aria-label="Note Selector">▦</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-record-note type="button" title="Record Note" aria-label="Record Note">●</button>
+          <button class="uix-midi-tb uix-midi-icon-only" data-midi-custom-notes type="button" title="Customize Notes" aria-label="Customize Notes">⚙</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-copy-local type="button" title="Copy Local Notes" aria-label="Copy Local Notes">⧉</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-note-selector type="button" title="Note Selector" aria-label="Note Selector">▦</button><button class="uix-midi-tb uix-midi-icon-only" data-midi-record-note type="button" title="Record Note" aria-label="Record Note">●</button><button class="uix-midi-tb" data-midi-pad-editor type="button" title="Open Pad Editor">▦ <span>Pad Editor</span></button>
           <div class="uix-midi-sep"></div>
           <div class="uix-midi-grp"><button class="btn" data-midi-import type="button">Import .mid</button><button class="btn primary" data-midi-export type="button">Export .mid</button><button class="uix-midi-tb" data-midi-clear type="button">🗑</button></div>
         </div>
         <div class="uix-midi-content">
           <aside class="uix-midi-tracks"><div class="uix-midi-ph">Tracks</div><div class="uix-midi-tlist" data-midi-tracks></div><div class="uix-midi-tfoot"><button class="btn" data-midi-add-track type="button">+ Add Track</button></div></aside>
-          <div class="uix-midi-stage"><canvas data-midi-canvas></canvas><div class="uix-midi-status" data-midi-status></div></div>
+          <div class="uix-midi-stage"><canvas data-midi-canvas></canvas><div class="uix-midi-time-controls"><button type="button" data-midi-time-less aria-label="Decrease timeline length" title="Remove one bar">−</button><span>Time <b data-midi-time-bars>4 bars</b></span><button type="button" data-midi-time-more aria-label="Increase timeline length" title="Add one bar">＋</button></div><div class="uix-midi-status" data-midi-status></div></div>
         </div>
       </div>`;
     document.body.append(modal);
     window.UIXApp?.showModal?.(modal);
 
+    const initialNoteEnd=(config.notes||[]).reduce((end,n)=>Math.max(end,(Number(n.t)||0)+(Number(n.l)||0)),0);
+    const initialTimelineLength=Math.max(64,Math.ceil(initialNoteEnd/16)*16);
+    let activePadOverlay=null;
     const state = {
-      name: config.name || 'Song', bpm: Number(config.bpm) || 120, ppq: Number(config.ppq) || 480,
+      name: config.name || 'Song', bpm: Number(config.bpm) || 120, ppq: Number(config.ppq) || 480, timelineLength: initialTimelineLength,
       sourceAsset: config.sourceAsset || null, notes: (config.notes || []).map(n => ({...n,selected:!!n.selected})),
       tracks: (config.tracks || []).map(t => ({...t})), cur: 0, tool: 'draw', sx: 0,
       sy: Math.max(0, (defaultNoteLayout().indexOf(72)) * RH - 120), zoom: 22, start: 0, playing: false, loop: false, head: 0,
-      W: 0, H: 0, dpr: 1, raf: 0, oscillators: [], audio: null, playTimer: 0, playToken: 0, scheduled: new Set(), startedAt: 0, fromStep: 0, history: [], redo: [], historyBusy: false, clipboard: [], noteAnchor: null, pasteTarget: null, selectionBox: null, noteLayout: normalizeNoteLayout(config.noteLayout || loadNoteLayout()), noteDefs: ensureNoteDefs(cloneNoteDefs(config.noteDefs || loadNoteDefs()), normalizeNoteLayout(config.noteLayout || loadNoteLayout())), noteRowByPitch: new Map(), previewNote: null, trackLevels: [], trackLoudness: []
+      W: 0, H: 0, dpr: 1, raf: 0, oscillators: [], audio: null, playTimer: 0, playToken: 0, scheduled: new Set(), startedAt: 0, fromStep: 0, history: [], redo: [], historyBusy: false, clipboard: [], noteAnchor: null, pasteTarget: null, selectionBox: null, noteLayout: normalizeNoteLayout(config.noteLayout || loadNoteLayout()), noteDefs: ensureNoteDefs(cloneNoteDefs(config.noteDefs || loadNoteDefs()), normalizeNoteLayout(config.noteLayout || loadNoteLayout())), noteRowByPitch: new Map(), previewNote: null, trackLevels: [], trackLoudness: [], trackOscillators: []
     };
     if (!state.tracks.length) state.tracks.push({name:'Track 1',color:COLORS[0],wave:'triangle',channel:0});
+    state.trackOscillators=state.tracks.map(()=>new Set());
 
     const canvas = modal.querySelector('[data-midi-canvas]'), g = canvas.getContext('2d'); canvas.style.touchAction='none'; canvas.style.webkitUserSelect='none';
     const view = makeGrid(state), total = view.total;
     const refreshNoteLayout = () => { view.refreshRows(); view.clampView(); draw(); };
     const status = msg => { modal.querySelector('[data-midi-status]').textContent = msg || ''; };
-    const snapshot = () => ({bpm:state.bpm,ppq:state.ppq,start:state.start,head:state.head,cur:state.cur,tool:state.tool,sx:state.sx,sy:state.sy,zoom:state.zoom,notes:state.notes.map(n=>({...n})),tracks:state.tracks.map(t=>({...t})),noteLayout:state.noteLayout.slice(),noteDefs:cloneNoteDefs(state.noteDefs)});
+    const snapshot = () => ({bpm:state.bpm,ppq:state.ppq,timelineLength:state.timelineLength,start:state.start,head:state.head,cur:state.cur,tool:state.tool,sx:state.sx,sy:state.sy,zoom:state.zoom,notes:state.notes.map(n=>({...n})),tracks:state.tracks.map(t=>({...t})),noteLayout:state.noteLayout.slice(),noteDefs:cloneNoteDefs(state.noteDefs)});
     const sameSnapshot=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
     function updateHistoryUI(){const u=modal.querySelector('[data-midi-undo]'),r=modal.querySelector('[data-midi-redo]');if(u)u.disabled=!state.history.length;if(r)r.disabled=!state.redo.length;}
     function pushHistory(before){if(state.historyBusy||!before)return;state.history.push(before);if(state.history.length>100)state.history.shift();state.redo=[];updateHistoryUI();}
-    function restoreSnapshot(s){if(!s)return;stop();state.bpm=s.bpm;state.ppq=s.ppq;state.start=s.start;state.head=s.head;state.cur=Math.max(0,Math.min(s.cur,s.tracks.length-1));state.tool=s.tool;state.sx=s.sx;state.sy=s.sy;state.zoom=s.zoom;state.notes=s.notes.map(n=>({...n}));state.tracks=s.tracks.map(t=>({...t}));state.noteLayout=normalizeNoteLayout(s.noteLayout||state.noteLayout);state.noteDefs=ensureNoteDefs(cloneNoteDefs(s.noteDefs||state.noteDefs),state.noteLayout);if(!state.tracks.length)state.tracks.push({name:'Track 1',color:COLORS[0],wave:'triangle',channel:0});modal.querySelector('[data-midi-bpm]').value=state.bpm;modal.querySelector('[data-midi-wave]').value=state.tracks[state.cur]?.wave||'triangle';renderTracks();view.clampView();draw();}
+    function restoreSnapshot(s){if(!s)return;stop();state.bpm=s.bpm;state.ppq=s.ppq;state.timelineLength=Math.max(16,Math.round(Number(s.timelineLength)||64));state.start=s.start;state.head=s.head;state.cur=Math.max(0,Math.min(s.cur,s.tracks.length-1));state.tool=s.tool;state.sx=s.sx;state.sy=s.sy;state.zoom=s.zoom;state.notes=s.notes.map(n=>({...n}));state.tracks=s.tracks.map(t=>({...t}));state.trackOscillators=state.tracks.map(()=>new Set());state.noteLayout=normalizeNoteLayout(s.noteLayout||state.noteLayout);state.noteDefs=ensureNoteDefs(cloneNoteDefs(s.noteDefs||state.noteDefs),state.noteLayout);if(!state.tracks.length)state.tracks.push({name:'Track 1',color:COLORS[0],wave:'triangle',channel:0});modal.querySelector('[data-midi-bpm]').value=state.bpm;modal.querySelector('[data-midi-wave]').value=state.tracks[state.cur]?.wave||'triangle';renderTracks();view.clampView();draw();}
     function undo(){if(!state.history.length)return;const current=snapshot(),prev=state.history.pop();state.historyBusy=true;state.redo.push(current);restoreSnapshot(prev);state.historyBusy=false;updateHistoryUI();status('Undo');}
     function redo(){if(!state.redo.length)return;const current=snapshot(),next=state.redo.pop();state.historyBusy=true;state.history.push(current);restoreSnapshot(next);state.historyBusy=false;updateHistoryUI();status('Redo');}
     const beginHistory=()=>snapshot();
+    const updateTimelineLabel=()=>{const label=modal.querySelector('[data-midi-time-bars]');if(label){const bars=Math.max(1,Math.round(total()/16));label.textContent=`${bars} bar${bars===1?'':'s'}`;}const less=modal.querySelector('[data-midi-time-less]');if(less)less.disabled=total()<=16;};
+    const growTimelineForNotes=endStep=>{const end=Math.max(0,Number(endStep)||0);if(end>total()){state.timelineLength=Math.max(total(),Math.ceil(end/16)*16);updateTimelineLabel();view.clampView();}};
+    function changeTimelineLength(direction){
+      const current=total(),next=Math.max(16,current+(direction<0?-16:16));if(next===current)return;
+      const trimmed=direction<0?state.notes.filter(n=>Number(n.t)>=next||Number(n.t)+Number(n.l)>next):[];
+      const commit=()=>{
+        const before=beginHistory();
+        if(direction<0&&trimmed.length){state.notes=state.notes.filter(n=>Number(n.t)<next).map(n=>Number(n.t)+Number(n.l)>next?{...n,l:Math.max(1,next-Number(n.t))}:n);state.notes.forEach(n=>{n.selected=!!n.selected&&n.t<next;});state.noteAnchor=null;state.selectionBox=null;}
+        state.timelineLength=next;state.head=Math.min(state.head,Math.max(0,next-1));state.start=Math.min(state.start,Math.max(0,next-1));pushHistory(before);view.clampView();updateTimelineLabel();draw();status(`Timeline: ${Math.round(next/16)} bar${next===16?'':'s'}`);
+      };
+      if(trimmed.length){const message=`Reducing the timeline to ${next/16} bar${next===16?'':'s'} will trim ${trimmed.length} note${trimmed.length===1?'':'s'} at the end. Notes starting after the new end will be removed. Continue?`;if(window.UIXApp?.askConfirm)window.UIXApp.askConfirm('Shorten Timeline',message,commit,'Trim Notes');else if(window.confirm(message))commit();return;}
+      commit();
+    }
+    modal.querySelector('[data-midi-time-less]').addEventListener('click',()=>changeTimelineLength(-1));
+    modal.querySelector('[data-midi-time-more]').addEventListener('click',()=>changeTimelineLength(1));
+    updateTimelineLabel();
+    const updateMidiZoomUI=()=>{const el=modal.querySelector('[data-midi-zoom-label]');if(el)el.textContent=`${Math.round(state.zoom/22*100)}%`;};
+    const zoomMidiBy=factor=>{const old=state.zoom,anchor=(state.sx+Math.max(0,(state.W-KEYW)/2))/old;state.zoom=clamp(old*factor,6,80);state.sx=Math.max(0,anchor*state.zoom-Math.max(0,(state.W-KEYW)/2));view.clampView();updateMidiZoomUI();draw();};
+    modal.querySelector('[data-midi-zoom-out]').onclick=()=>zoomMidiBy(.82);
+    modal.querySelector('[data-midi-zoom-in]').onclick=()=>zoomMidiBy(1.22);
+    updateMidiZoomUI();
 
-    function addTrack(){const before=beginHistory(),i=state.tracks.length;state.tracks.push({name:`Track ${i+1}`,color:COLORS[i%COLORS.length],wave:'triangle',channel:i%16});state.cur=i;pushHistory(before);renderTracks();draw();}
-    function renderTracks(){const host=modal.querySelector('[data-midi-tracks]');host.innerHTML='';state.trackLevels=state.trackLevels||[];state.trackLoudness=state.trackLoudness||[];state.tracks.forEach((t,i)=>{const row=document.createElement('div');row.className='uix-midi-track-row'+(i===state.cur?' sel':'');row.innerHTML=`<i class="dot" style="background:${t.color}"></i><span></span><i class="uix-midi-track-meter duo"><b data-meter-level></b><b data-meter-loudness></b></i><button type="button">✕</button>`;row.querySelector('span').textContent=t.name;row.onclick=()=>{state.cur=i;modal.querySelector('[data-midi-wave]').value=t.wave||'triangle';renderTracks();draw();};row.querySelector('button').onclick=e=>{e.stopPropagation();if(state.tracks.length<2)return;const before=beginHistory();state.notes=state.notes.filter(n=>n.tr!==i).map(n=>({...n,tr:n.tr>i?n.tr-1:n.tr}));state.tracks.splice(i,1);state.trackLevels.splice(i,1);state.trackLoudness.splice(i,1);state.cur=Math.min(state.cur,state.tracks.length-1);pushHistory(before);renderTracks();draw();};host.append(row);});}
+    function addTrack(){const before=beginHistory(),i=state.tracks.length;state.tracks.push({name:`Track ${i+1}`,color:COLORS[i%COLORS.length],wave:'triangle',channel:i%16});state.trackOscillators[i]=new Set();state.cur=i;pushHistory(before);renderTracks();draw();}
+    function syncTrackRows(){modal.querySelectorAll('[data-midi-tracks] .uix-midi-track-row').forEach((row,i)=>row.classList.toggle('sel',i===state.cur));}
+    function renderTracks(){
+      const host=modal.querySelector('[data-midi-tracks]');host.innerHTML='';state.trackLevels=state.trackLevels||[];state.trackLoudness=state.trackLoudness||[];
+      state.tracks.forEach((t,i)=>{
+        t.muted=!!t.muted;
+        const row=document.createElement('div');row.className='uix-midi-track-row'+(i===state.cur?' sel':'');
+        row.innerHTML=`<button class="dot${t.muted?' muted':''}" type="button" title="${t.muted?'Unmute':'Mute'} track" aria-label="${t.muted?'Unmute':'Mute'} ${String(t.name||'track').replace(/[&<>"']/g,'')}" aria-pressed="${t.muted?'true':'false'}" style="background:${t.color||COLORS[i%COLORS.length]}"></button><span title="Double-click to rename track"></span><i class="uix-midi-track-meter duo"><b data-meter-level></b><b data-meter-loudness></b></i><button class="uix-midi-track-delete" type="button" aria-label="Delete track">✕</button>`;
+        const name=row.querySelector('span');name.textContent=t.name||`Track ${i+1}`;
+        row.onclick=()=>{state.cur=i;modal.querySelector('[data-midi-wave]').value=t.wave||'triangle';syncTrackRows();draw();};
+        const dot=row.querySelector('.dot');dot.onclick=e=>{e.preventDefault();e.stopPropagation();const before=beginHistory();t.muted=!t.muted;if(t.muted){stopTrackOscillators(i);if(state.previewNote?.tr===i)state.previewNote=null;}pushHistory(before);dot.classList.toggle('muted',t.muted);dot.title=`${t.muted?'Unmute':'Mute'} track`;dot.setAttribute('aria-label',`${t.muted?'Unmute':'Mute'} ${t.name||'track'}`);dot.setAttribute('aria-pressed',String(t.muted));draw();};
+        name.addEventListener('dblclick',e=>{
+          e.preventDefault();e.stopPropagation();if(name.isContentEditable)return;
+          const original=t.name||`Track ${i+1}`,before=beginHistory();name.contentEditable='true';name.spellcheck=false;name.classList.add('editing');name.setAttribute('role','textbox');name.setAttribute('aria-label','Track name');
+          const range=document.createRange();range.selectNodeContents(name);const sel=window.getSelection();sel?.removeAllRanges();sel?.addRange(range);name.focus();
+          let done=false;const finish=commit=>{if(done)return;done=true;name.removeEventListener('keydown',keyHandler);name.removeEventListener('blur',blurHandler);name.contentEditable='false';name.classList.remove('editing');name.removeAttribute('role');const next=commit?name.textContent.trim():original;t.name=next||original;name.textContent=t.name;if(t.name!==original)pushHistory(before);};
+          const keyHandler=ev=>{if(ev.key==='Enter'){ev.preventDefault();finish(true);name.blur();}else if(ev.key==='Escape'){ev.preventDefault();finish(false);name.blur();}};
+          const blurHandler=()=>finish(true);name.addEventListener('keydown',keyHandler);name.addEventListener('blur',blurHandler);
+        });
+        row.querySelector('.uix-midi-track-delete').onclick=e=>{e.stopPropagation();if(state.tracks.length<2)return;const before=beginHistory();stopOscs();state.notes=state.notes.filter(n=>Number(n.tr)!==i).map(n=>({...n,tr:Number(n.tr)>i?Number(n.tr)-1:n.tr}));state.tracks.splice(i,1);state.trackOscillators=state.tracks.map(()=>new Set());state.trackLevels.splice(i,1);state.trackLoudness.splice(i,1);state.cur=Math.min(state.cur,state.tracks.length-1);pushHistory(before);renderTracks();draw();};
+        host.append(row);
+      });
+    }
     function resize(){const r=modal.querySelector('.uix-midi-stage').getBoundingClientRect();state.dpr=window.devicePixelRatio||1;state.W=r.width;state.H=r.height;canvas.width=state.W*state.dpr;canvas.height=state.H*state.dpr;view.clampView();draw();}
     function draw(){
       g.setTransform(state.dpr,0,0,state.dpr,0,0);
@@ -651,10 +719,10 @@
         const x=KEYW+n.t*state.zoom-state.sx,y=RULER+row*RH-state.sy;
         if(x+n.l*state.zoom<KEYW||x>state.W||y>state.H||y<RULER-RH)return;
         const selected=!!n.selected;
-        const previewActive=state.previewNote&&state.previewNote.until>performance.now()&&state.previewNote.p===n.p&&state.previewNote.tr===n.tr;
+        const previewActive=!t.muted&&state.previewNote&&state.previewNote.until>performance.now()&&state.previewNote.p===n.p&&state.previewNote.tr===n.tr;
         const playingActive=state.playing&&state.head>=n.t&&state.head<n.t+n.l;
         const active=!!previewActive||playingActive;
-        g.globalAlpha=n.tr===state.cur?1:.35;
+        g.globalAlpha=t.muted?.14:(n.tr===state.cur?1:.35);
         const noteColor=selected?'#e4ca4e':(t.color||COLORS[0]);
         g.fillStyle=noteColor;
         if(active){
@@ -688,19 +756,20 @@
       for(let i=0;i<state.noteLayout.length;i++){
         const pp=state.noteLayout[i],y=RULER+i*RH-state.sy;if(y>state.H||y<RULER-RH)continue;
         const keyPreview=state.previewNote&&state.previewNote.until>performance.now()&&state.previewNote.p===pp;
-        const keyPlaying=state.playing&&state.notes.some(n=>n.p===pp&&state.head>=n.t&&state.head<n.t+n.l);
+        const keyPlaying=state.playing&&state.notes.some(n=>!state.tracks[n.tr]?.muted&&n.p===pp&&state.head>=n.t&&state.head<n.t+n.l);
         const keyActive=!!keyPreview||!!keyPlaying;
         g.fillStyle=keyActive?'#050505':'#e7e7e7';g.fillRect(0,y,KEYW-1,RH-1);
-        g.fillStyle=keyActive?'#fff':(isBlack(pp)?'#666':'#222');g.fillText(noteName(pp),4,y+RH/2);
+        g.fillStyle=keyActive?'#fff':(isBlack(pp)?'#666':'#222');g.fillText(state.noteDefs?.[String(pp)]?.name||noteName(pp),4,y+RH/2);
       }
-      g.restore();g.fillStyle='#292929';g.fillRect(0,0,KEYW,RULER);g.fillStyle='#414141';g.fillRect(KEYW-1,0,1,state.H);
+      g.restore();g.fillStyle='#292929';g.fillRect(0,0,KEYW,RULER);g.fillStyle='#414141';g.fillRect(KEYW-1,0,1,state.H);updateTimelineLabel();
     }
     const snap=()=>+modal.querySelector('[data-midi-snap]').value;
     const cell=e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const row=Math.floor((y-RULER+state.sy)/RH);const p=state.noteLayout[clamp(row,0,Math.max(0,state.noteLayout.length-1))]??60;return{x,y,step:(x-KEYW+state.sx)/state.zoom,p,row}};
     const hit=c=>{for(let i=state.notes.length-1;i>=0;i--){const n=state.notes[i];if(n.tr===state.cur&&n.p===c.p&&c.step>=n.t&&c.step<n.t+n.l)return n;}return null;};
     function audio(){if(!state.audio)state.audio=new (window.AudioContext||window.webkitAudioContext)();if(state.audio.state==='suspended')state.audio.resume();return state.audio;}
-    function tone(note,t,d,trackWave,vol=.16){const p=typeof note==='object'?validMidiPitch(note.p):validMidiPitch(note),def=state.noteDefs?.[String(p)]||normalizeNoteDef(null,p),wave=def.type==='track'?(trackWave||'triangle'):(NOTE_TYPES.includes(def.type)&&def.type!=='track'?def.type:'triangle');const a=audio(),o=a.createOscillator(),gn=a.createGain();o.type=wave;o.frequency.value=Math.max(.01,Number(def.frequency)||midiFrequency(p));const start=Math.max(t,a.currentTime+0.005),dur=Math.max(0.02,d),level=clamp((Number(def.amplitude)||0)*Math.max(0,Math.min(1,Number(vol)||0)),0,1);gn.gain.setValueAtTime(0,start);gn.gain.linearRampToValueAtTime(level,start+0.008);gn.gain.setValueAtTime(level,start+Math.max(0.012,dur-0.02));gn.gain.linearRampToValueAtTime(0,start+dur);o.connect(gn).connect(a.destination);o.start(start);o.stop(start+dur+.02);state.oscillators.push(o);return o;}
-    const preview=p=>{state.previewNote={p:validMidiPitch(p),tr:state.cur,until:performance.now()+220};state.trackLevels=state.trackLevels||[];state.trackLevels[state.cur]=1;tone(p,audio().currentTime,.2,state.tracks[state.cur]?.wave||'triangle',1);draw();setTimeout(()=>{if(state.previewNote&&state.previewNote.until<=performance.now()){state.previewNote=null;draw();}},235);};
+    function stopTrackOscillators(index){const active=state.trackOscillators?.[index];if(active){for(const o of active){try{o.stop();}catch{}}active.clear();}}
+    function tone(note,t,d,trackWave,vol=.16,trackIndex=-1){const p=typeof note==='object'?validMidiPitch(note.p):validMidiPitch(note),def=state.noteDefs?.[String(p)]||normalizeNoteDef(null,p),wave=def.type==='track'?(trackWave||'triangle'):(NOTE_TYPES.includes(def.type)&&def.type!=='track'?def.type:'triangle');const a=audio(),o=a.createOscillator(),gn=a.createGain();o.type=wave;o.frequency.value=Math.max(.01,Number(def.frequency)||midiFrequency(p));const start=Math.max(t,a.currentTime+0.005),dur=Math.max(0.02,d),level=clamp((Number(def.amplitude)||0)*Math.max(0,Math.min(1,Number(vol)||0)),0,1);gn.gain.setValueAtTime(0,start);gn.gain.linearRampToValueAtTime(level,start+0.008);gn.gain.setValueAtTime(level,start+Math.max(0.012,dur-0.02));gn.gain.linearRampToValueAtTime(0,start+dur);o.connect(gn).connect(a.destination);o.start(start);o.stop(start+dur+.02);state.oscillators.push(o);if(Number.isInteger(trackIndex)&&trackIndex>=0){state.trackOscillators[trackIndex]||=new Set();state.trackOscillators[trackIndex].add(o);o.addEventListener?.('ended',()=>state.trackOscillators[trackIndex]?.delete(o),{once:true});}return o;}
+    const preview=p=>{state.previewNote={p:validMidiPitch(p),tr:state.cur,until:performance.now()+220};state.trackLevels=state.trackLevels||[];state.trackLevels[state.cur]=state.tracks[state.cur]?.muted?0:1;if(!state.tracks[state.cur]?.muted)tone(p,audio().currentTime,.2,state.tracks[state.cur]?.wave||'triangle',1,state.cur);draw();setTimeout(()=>{if(state.previewNote&&state.previewNote.until<=performance.now()){state.previewNote=null;draw();}},235);};
     canvas.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showMidiContextMenu(e.clientX,e.clientY);});
     function clearMidiSelection(){state.notes.forEach(n=>n.selected=false);state.noteAnchor=null;}
     function currentTrackNotes(){return state.notes.filter(n=>n.tr===state.cur).slice().sort((a,b)=>a.t-b.t||b.p-a.p);}
@@ -737,8 +806,9 @@
     function openNoteSelectorFromNotes(sourceNotes, sourceName='MIDI'){
       const copyModal=document.createElement('section');
       copyModal.className='modal uix-midi-copy-local-modal';
+      copyModal.dataset.closeOutside='true';
       copyModal.innerHTML=`
-        <div class="uix-midi-copy-local-head"><div><strong>NOTE SELECTOR</strong><small>${safeName(sourceName)} · select notes without modifying the MIDI.</small></div></div>
+        <div class="uix-midi-copy-local-head"><div><strong>NOTE SELECTOR</strong><small>${safeName(sourceName)} · select notes without modifying the MIDI.</small></div><div class="uix-midi-grp uix-midi-zoom-controls"><button class="btn" data-local-zoom-out type="button" aria-label="Zoom out">−</button><span data-local-zoom-label>100%</span><button class="btn" data-local-zoom-in type="button" aria-label="Zoom in">＋</button></div></div>
         <div class="uix-midi-copy-local-body">
           <aside class="uix-midi-copy-local-pitches"><div class="uix-midi-copy-local-title">NOTES</div><div data-local-note-pitches></div></aside>
           <div class="uix-midi-copy-local-stage"><canvas data-local-note-canvas></canvas><div class="uix-midi-copy-local-help">Tap to select · drag for box · two fingers to pan</div></div>
@@ -750,30 +820,34 @@
       const notes=(sourceNotes||[]).map((n,i)=>({...n,_copyIndex:i}));
       const pitches=ensureNotePitches(state.noteLayout,notes.map(n=>validMidiPitch(n.p)));
       const v={sx:0,sy:0,zoom:Math.max(10,state.zoom),dpr:window.devicePixelRatio||1};
-      let W=0,H=0;const activePointers=new Map();let twoPan=null;let box=null;
+      let W=0,H=0;const activePointers=new Map();let twoPan=null;let box=null,boxPointer=null,boxPanRaf=0;
       const bounds=()=>{let maxT=64;for(const n of notes)maxT=Math.max(maxT,n.t+n.l);return {t:Math.max(64,maxT)};};
       const resize=()=>{const r=c.parentElement.getBoundingClientRect();W=r.width;H=r.height;v.dpr=window.devicePixelRatio||1;c.width=W*v.dpr;c.height=H*v.dpr;clampView();drawStage();};
       const rowHeight=18;
       const clampView=()=>{const b=bounds(),maxX=Math.max(0,b.t*v.zoom-(W-KEYW)),maxY=Math.max(0,pitches.length*rowHeight-(H-RULER));v.sx=Math.max(0,Math.min(v.sx,maxX));v.sy=Math.max(0,Math.min(v.sy,maxY));};
+      const updateLocalZoomUI=()=>{const el=copyModal.querySelector('[data-local-zoom-label]');if(el)el.textContent=`${Math.round(v.zoom/22*100)}%`;};
+      const zoomLocalBy=factor=>{const old=v.zoom,anchor=(v.sx+Math.max(0,(W-KEYW)/2))/old;v.zoom=clamp(old*factor,6,80);v.sx=Math.max(0,anchor*v.zoom-Math.max(0,(W-KEYW)/2));clampView();updateLocalZoomUI();drawStage();};
+      copyModal.querySelector('[data-local-zoom-out]').onclick=()=>zoomLocalBy(.82);copyModal.querySelector('[data-local-zoom-in]').onclick=()=>zoomLocalBy(1.22);updateLocalZoomUI();
       const rowPitchAt=y=>{const row=Math.floor((y-RULER+v.sy)/rowHeight);return pitches[row]??null;};
       const yFor=p=>RULER+pitches.indexOf(p)*rowHeight-v.sy;
-      const renderList=()=>{listHost.innerHTML='';pitches.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='uix-midi-copy-pitch'+(selected.size&&notes.some((n,i)=>n.p===p&&selected.has(i))?' selected':'');b.textContent=`${noteName(p)}  (${p})`;b.onclick=()=>{notes.forEach((n,i)=>{if(n.p===p){if(selected.has(i))selected.delete(i);else selected.add(i);}});renderList();drawStage();};listHost.append(b);});};
+      const renderList=()=>{listHost.innerHTML='';pitches.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='uix-midi-copy-pitch'+(selected.size&&notes.some((n,i)=>n.p===p&&selected.has(i))?' selected':'');b.textContent=`${state.noteDefs?.[String(p)]?.name||noteName(p)}  (${p})`;b.onclick=()=>{notes.forEach((n,i)=>{if(n.p===p){if(selected.has(i))selected.delete(i);else selected.add(i);}});renderList();drawStage();};listHost.append(b);});};
       const hitNote=(x,y)=>{for(let i=notes.length-1;i>=0;i--){const n=notes[i],row=pitches.indexOf(n.p);if(row<0)continue;const nx=KEYW+n.t*v.zoom-v.sx,nw=Math.max(4,n.l*v.zoom),ny=RULER+row*rowHeight-v.sy;if(x>=nx&&x<=nx+nw&&y>=ny&&y<=ny+rowHeight)return i;}return -1;};
-      const drawStage=()=>{clampView();g.setTransform(v.dpr,0,0,v.dpr,0,0);g.clearRect(0,0,W,H);g.fillStyle='#202020';g.fillRect(0,0,W,H);const b=bounds();g.save();g.beginPath();g.rect(KEYW,0,W-KEYW,H);g.clip();for(let i=0;i<pitches.length;i++){const y=yFor(pitches[i]);if(y>H||y+rowHeight<RULER)continue;g.fillStyle=isBlack(pitches[i])?'#292929':'#2a2a2a';g.fillRect(KEYW,y,W-KEYW,rowHeight);g.fillStyle='#333';g.fillRect(KEYW,y+rowHeight-1,W-KEYW,1);}for(let ss=0;ss<=b.t;ss+=4){const x=KEYW+ss*v.zoom-v.sx;if(x<KEYW||x>W)continue;g.fillStyle=ss%16===0?'#505050':'#2f2f2f';g.fillRect(x,RULER,1,H-RULER);}for(const [i,n] of notes.entries()){const row=pitches.indexOf(n.p);if(row<0)continue;const x=KEYW+n.t*v.zoom-v.sx,y=yFor(n.p),w=Math.max(4,n.l*v.zoom-2);if(x+w<KEYW||x>W||y+rowHeight<RULER||y>H)continue;const on=selected.has(i),col=COLORS[(Number(n.tr)||0)%COLORS.length];g.fillStyle=on?'#e4ca4e':col;if(on){g.save();g.shadowColor='#e4ca4e';g.shadowBlur=8;g.fillRect(x+1,y+1,w,rowHeight-2);g.restore();}else g.fillRect(x+1,y+1,w,rowHeight-2);}if(box){const x=Math.min(box.x1,box.x2),y=Math.min(box.y1,box.y2),w=Math.abs(box.x2-box.x1),h=Math.abs(box.y2-box.y1);g.fillStyle='rgba(228,202,78,.08)';g.fillRect(x,y,w,h);g.strokeStyle='#e4ca4e';g.strokeRect(x+.5,y+.5,w,h);}g.restore();g.fillStyle='#222';g.fillRect(0,0,KEYW,H);g.font='10px system-ui';g.textBaseline='middle';for(let i=0;i<pitches.length;i++){const p=pitches[i],y=yFor(p);if(y>H||y+rowHeight<RULER)continue;const present=notes.some(n=>n.p===p),active=notes.some((n,j)=>selected.has(j)&&n.p===p);g.fillStyle=active?'#050505':present?'#e7e7e7':'#bfbfbf';g.fillRect(0,y,KEYW-1,rowHeight-1);g.fillStyle=active?'#fff':(isBlack(p)?'#555':'#222');g.fillText(noteName(p),4,y+rowHeight/2);}};
+      const drawStage=()=>{clampView();g.setTransform(v.dpr,0,0,v.dpr,0,0);g.clearRect(0,0,W,H);g.fillStyle='#202020';g.fillRect(0,0,W,H);const b=bounds();g.save();g.beginPath();g.rect(KEYW,0,W-KEYW,H);g.clip();for(let i=0;i<pitches.length;i++){const y=yFor(pitches[i]);if(y>H||y+rowHeight<RULER)continue;g.fillStyle=isBlack(pitches[i])?'#292929':'#2a2a2a';g.fillRect(KEYW,y,W-KEYW,rowHeight);g.fillStyle='#333';g.fillRect(KEYW,y+rowHeight-1,W-KEYW,1);}for(let ss=0;ss<=b.t;ss+=4){const x=KEYW+ss*v.zoom-v.sx;if(x<KEYW||x>W)continue;g.fillStyle=ss%16===0?'#505050':'#2f2f2f';g.fillRect(x,RULER,1,H-RULER);}for(const [i,n] of notes.entries()){const row=pitches.indexOf(n.p);if(row<0)continue;const x=KEYW+n.t*v.zoom-v.sx,y=yFor(n.p),w=Math.max(4,n.l*v.zoom-2);if(x+w<KEYW||x>W||y+rowHeight<RULER||y>H)continue;const on=selected.has(i),col=COLORS[(Number(n.tr)||0)%COLORS.length];g.fillStyle=on?'#e4ca4e':col;if(on){g.save();g.shadowColor='#e4ca4e';g.shadowBlur=8;g.fillRect(x+1,y+1,w,rowHeight-2);g.restore();}else g.fillRect(x+1,y+1,w,rowHeight-2);}if(box){const x=Math.min(box.x1,box.x2),y=Math.min(box.y1,box.y2),w=Math.abs(box.x2-box.x1),h=Math.abs(box.y2-box.y1);g.fillStyle='rgba(228,202,78,.08)';g.fillRect(x,y,w,h);g.strokeStyle='#e4ca4e';g.strokeRect(x+.5,y+.5,w,h);}g.restore();g.fillStyle='#222';g.fillRect(0,0,KEYW,H);g.font='10px system-ui';g.textBaseline='middle';for(let i=0;i<pitches.length;i++){const p=pitches[i],y=yFor(p);if(y>H||y+rowHeight<RULER)continue;const present=notes.some(n=>n.p===p),active=notes.some((n,j)=>selected.has(j)&&n.p===p);g.fillStyle=active?'#050505':present?'#e7e7e7':'#bfbfbf';g.fillRect(0,y,KEYW-1,rowHeight-1);g.fillStyle=active?'#fff':(isBlack(p)?'#555':'#222');g.fillText(state.noteDefs?.[String(p)]?.name||noteName(p),4,y+rowHeight/2);}};
       const selectBox=()=>{if(!box)return;const x1=Math.min(box.x1,box.x2),x2=Math.max(box.x1,box.x2),y1=Math.min(box.y1,box.y2),y2=Math.max(box.y1,box.y2);notes.forEach((n,i)=>{const row=pitches.indexOf(n.p);if(row<0)return;const nx=KEYW+n.t*v.zoom-v.sx,nx2=KEYW+(n.t+n.l)*v.zoom-v.sx,ny=yFor(n.p),ny2=ny+rowHeight;if(nx<=x2&&nx2>=x1&&ny<=y2&&ny2>=y1)selected.add(i);});};
+      const boxPanTick=()=>{if(!box||!boxPointer||!c.isConnected){boxPanRaf=0;return;}const r=c.getBoundingClientRect(),x=boxPointer.x-r.left,y=boxPointer.y-r.top,edge=24;let dx=x<edge?-Math.min(18,Math.ceil((edge-x)/3)):x>W-edge?Math.min(18,Math.ceil((x-(W-edge))/3)):0,dy=y<edge?-Math.min(18,Math.ceil((edge-y)/3)):y>H-edge?Math.min(18,Math.ceil((y-(H-edge))/3)):0;const ox=v.sx,oy=v.sy;if(dx||dy){v.sx+=dx;v.sy+=dy;clampView();}const moving=v.sx!==ox||v.sy!==oy;if(moving){box.x2=x;box.y2=y;drawStage();}const near=x<edge||x>W-edge||y<edge||y>H-edge;if(near&&moving)boxPanRaf=requestAnimationFrame(boxPanTick);else boxPanRaf=0;};
       const close=()=>{window.removeEventListener('resize',resize);try{window.UIXApp?.closeModal?.(copyModal);}catch{}copyModal.remove();};
       c.addEventListener('pointerdown',e=>{activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});c.setPointerCapture?.(e.pointerId);if(activePointers.size>=2){box=null;const pts=[...activePointers.values()];twoPan={last:{x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}};return;}const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(x<KEYW&&y>=RULER){const p=rowPitchAt(y);if(p!=null){selected.clear();notes.forEach((n,i)=>{if(n.p===p)selected.add(i);});renderList();drawStage();}return;}const i=hitNote(x,y);if(i>=0){if(selected.has(i))selected.delete(i);else selected.add(i);renderList();drawStage();}else box={x1:x,y1:y,x2:x,y2:y};});
-      c.addEventListener('pointermove',e=>{if(!activePointers.has(e.pointerId))return;activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(activePointers.size>=2){const pts=[...activePointers.values()],mid={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};if(twoPan){v.sx-=mid.x-twoPan.last.x;v.sy-=mid.y-twoPan.last.y;clampView();twoPan.last=mid;drawStage();}return;}if(box){const r=c.getBoundingClientRect();box.x2=e.clientX-r.left;box.y2=e.clientY-r.top;drawStage();}});
-      c.addEventListener('pointerup',e=>{activePointers.delete(e.pointerId);if(activePointers.size===0){if(box){selectBox();box=null;renderList();drawStage();}twoPan=null;}});
-      c.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size===0){box=null;twoPan=null;drawStage();}});
-      c.addEventListener('wheel',e=>{e.preventDefault();v.sx+=e.deltaX;v.sy+=e.deltaY;clampView();drawStage();},{passive:false});
+      c.addEventListener('pointermove',e=>{if(!activePointers.has(e.pointerId))return;activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(activePointers.size>=2){const pts=[...activePointers.values()],mid={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};if(twoPan){v.sx-=mid.x-twoPan.last.x;v.sy-=mid.y-twoPan.last.y;clampView();twoPan.last=mid;drawStage();}return;}if(box){const r=c.getBoundingClientRect();boxPointer={x:e.clientX,y:e.clientY};box.x2=e.clientX-r.left;box.y2=e.clientY-r.top;drawStage();const x=box.x2,y=box.y2;if((x<24||x>W-24||y<24||y>H-24)&&!boxPanRaf)boxPanRaf=requestAnimationFrame(boxPanTick);}});
+      c.addEventListener('pointerup',e=>{activePointers.delete(e.pointerId);if(activePointers.size===0){if(boxPanRaf)cancelAnimationFrame(boxPanRaf);boxPanRaf=0;boxPointer=null;if(box){selectBox();box=null;renderList();drawStage();}twoPan=null;}});
+      c.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size===0){if(boxPanRaf)cancelAnimationFrame(boxPanRaf);boxPanRaf=0;boxPointer=null;box=null;twoPan=null;drawStage();}});
+      c.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const r=c.getBoundingClientRect(),x=e.clientX-r.left-KEYW,anchor=(v.sx+x)/v.zoom;v.zoom=clamp(v.zoom*(e.deltaY<0?1.1:.9),6,80);v.sx=Math.max(0,anchor*v.zoom-x);updateLocalZoomUI();}else{v.sx+=e.deltaX;v.sy+=e.deltaY;}clampView();drawStage();},{passive:false});
       copyModal.addEventListener('pointerdown',e=>{if(e.target===copyModal){close();}});
       copyModal.querySelector('[data-local-copy]').onclick=()=>{const chosen=notes.filter((n,i)=>selected.has(i));if(!chosen.length){copyModal.querySelector('[data-local-copy-status]').textContent='Select at least one note.';return;}const b=noteSelectionBounds(chosen);state.clipboard=chosen.map(n=>({dt:n.t-b.minT,dp:b.maxP-n.p,l:n.l,p:n.p,velocity:100}));state.pasteTarget={step:b.minT,p:b.maxP};copyModal.querySelector('[data-local-copy-status]').textContent='Note has been copied, paste it at the DAW.';};
       copyModal.querySelector('[data-local-cancel]').onclick=close;
       window.addEventListener('resize',resize);renderList();resize();
     }
     function openLocalMidiPicker(){
-      const picker=document.createElement('section');picker.className='modal uix-midi-local-list-modal';
+      const picker=document.createElement('section');picker.className='modal uix-midi-local-list-modal';picker.dataset.closeOutside='true';
       picker.innerHTML=`<div class="uix-midi-local-list-head"><div><strong>LIST OF MIDI</strong><small>Select a saved local .mid or .midi to open its notes in NOTE SELECTOR.</small></div><button class="btn" data-midi-local-cancel type="button">Cancel</button></div><div class="uix-midi-local-list" data-midi-local-list></div>`;
       document.body.append(picker);window.UIXApp?.showModal?.(picker);
       picker.addEventListener('pointerdown',e=>{if(e.target===picker){try{window.UIXApp?.closeModal?.(picker);}catch{}picker.remove();}});
@@ -794,7 +868,7 @@
       const before=beginHistory();
       clearMidiSelection();
       const nn={t,l:+modal.querySelector('[data-midi-len]').value||2,p,tr:state.cur,velocity:100,selected:true};
-      state.noteDefs=ensureNoteDefs(state.noteDefs||{},[p]);state.notes.push(nn);state.noteAnchor=nn;state.pasteTarget={step:t,p};pushHistory(before);preview(p);draw();
+      state.noteDefs=ensureNoteDefs(state.noteDefs||{},[p]);state.notes.push(nn);growTimelineForNotes(nn.t+nn.l);state.noteAnchor=nn;state.pasteTarget={step:t,p};pushHistory(before);preview(p);draw();
     }
     function pasteOriginMidi(target){
       if(!state.clipboard.length)return status('Nothing to paste');
@@ -802,7 +876,7 @@
       const baseT=Math.max(0,Math.floor(Math.max(0,t.step)/snap())*snap());
       const pasted=state.clipboard.map(n=>({t:baseT+n.dt,l:n.l,p:validMidiPitch(n.op??n.p),tr:state.cur,velocity:n.velocity||100,selected:true}));
       state.noteLayout=ensureNotePitches(state.noteLayout,pasted.map(n=>n.p));state.noteDefs=ensureNoteDefs(state.noteDefs||{},pasted.map(n=>n.p));saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);view.refreshRows();
-      const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:validMidiPitch(pasted.at(-1)?.p??72)};pushHistory(before);draw();status(`${pasted.length} MIDI note${pasted.length===1?'':'s'} pasted at original pitch`);
+      const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);growTimelineForNotes(Math.max(...pasted.map(n=>n.t+n.l)));state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:validMidiPitch(pasted.at(-1)?.p??72)};pushHistory(before);draw();status(`${pasted.length} MIDI note${pasted.length===1?'':'s'} pasted at original pitch`);
     }
     function pasteMidi(target){
       if(!state.clipboard.length)return status('Nothing to paste');
@@ -811,10 +885,256 @@
       const baseP=validMidiPitch(t.p);
       let pasted=state.clipboard.map(n=>({t:baseT+n.dt,l:n.l,p:baseP-n.dp,tr:state.cur,velocity:n.velocity||100,selected:true}));
       state.noteLayout=ensureNotePitches(state.noteLayout,pasted.map(n=>n.p));state.noteDefs=ensureNoteDefs(state.noteDefs||{},pasted.map(n=>n.p));saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);view.refreshRows();
-      const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:baseP};pushHistory(before);draw();
+      const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);growTimelineForNotes(Math.max(...pasted.map(n=>n.t+n.l)));state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:baseP};pushHistory(before);draw();
       status(`${pasted.length} MIDI note${pasted.length===1?'':'s'} pasted at ${baseT}, ${baseP}`);
     }
     function duplicateMidi(){const s=selectedMidiNotes();if(!s.length)return status('Nothing selected to duplicate');copyMidi();const target={step:(noteSelectionBounds(s)?.maxT||0)+snap(),p:noteSelectionBounds(s)?.maxP||72};pasteMidi(target);}
+    function openPadEditor(seedNotes=null, options={}){
+      if(state.playing)stop();
+      if(activePadOverlay)activePadOverlay._uixPadClose?.();
+      const storageKey='node2d.midi.padEditor.settings.v1';
+      const readSettings=()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'null')||{};}catch{return {};}};
+      const saved=readSettings(),layout=state.noteLayout.slice();
+      // Pad pitches come from notes that actually exist on the current DAW track
+      // or from notes explicitly sent into Edit (Pad Editor). Never synthesize a
+      // 5x5 set of predefined notes when the DAW has no notes.
+      const canonicalPadKey=value=>{const raw=String(value??'');return /^[a-z0-9]$/i.test(raw)?raw.toLowerCase():'';};
+      // The Note Panel starts empty unless the user explicitly enters through
+      // Edit (Pad Editor) or Record Note. The Pad Panel is only a map of real
+      // pitches already present in the DAW (across all tracks) or passed in by
+      // an explicit edit request; never invent a 5x5 set of repeated pitches.
+      const dawNotes=Array.isArray(state.notes)?state.notes:[];
+      const sourceNotes=Array.isArray(seedNotes)?seedNotes:[];
+      const pitchLabel=p=>String(state.noteDefs?.[String(validMidiPitch(p))]?.name||noteName(p));
+      const incoming=sourceNotes.map(n=>({...n,t:Math.max(0,Number(n.t)||0),l:Math.max(1,Number(n.l)||2),p:validMidiPitch(n.p),tr:Number.isFinite(Number(n.tr))?Number(n.tr):state.cur,velocity:n.velocity||100,selected:false}));
+      const pitchOrder=p=>{const i=layout.indexOf(p);return i>=0?i:9999-p;};
+      const availablePitches=[...new Set([...dawNotes,...incoming].map(n=>validMidiPitch(n.p)))].sort((a,b)=>pitchOrder(a)-pitchOrder(b));
+      const seenSavedPitches=new Set();
+      const pads=(Array.isArray(saved.pads)?saved.pads:[])
+        .map((p,i)=>({id:String(p.id||`pad-${i}-${Math.random().toString(36).slice(2,6)}`),pitch:validMidiPitch(p.pitch),key:canonicalPadKey(p.key)}))
+        .filter(p=>availablePitches.includes(p.pitch)&&!seenSavedPitches.has(p.pitch)&&seenSavedPitches.add(p.pitch));
+      // Preserve valid saved assignments, then add one pad for every DAW pitch
+      // that is not represented yet. This migrates older repeated 5x5 presets
+      // into a real-pitch list and ensures no DAW pitch is silently omitted.
+      for(const pitch of availablePitches){
+        if(!pads.some(p=>p.pitch===pitch))pads.push({id:`pad-pitch-${pitch}`,pitch,key:''});
+      }
+      // Space is reserved for playhead movement and can never be a pitched pad.
+      let padSize=clamp(Number(saved.padSize)||68,42,128),padOnLeft=saved.padOnLeft!==false,splitRatio=clamp(Number(saved.splitRatio)||42,25,70);
+      const sourceRefs=Array.isArray(options.sourceRefs)?options.sourceRefs:[];
+      let seedOffset=0;
+      if(incoming.length&&(options.fromRecord||options.fromSelection)){seedOffset=Math.min(...incoming.map(n=>n.t));incoming.forEach(n=>n.t-=seedOffset);}
+      let noteClipboard=[],activePointers=new Map(),twoPan=null,drag=null,splitDrag=null,assigningKey=false,assignPadIndex=-1,selectedPadIndex=0;
+      let raf=0,resizeObserver=null,playVoices=[],playStartAt=0,playStartStep=0,playing=false;
+      const padUndoStack=[],padRedoStack=[];let assigningBefore=null,padLongPressTimer=0,padLongPressPointer=null,padLongPressStart=null,padLongPressFired=false,lastPadContextAt=0,lastPadPointerAction=0;
+      const padKeyPresses=new Map(),padPointerPresses=new Map(),heldPadVoices=new Set();let holdUpdateTimer=0,spaceKeyHeld=false,heldBatchBefore=null,heldBatchStart=null;
+      const activePadPressCount=()=>padKeyPresses.size+padPointerPresses.size;
+      const beginHeldPadBatch=()=>{if(activePadPressCount()===0){heldBatchBefore=padSnapshot();heldBatchStart=Math.max(0,Math.round(padData.head/snapStep())*snapStep());}return heldBatchStart??Math.max(0,Math.round(padData.head/snapStep())*snapStep());};
+      const finishHeldPadBatchIfIdle=()=>{if(activePadPressCount()===0&&heldBatchBefore){pushPadHistory(heldBatchBefore);heldBatchBefore=null;heldBatchStart=null;}};
+      // Pad Editor playback owns its scheduled notes and must cancel them on edits.
+      const stopPadPattern=()=>{
+        if(playing){playing=false;if(raf)cancelAnimationFrame(raf);raf=0;}
+        for(const oscillator of playVoices){try{oscillator.stop();}catch{}}
+        playVoices=[];
+        const playButton=activePadOverlay?.querySelector?.('[data-pad-play]');
+        if(playButton)playButton.textContent='▶ Play';
+      };
+      const maxEnd=()=>padNotes.reduce((m,n)=>Math.max(m,(Number(n.t)||0)+(Number(n.l)||1)),64);
+      const minEnd=()=>Math.max(64,Math.ceil(maxEnd()/16)*16);
+      const padNotes=incoming.map(n=>({...n}));
+      const padData={notes:padNotes,head:Math.max(0,(options.fromRecord||options.fromSelection)?0:Number(state.head)||0),length:Math.max(1,Number(modal.querySelector('[data-midi-len]')?.value)||2),zoom:Math.max(8,Number(state.zoom)||18),sx:(options.fromRecord||options.fromSelection)?0:Math.max(0,Number(state.sx)||0),sy:Math.max(0,Number(state.sy)||0),tool:'draw',selected:new Set(),lastPitch:72};
+      const padSnapshot=()=>({notes:padData.notes.map(n=>({t:Number(n.t)||0,l:Math.max(1,Number(n.l)||1),p:validMidiPitch(n.p),tr:Number(n.tr)||0,velocity:Number(n.velocity)||100})),head:Number(padData.head)||0,length:Math.max(1,Number(padData.length)||1),pads:pads.map(p=>({id:String(p.id),pitch:validMidiPitch(p.pitch),key:canonicalPadKey(p.key)})),padSize,selectedPadIndex});
+      const samePadSnapshot=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+      const updatePadHistoryUI=()=>{const u=overlay.querySelector('[data-pad-undo]'),r=overlay.querySelector('[data-pad-redo]');if(u)u.disabled=!padUndoStack.length;if(r)r.disabled=!padRedoStack.length;};
+      const persistPads=()=>{try{localStorage.setItem(storageKey,JSON.stringify({pads:pads.map(p=>({id:p.id,pitch:p.pitch,key:canonicalPadKey(p.key)})),padSize,padOnLeft:!workspace.classList.contains('swapped'),splitRatio,spacePadConfigured:true}));}catch{}};
+      const pushPadHistory=before=>{if(!before)return;const after=padSnapshot();if(samePadSnapshot(before,after))return;stopPadPattern();padUndoStack.push(before);if(padUndoStack.length>100)padUndoStack.shift();padRedoStack.length=0;updatePadHistoryUI();};
+      const restorePadSnapshot=s=>{if(!s)return;stopPadPattern();padData.notes.splice(0,padData.notes.length,...s.notes.map(n=>({...n,selected:false})));padData.selected.clear();padData.head=Number(s.head)||0;padData.length=Math.max(1,Number(s.length)||1);pads.splice(0,pads.length,...s.pads.map(p=>({...p,key:canonicalPadKey(p.key)})));padSize=clamp(Number(s.padSize)||padSize,42,128);selectedPadIndex=clamp(Number(s.selectedPadIndex)||0,0,Math.max(0,pads.length-1));workspace.style.setProperty('--uix-pad-size',`${padSize}px`);q('[data-pad-size]').value=String(padSize);q('[data-pad-size-value]').textContent=`${padSize}px`;q('[data-pad-length]').value=String(padData.length);persistPads();renderPads();renderPadSettings();clampPadView();drawStage();updatePadHistoryUI();};
+      const undoPad=()=>{if(!padUndoStack.length)return;const current=padSnapshot(),before=padUndoStack.pop();padRedoStack.push(current);restorePadSnapshot(before);updatePadMessage('Pad Editor: Undo');};
+      const redoPad=()=>{if(!padRedoStack.length)return;const current=padSnapshot(),next=padRedoStack.pop();padUndoStack.push(current);restorePadSnapshot(next);updatePadMessage('Pad Editor: Redo');};
+      const overlay=document.createElement('section');overlay.className='uix-midi-pad-overlay';overlay.tabIndex=-1;overlay.setAttribute('role','dialog');overlay.setAttribute('aria-label','Pad Editor');
+      overlay.innerHTML=`
+        <header class="uix-midi-pad-head"><div><strong>PAD EDITOR</strong><small data-pad-message>${options.fromSelection?'Edit the selected DAW note(s), then press Done.':options.fromRecord?'Edit the selected recorded note(s), then Copy to the DAW.':'Note Panel starts empty. Pads use pitches found in the DAW; use Edit (Pad Editor) to load selected notes.'}</small></div><div class="uix-midi-pad-head-actions"><button class="btn" type="button" data-pad-close>${options.fromSelection?'Done':'Close'}</button><button class="btn primary" type="button" data-pad-copy-main>Copy</button></div></header>
+        <div class="uix-midi-pad-workspace" data-pad-workspace style="--pad-width:${splitRatio}%;--uix-pad-size:${padSize}px">
+          <section class="uix-midi-pad-panel" data-pad-panel>
+            <div class="uix-midi-pad-panel-head"><strong>Pad Panel</strong><div><button class="btn" type="button" data-pad-assign-key>Assign KEY</button><button class="btn" type="button" data-pad-settings-toggle>Settings</button></div></div>
+            <div class="uix-midi-pad-grid" data-pad-grid></div>
+            <aside class="uix-midi-pad-settings" data-pad-settings hidden><div class="uix-midi-pad-settings-title"><strong>Pad Settings</strong><label>Pad Size <input data-pad-size type="range" min="42" max="128" value="${padSize}"><b data-pad-size-value>${padSize}px</b></label></div><button class="btn primary" type="button" data-pad-add>＋ Add Pad</button><div class="uix-midi-pad-setting-list" data-pad-setting-list></div></aside>
+          </section>
+          <div class="uix-midi-pad-divider" data-pad-divider><button class="uix-midi-pad-swap" type="button" data-pad-swap title="Swap Note Panel and Pad Panel">⇄</button></div>
+          <section class="uix-midi-pad-note-panel" data-pad-note-panel>
+            <div class="uix-midi-pad-note-head"><strong>Note Panel</strong><div class="uix-midi-pad-note-tools"><button class="uix-midi-tb active" type="button" data-pad-tool="draw">✎ Drawing</button><button class="uix-midi-tb" type="button" data-pad-tool="pan">✥ Panning</button><button class="btn primary" type="button" data-pad-add-note>＋ Add Note</button><div class="uix-midi-grp uix-midi-zoom-controls"><button class="uix-midi-tb" type="button" data-pad-zoom-out title="Zoom out" aria-label="Zoom out">−</button><span data-pad-zoom-label>100%</span><button class="uix-midi-tb" type="button" data-pad-zoom-in title="Zoom in" aria-label="Zoom in">＋</button></div><button class="uix-midi-tb" type="button" data-pad-play>▶ Play</button><label>Length <select data-pad-length><option value="1">1/16</option><option value="2" selected>1/8</option><option value="4">1/4</option><option value="8">1/2</option><option value="16">Bar</option></select></label><button class="btn" type="button" data-pad-undo title="Undo (Ctrl+Z)" disabled>↶</button><button class="btn" type="button" data-pad-redo title="Redo (Ctrl+Y)" disabled>↷</button><button class="btn" type="button" data-pad-select-all>Select All</button><button class="btn" type="button" data-pad-copy-local>Copy</button><button class="btn" type="button" data-pad-paste>Paste</button><button class="btn" type="button" data-pad-paste-origin>Paste Origin</button><button class="btn" type="button" data-pad-delete>Delete</button></div></div>
+            <div class="uix-midi-pad-stage"><canvas data-pad-canvas></canvas><div class="uix-midi-pad-stage-status" data-pad-stage-status></div></div>
+            <div class="uix-midi-pad-note-footer"><span data-pad-time-label>Time · 4 bars</span><span>Tap empty space to draw · drag notes to move or resize · two fingers to pan</span></div>
+          </section>
+        </div>`;
+      document.body.append(overlay);activePadOverlay=overlay;
+      const q=sel=>overlay.querySelector(sel),workspace=q('[data-pad-workspace]'),padPanel=q('[data-pad-panel]'),notePanel=q('[data-pad-note-panel]'),divider=q('[data-pad-divider]'),padGrid=q('[data-pad-grid]'),settingList=q('[data-pad-setting-list]'),canvas=q('[data-pad-canvas]'),g=canvas.getContext('2d');
+      if(!padOnLeft)workspace.classList.add('swapped');
+      const pitches=()=>{
+        const all=new Set([...availablePitches,...pads.map(p=>validMidiPitch(p.pitch)),...padData.notes.map(n=>validMidiPitch(n.p))]);
+        return [...all].sort((a,b)=>pitchOrder(a)-pitchOrder(b));
+      };
+      const total=()=>Math.max(64,Math.ceil(Math.max(maxEnd(),padData.head+padData.length)/16)*16);
+      const snapStep=()=>Math.max(1,+modal.querySelector('[data-midi-snap]')?.value||1);
+      let W=0,H=0,dpr=window.devicePixelRatio||1;
+      const rowFor=p=>pitches().indexOf(validMidiPitch(p));
+      const updatePadZoomUI=()=>{const el=q('[data-pad-zoom-label]');if(el)el.textContent=`${Math.round(padData.zoom/22*100)}%`;};
+      const zoomPadBy=factor=>{const old=padData.zoom,anchor=(padData.sx+Math.max(0,(W-KEYW)/2))/old;padData.zoom=clamp(old*factor,6,80);padData.sx=Math.max(0,anchor*padData.zoom-Math.max(0,(W-KEYW)/2));clampPadView();updatePadZoomUI();drawStage();};
+      q('[data-pad-zoom-out]').addEventListener('click',()=>zoomPadBy(.82));q('[data-pad-zoom-in]').addEventListener('click',()=>zoomPadBy(1.22));updatePadZoomUI();
+      const pitchAt=y=>{const row=Math.floor((y-RULER+padData.sy)/RH);return pitches()[clamp(row,0,pitches().length-1)]??60;};
+      const stagePos=e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;return{x,y,step:Math.max(0,(x-KEYW+padData.sx)/padData.zoom),p:pitchAt(y)};};
+      const noteHit=(x,y)=>{for(let i=padData.notes.length-1;i>=0;i--){const n=padData.notes[i],row=rowFor(n.p);if(row<0)continue;const nx=KEYW+n.t*padData.zoom-padData.sx,ny=RULER+row*RH-padData.sy,nw=Math.max(4,n.l*padData.zoom-2);if(x>=nx&&x<=nx+nw&&y>=ny&&y<=ny+RH)return i;}return -1;};
+      const clampPadView=()=>{const maxX=Math.max(0,total()*padData.zoom-(W-KEYW)+60),maxY=Math.max(0,pitches().length*RH-(H-RULER));padData.sx=clamp(padData.sx,0,maxX);padData.sy=clamp(padData.sy,0,maxY);};
+      const followPadPosition=(step,p)=>{const x=KEYW+step*padData.zoom-padData.sx,r=rowFor(p),y=RULER+(r<0?Math.floor(pitches().length/2):r)*RH-padData.sy;if(x>W-36)padData.sx=Math.max(0,step*padData.zoom-W+KEYW+40);else if(x<KEYW+16)padData.sx=Math.max(0,step*padData.zoom-20);if(y>H-RH*2)padData.sy=Math.max(0,(r+1)*RH-(H-RULER)+RH*2);else if(y<RULER+RH)padData.sy=Math.max(0,r*RH);clampPadView();};
+      const updatePadMessage=t=>{const el=q('[data-pad-message]');if(el)el.textContent=t;};
+      const drawStage=()=>{
+        if(!g||!canvas.isConnected)return;clampPadView();g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);g.fillStyle='#202020';g.fillRect(0,0,W,H);const length=total();
+        g.fillStyle='#292929';g.fillRect(0,0,W,RULER);g.strokeStyle='#444';g.beginPath();for(let t=0;t<=length;t+=4){const x=KEYW+t*padData.zoom-padData.sx;if(x>=KEYW&&x<=W){g.moveTo(x,RULER);g.lineTo(x,0);if(t%16===0){g.fillStyle='#aaa';g.font='9px system-ui';g.textBaseline='top';g.fillText(String(t/16+1),x+3,3);g.fillStyle='#292929';}}}g.stroke();
+        g.save();g.beginPath();g.rect(KEYW,RULER,W-KEYW,H-RULER);g.clip();for(let i=0;i<pitches().length;i++){const p=pitches()[i],y=RULER+i*RH-padData.sy;if(y>H||y+RH<RULER)continue;g.fillStyle='#292d33';g.fillRect(KEYW,y,W-KEYW,RH-1);g.fillStyle='#353535';g.fillRect(KEYW,y+RH-1,W-KEYW,1);}for(let t=0;t<=length;t+=4){const x=KEYW+t*padData.zoom-padData.sx;if(x<KEYW||x>W)continue;g.fillStyle=t%16===0?'#505050':'#333';g.fillRect(x,RULER,1,H-RULER);}
+        for(let i=0;i<padData.notes.length;i++){const n=padData.notes[i],r=rowFor(n.p);if(r<0)continue;const x=KEYW+n.t*padData.zoom-padData.sx,y=RULER+r*RH-padData.sy,w=Math.max(4,n.l*padData.zoom-2);if(x+w<KEYW||x>W||y+RH<RULER||y>H)continue;const selected=padData.selected.has(i),col=state.tracks[n.tr]?.color||COLORS[(Number(n.tr)||0)%COLORS.length];g.fillStyle=selected?'#e4ca4e':col;if(selected){g.save();g.shadowColor='#ffe98b';g.shadowBlur=8;g.fillRect(x+1,y+1,w,RH-2);g.restore();g.strokeStyle='#fff4b5';g.lineWidth=1.5;g.strokeRect(x+1.5,y+1.5,Math.max(1,w-1),RH-3);}else g.fillRect(x+1,y+1,w,RH-2);}
+        const headX=KEYW+padData.head*padData.zoom-padData.sx;g.fillStyle='#e4ca4e';g.fillRect(headX,RULER,1.5,H-RULER);g.restore();
+        g.fillStyle='#222';g.fillRect(0,0,KEYW,H);g.font='10px system-ui';g.textBaseline='middle';for(let i=0;i<pitches().length;i++){const p=pitches()[i],y=RULER+i*RH-padData.sy;if(y>H||y+RH<RULER)continue;g.fillStyle='#dedede';g.fillRect(0,y,KEYW-1,RH-1);g.fillStyle='#222';g.fillText(pitchLabel(p),4,y+RH/2);}g.fillStyle='#292929';g.fillRect(0,0,KEYW,RULER);
+        q('[data-pad-time-label]').textContent=`Time · ${Math.round(length/16)} bar${length===16?'':'s'}`;q('[data-pad-stage-status]').textContent=`Head ${padData.head} · ${padData.notes.length} notes`;q('[data-pad-add]').disabled=!pitches().length;updatePadHistoryUI();
+      };
+      const resize=()=>{if(!canvas.isConnected)return;const r=canvas.parentElement.getBoundingClientRect();W=Math.max(1,r.width);H=Math.max(1,r.height);dpr=window.devicePixelRatio||1;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);drawStage();};
+      const previewPadPitch=(pitch)=>{padData.lastPitch=validMidiPitch(pitch);if(!state.tracks[state.cur]?.muted)tone(padData.lastPitch,audio().currentTime,.16,state.tracks[state.cur]?.wave||'triangle',1,state.cur);};
+      // Play pads with a sustained oscillator matching the note definition used by
+      // the DAW. This voice stays audible until the physical key/pad is released.
+      const startHeldPadTone=(pitch)=>{
+        if(state.tracks[state.cur]?.muted)return null;
+        const p=validMidiPitch(pitch),def=state.noteDefs?.[String(p)]||normalizeNoteDef(null,p);
+        const wave=def.type==='track'?(state.tracks[state.cur]?.wave||'triangle'):(NOTE_TYPES.includes(def.type)&&def.type!=='track'?def.type:'triangle');
+        const ctx=audio(),osc=ctx.createOscillator(),gain=ctx.createGain(),start=ctx.currentTime;
+        osc.type=wave;osc.frequency.value=Math.max(.01,Number(def.frequency)||midiFrequency(p));
+        const level=clamp(Number(def.amplitude)||0,0,1);
+        gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(level,start+.008);
+        osc.connect(gain).connect(ctx.destination);osc.start(start+.002);
+        const voice={osc,gain,ctx,startedAt:start,level,stopped:false,track:Number(state.cur)};heldPadVoices.add(voice);
+        state.oscillators||=[];state.oscillators.push(osc);state.trackOscillators||=[];state.trackOscillators[state.cur]||=new Set();state.trackOscillators[state.cur].add(osc);
+        osc.addEventListener?.('ended',()=>{heldPadVoices.delete(voice);state.trackOscillators[voice.track]?.delete(osc);},{once:true});
+        return voice;
+      };
+      const stopHeldPadTone=(voice,noteLengthSteps=1)=>{
+        if(!voice||voice.stopped)return;voice.stopped=true;
+        const now=voice.ctx.currentTime,secondsPerStep=60/(Number(state.bpm)||120)/4;
+        // A quick tap still sounds for the same nominal duration as the note it
+        // creates; a held key extends both the MIDI note and its audible voice.
+        const releaseAt=Math.max(now,voice.startedAt+Math.max(1,Number(noteLengthSteps)||1)*secondsPerStep);
+        const fadeAt=Math.max(now,releaseAt-.025);
+        try{voice.gain.gain.cancelScheduledValues(fadeAt);voice.gain.gain.setValueAtTime(voice.level,fadeAt);voice.gain.gain.linearRampToValueAtTime(0,releaseAt);voice.osc.stop(releaseAt+.006);}
+        catch{try{voice.osc.stop();}catch{}}
+      };
+      const syncSelectedPadButtons=()=>{padGrid.querySelectorAll('.uix-midi-pad-key').forEach((b,i)=>b.classList.toggle('selected',i===selectedPadIndex));};
+      const playPad=(index,opts={})=>{const pad=pads[index];if(!pad)return -1;if(assigningKey){assignPadIndex=index;selectedPadIndex=index;syncSelectedPadButtons();renderPadSettings();updatePadMessage(`Press a letter or number for ${pitchLabel(pad.pitch)}.`);return -1;}const before=opts.before||padSnapshot();selectedPadIndex=index;syncSelectedPadButtons();const pitch=validMidiPitch(pad.pitch),start=Math.max(0,Math.round(Number(opts.startStep??padData.head)/snapStep())*snapStep()),len=Math.max(1,padData.length);const note={t:start,l:len,p:pitch,tr:state.cur,velocity:100,selected:true};if(!opts.held){padData.selected.clear();padData.notes.forEach(n=>n.selected=false);}padData.notes.push(note);const noteIndex=padData.notes.length-1;padData.selected.add(noteIndex);padData.lastPitch=pitch;if(opts.held){padData.previewPitch=pitch;}else previewPadPitch(pitch);padData.head=Math.max(Number(padData.head)||0,start+len);followPadPosition(start,pitch);padData.sx=Math.max(0,padData.head*padData.zoom-(W-KEYW)+30);clampPadView();drawStage();if(!opts.deferHistory)pushPadHistory(before);updatePadMessage(`Added ${pitchLabel(pitch)} at ${start}; simultaneous pads share the same start time.`);return noteIndex;};
+      const extendPadNoteForHold=(index,heldMs,baseLength=padData.length)=>{const n=padData.notes[index];if(!n)return;const millisecondsPerStep=60000/(Number(state.bpm)||120)/4,snap=Math.max(1,snapStep()),heldSteps=Math.ceil(Math.max(0,heldMs-35)/Math.max(1,millisecondsPerStep)/snap)*snap,nextLength=Math.max(1,Number(baseLength)||1,heldSteps);if(nextLength<=n.l)return;n.l=nextLength;padData.head=Math.max(Number(padData.head)||0,n.t+n.l);followPadPosition(padData.head,n.p);padData.sx=Math.max(0,padData.head*padData.zoom-(W-KEYW)+30);clampPadView();drawStage();};
+      const updateHeldPadNotes=()=>{const now=performance.now();for(const press of padKeyPresses.values())extendPadNoteForHold(press.noteIndex,now-press.startedAt,press.baseLength);for(const press of padPointerPresses.values())extendPadNoteForHold(press.noteIndex,now-press.startedAt,press.baseLength);};
+      const startHoldUpdates=()=>{if(!holdUpdateTimer)holdUpdateTimer=setInterval(updateHeldPadNotes,45);};
+      const stopHoldUpdatesIfIdle=()=>{if(!padKeyPresses.size&&!padPointerPresses.size&&holdUpdateTimer){clearInterval(holdUpdateTimer);holdUpdateTimer=0;}};
+      const finishKeyPress=(key)=>{const press=padKeyPresses.get(key);if(!press)return;padKeyPresses.delete(key);extendPadNoteForHold(press.noteIndex,performance.now()-press.startedAt,press.baseLength);stopHeldPadTone(press.voice,padData.notes[press.noteIndex]?.l||press.baseLength);stopHoldUpdatesIfIdle();finishHeldPadBatchIfIdle();};
+      const finishPointerPress=(pointerId)=>{const press=padPointerPresses.get(pointerId);if(!press)return;padPointerPresses.delete(pointerId);extendPadNoteForHold(press.noteIndex,performance.now()-press.startedAt,press.baseLength);stopHeldPadTone(press.voice,padData.notes[press.noteIndex]?.l||press.baseLength);stopHoldUpdatesIfIdle();finishHeldPadBatchIfIdle();lastPadPointerAction=Date.now();};
+      const releaseAllHeldInputs=()=>{spaceKeyHeld=false;for(const key of [...padKeyPresses.keys()])finishKeyPress(key);for(const pointerId of [...padPointerPresses.keys()])finishPointerPress(pointerId);for(const voice of [...heldPadVoices])stopHeldPadTone(voice);stopHoldUpdatesIfIdle();};
+      const renderPads=()=>{padGrid.innerHTML='';if(!pads.length){const empty=document.createElement('div');empty.className='uix-midi-pad-empty';empty.textContent='No DAW note pitches yet. Add notes to the current DAW track, or open Edit (Pad Editor) on selected notes.';padGrid.append(empty);}pads.forEach((pad,i)=>{const b=document.createElement('button');b.type='button';b.dataset.padIndex=String(i);b.className='uix-midi-pad-key'+(i===selectedPadIndex?' selected':'');b.style.setProperty('--uix-pad-size',`${padSize}px`);b.innerHTML=`<strong></strong><small></small>`;b.querySelector('strong').textContent=pitchLabel(pad.pitch);b.querySelector('small').textContent=`${pitchLabel(pad.pitch)}${pad.key?` · ${pad.key.toUpperCase()}`:''}`;b.title=`${pitchLabel(pad.pitch)} · ${pad.key?`Key ${pad.key.toUpperCase()}`:'No key assigned'}`;b.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();lastPadPointerAction=Date.now();b.setPointerCapture?.(e.pointerId);const startsBatch=activePadPressCount()===0,startStep=beginHeldPadBatch(),startedAt=performance.now(),idx=playPad(i,{deferHistory:true,held:true,startStep});if(idx>=0){const voice=startHeldPadTone(pad.pitch);padPointerPresses.set(e.pointerId,{noteIndex:idx,startedAt,baseLength:padData.length,voice});startHoldUpdates();}else if(startsBatch){heldBatchBefore=null;heldBatchStart=null;}});const endPointerPress=e=>finishPointerPress(e.pointerId);b.addEventListener('pointerup',endPointerPress);b.addEventListener('pointercancel',endPointerPress);b.addEventListener('lostpointercapture',endPointerPress);b.addEventListener('click',()=>{if(Date.now()-lastPadPointerAction<700)return;playPad(i);});padGrid.append(b);});};
+      const renderPadSettings=()=>{settingList.innerHTML='';q('[data-pad-add]').disabled=!pitches().length;pads.forEach((pad,i)=>{const row=document.createElement('div');row.className='uix-midi-pad-setting-row';const select=document.createElement('select');select.setAttribute('aria-label',`Pad ${i+1} note`);pitches().forEach(p=>{const op=document.createElement('option');op.value=String(p);op.textContent=`${pitchLabel(p)} (${p})`;select.append(op);});select.value=String(validMidiPitch(pad.pitch));select.addEventListener('change',()=>{const before=padSnapshot();pad.pitch=validMidiPitch(select.value);selectedPadIndex=i;persistPads();pushPadHistory(before);renderPads();drawStage();});const assign=document.createElement('button');assign.type='button';assign.className='btn';assign.textContent=pad.key?`Key ${pad.key.toUpperCase()}`:'Assign';assign.addEventListener('click',()=>{selectedPadIndex=i;assigningBefore=padSnapshot();assigningKey=true;assignPadIndex=i;updatePadMessage(`Press a letter or number for Pad ${i+1}; an existing key will swap. Space moves the playhead.`);});const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='×';remove.title='Remove pad';remove.disabled=pads.length<=1;remove.addEventListener('click',()=>{const before=padSnapshot();pads.splice(i,1);selectedPadIndex=clamp(selectedPadIndex,0,pads.length-1);persistPads();pushPadHistory(before);renderPads();renderPadSettings();});const label=document.createElement('span');label.textContent=`${i+1}.`;row.append(label,select,assign,remove);settingList.append(row);});};
+      const copyLocal=()=>{const chosen=padData.selected.size?padData.notes.filter((n,i)=>padData.selected.has(i)):padData.notes.slice();if(!chosen.length){updatePadMessage('Nothing to copy.');return;}const minT=Math.min(...chosen.map(n=>n.t)),maxP=Math.max(...chosen.map(n=>n.p));noteClipboard=chosen.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:n.velocity||100}));updatePadMessage(`${chosen.length} note${chosen.length===1?'':'s'} copied inside Pad Editor.`);};
+      const pasteLocal=(origin=false)=>{const source=noteClipboard.length?noteClipboard:(Array.isArray(state.clipboard)?state.clipboard:[]);if(!source.length){updatePadMessage('Copy notes in the Pad Editor or DAW first.');return;}const before=padSnapshot(),baseT=Math.max(0,Math.round(padData.head/snapStep())*snapStep()),baseP=origin?72:validMidiPitch(padData.lastPitch||72);const added=source.map(n=>({t:baseT+(Number(n.dt)||0),l:Math.max(1,Number(n.l)||1),p:validMidiPitch(origin?(n.op??n.p):baseP-(Number(n.dp)||0)),tr:state.cur,velocity:n.velocity||100,selected:true}));padData.selected.clear();const old=padData.notes.length;added.forEach(n=>padData.notes.push(n));for(let i=old;i<padData.notes.length;i++)padData.selected.add(i);padData.head=Math.max(baseT,...added.map(n=>n.t+n.l));followPadPosition(padData.head,added.at(-1)?.p??baseP);padData.sx=Math.max(0,padData.head*padData.zoom-(W-KEYW)+30);clampPadView();pushPadHistory(before);drawStage();updatePadMessage(`${added.length} note${added.length===1?'':'s'} pasted.`);};
+      const addPadNoteAtHead=()=>{const before=padSnapshot(),snap=Math.max(1,snapStep()),t=Math.max(0,Math.round(padData.head/snap)*snap),p=validMidiPitch(padData.lastPitch??pads[selectedPadIndex]?.pitch??pitches()[0]??60),n={t,l:Math.max(snap,padData.length),p,tr:state.cur,velocity:100};padData.notes.push(n);const i=padData.notes.length-1;padData.selected.clear();padData.selected.add(i);padData.lastPitch=p;padData.head=t+n.l;followPadPosition(padData.head,p);padData.sx=Math.max(0,padData.head*padData.zoom-(W-KEYW)+30);clampPadView();pushPadHistory(before);drawStage();updatePadMessage(`Added ${pitchLabel(p)} at ${t} for ${n.l} steps.`);};
+
+      const copyToMain=()=>{
+        const selected=[...padData.selected].map(i=>padData.notes[i]).filter(n=>n&&Number.isFinite(Number(n.t))&&Number.isFinite(Number(n.l))&&Number.isFinite(Number(n.p)));
+        // Stale selection indices should never turn a non-empty clipboard into an empty copy.
+        const chosen=(selected.length?selected:padData.notes).filter(n=>n&&Number.isFinite(Number(n.t))&&Number.isFinite(Number(n.l))&&Number(n.l)>0&&Number.isFinite(Number(n.p)));
+        if(!chosen.length){updatePadMessage('There are no notes to copy. Add notes or paste notes into the Note Panel first.');status('Pad Editor has no notes to copy.');return;}
+        const minT=Math.min(...chosen.map(n=>Number(n.t)||0)),maxP=Math.max(...chosen.map(n=>validMidiPitch(n.p)));
+        state.clipboard=chosen.map(n=>({dt:Math.max(0,(Number(n.t)||0)-minT),dp:Math.max(0,maxP-validMidiPitch(n.p)),l:Math.max(1,Number(n.l)||1),p:validMidiPitch(n.p),op:validMidiPitch(n.p),velocity:Math.max(1,Math.min(127,Number(n.velocity)||100))}));
+        state.pasteTarget={step:Math.max(0,Math.round(Number(state.head)||0)),p:maxP};
+        updatePadMessage(`Copied ${chosen.length} note${chosen.length===1?'':'s'} to the main DAW clipboard. Close Pad Editor, then use Paste in the main DAW.`);
+        status(`Copied ${chosen.length} Pad Editor note${chosen.length===1?'':'s'}; close Pad Editor and paste in the DAW.`);
+      };
+      const selectAll=()=>{padData.selected=new Set(padData.notes.map((n,i)=>i));drawStage();};
+      const deleteSelected=()=>{if(!padData.selected.size)return;stopPadPattern();const before=padSnapshot(),next=padData.notes.filter((n,i)=>!padData.selected.has(i));padData.notes.splice(0,padData.notes.length,...next);padData.selected.clear();pushPadHistory(before);drawStage();};
+      const applySwap=()=>{workspace.classList.toggle('swapped');padOnLeft=!workspace.classList.contains('swapped');persistPads();requestAnimationFrame(resize);};
+      const padEventKey=e=>/^[a-z0-9]$/i.test(e.key)?e.key.toLowerCase():'';
+      const movePlayheadBySpace=()=>{const step=Math.max(1,snapStep());padData.head=Math.max(0,(Math.floor((Number(padData.head)||0)/step)+1)*step);followPadPosition(padData.head,padData.lastPitch||72);drawStage();updatePadMessage(`Playhead moved to ${padData.head}. Space does not create a note.`);};
+      const onPadKeydown=e=>{
+        if(activePadOverlay!==overlay)return;
+        if(assigningKey){
+          if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();assigningKey=false;assignPadIndex=-1;assigningBefore=null;updatePadMessage('Key assignment cancelled.');return;}
+          if(['Shift','Control','Alt','Meta','Tab','Enter','Escape'].includes(e.key))return;
+          const key=padEventKey(e);e.preventDefault();e.stopImmediatePropagation();
+          if(!key){updatePadMessage('Only letters and numbers can be assigned. Space moves the playhead.');return;}
+          const target=assignPadIndex>=0?assignPadIndex:selectedPadIndex;if(!pads[target])return;
+          const before=assigningBefore||padSnapshot(),oldKey=canonicalPadKey(pads[target].key),clash=pads.findIndex((p,i)=>i!==target&&canonicalPadKey(p.key)===key);
+          if(clash>=0)pads[clash].key=oldKey;pads[target].key=key;assigningKey=false;assignPadIndex=-1;assigningBefore=null;persistPads();pushPadHistory(before);renderPads();renderPadSettings();updatePadMessage(`Assigned ${key.toUpperCase()} to ${pitchLabel(pads[target].pitch)}${clash>=0?' · keys swapped':''}.`);return;
+        }
+        if(e.key==='Escape'){if(document.querySelector('.context-menu.open'))return;e.preventDefault();e.stopImmediatePropagation();requestClosePadEditor();return;}
+        if(e.target?.matches?.('input,select,textarea,[contenteditable="true"]'))return;
+        const cmd=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
+        if(cmd&&k==='z'){e.preventDefault();e.stopImmediatePropagation();e.shiftKey?redoPad():undoPad();return;}
+        if(cmd&&(k==='y')){e.preventDefault();e.stopImmediatePropagation();redoPad();return;}
+        if(cmd&&k==='a'){e.preventDefault();e.stopImmediatePropagation();selectAll();return;}
+        if(cmd&&k==='c'){e.preventDefault();e.stopImmediatePropagation();copyLocal();return;}
+        if(cmd&&k==='x'){e.preventDefault();e.stopImmediatePropagation();const before=padSnapshot();copyLocal();deleteSelected();pushPadHistory(before);return;}
+        if(cmd&&k==='v'){e.preventDefault();e.stopImmediatePropagation();pasteLocal(e.shiftKey);return;}
+        if(!cmd&&!e.altKey&&!e.repeat&&(e.key==='Delete'||e.key==='Backspace')){e.preventDefault();e.stopImmediatePropagation();deleteSelected();return;}
+        // Space moves the playhead by one snap increment. It never maps to or
+        // creates a pitched pad. Ignore browser-generated repeated keydowns.
+        if(e.code==='Space'||e.key===' '){e.preventDefault();e.stopImmediatePropagation();if(!spaceKeyHeld&&!e.repeat){spaceKeyHeld=true;movePlayheadBySpace();}return;}
+        const key=padEventKey(e);
+        if(!key||cmd||e.altKey)return;
+        // Some Android/Bluetooth keyboards omit or misreport KeyboardEvent.repeat.
+        // The active-press map is the authoritative guard against duplicate notes.
+        if(e.repeat||padKeyPresses.has(key)){e.preventDefault();e.stopImmediatePropagation();return;}
+        const index=pads.findIndex(p=>canonicalPadKey(p.key)===key);
+        if(index>=0){e.preventDefault();e.stopImmediatePropagation();const startsBatch=activePadPressCount()===0,startStep=beginHeldPadBatch(),startedAt=performance.now(),noteIndex=playPad(index,{deferHistory:true,held:true,startStep});if(noteIndex>=0){const voice=startHeldPadTone(pads[index].pitch);padKeyPresses.set(key,{noteIndex,startedAt,baseLength:padData.length,voice});startHoldUpdates();}else if(startsBatch){heldBatchBefore=null;heldBatchStart=null;}return;}
+      };
+      const onPadKeyup=e=>{if(e.code==='Space'||e.key===' '){spaceKeyHeld=false;e.preventDefault();e.stopImmediatePropagation();return;}if(activePadOverlay!==overlay)return;const key=padEventKey(e);if(!padKeyPresses.has(key))return;finishKeyPress(key);e.preventDefault();e.stopImmediatePropagation();};
+      const onPadWindowBlur=()=>releaseAllHeldInputs();
+      const onPadVisibilityChange=()=>{if(document.visibilityState==='hidden')releaseAllHeldInputs();};
+      const commitSelectionEdit=()=>{if(!options.fromSelection||!sourceRefs.length)return;const before=beginHistory(),refSet=new Set(sourceRefs),track=Number(sourceRefs[0]?.tr??state.cur);state.notes=state.notes.filter(n=>!refSet.has(n));const updated=padData.notes.map(n=>({t:Math.max(0,Math.round((Number(n.t)||0)+seedOffset)),l:Math.max(1,Math.round(Number(n.l)||1)),p:validMidiPitch(n.p),tr:Number.isFinite(Number(n.tr))?Number(n.tr):track,velocity:Math.max(1,Math.min(127,Number(n.velocity)||100)),selected:true}));state.notes.push(...updated);state.noteLayout=ensureNotePitches(state.noteLayout,updated.map(n=>n.p));state.noteDefs=ensureNoteDefs(state.noteDefs||{},updated.map(n=>n.p));saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);clearMidiSelection();updated.forEach(n=>n.selected=true);if(updated.length)growTimelineForNotes(Math.max(...updated.map(n=>n.t+n.l)));state.noteAnchor=updated.at(-1)||null;pushHistory(before);view.refreshRows();view.clampView();draw();status(`Updated ${updated.length} note${updated.length===1?'':'s'} from Pad Editor.`);};
+      const closePadEditor=()=>{releaseAllHeldInputs();stopPadPattern();if(padLongPressTimer)clearTimeout(padLongPressTimer);if(holdUpdateTimer){clearInterval(holdUpdateTimer);holdUpdateTimer=0;}document.removeEventListener('keydown',onPadKeydown,true);document.removeEventListener('keyup',onPadKeyup,true);window.removeEventListener('blur',onPadWindowBlur);document.removeEventListener('visibilitychange',onPadVisibilityChange);window.removeEventListener('resize',resize);resizeObserver?.disconnect?.();if(activePadOverlay===overlay)activePadOverlay=null;overlay.remove();};
+      const requestClosePadEditor=(afterClose)=>{
+        // DOM event listeners pass their click event as the first argument.
+        // Only invoke an actual callback; never try to call a MouseEvent.
+        const onClosed=typeof afterClose==='function'?afterClose:null;
+        const finish=()=>{if(options.fromSelection)commitSelectionEdit();closePadEditor();if(onClosed)onClosed();};
+        if(!padUndoStack.length&&!padRedoStack.length){finish();return;}
+        const message='You edited the Pad Editor. Closing it will remove its local Undo/Redo history. Continue closing?';
+        if(window.UIXApp?.askConfirm)window.UIXApp.askConfirm('Close Pad Editor',message,finish,'Close Editor');
+        else if(window.confirm(message))finish();
+      };
+      const playPattern=()=>{
+        if(playing){stopPadPattern();drawStage();return;}
+        stopPadPattern();
+        const playableNotes=padData.notes.filter(n=>Number.isFinite(Number(n.t))&&Number(n.t)>=0&&Number.isFinite(Number(n.l))&&Number(n.l)>0&&Number.isFinite(Number(n.p))&&Number(n.p)>=0&&Number(n.p)<=127);
+        if(!playableNotes.length){updatePadMessage('There are no notes in the Note Panel to play. Pads alone do not create playback until pressed.');status('Pad Editor has no notes to play.');drawStage();return;}
+        const audibleNotes=playableNotes.filter(n=>!state.tracks[Number(n.tr)]?.muted);
+        if(!audibleNotes.length){updatePadMessage('All notes are on muted tracks. Unmute a track to hear playback.');drawStage();return;}
+        playing=true;q('[data-pad-play]').textContent='■ Stop';playStartAt=audio().currentTime+.03;playStartStep=padData.head;
+        const minT=Math.min(...audibleNotes.map(n=>Number(n.t)||0)),maxT=Math.max(...audibleNotes.map(n=>(Number(n.t)||0)+(Number(n.l)||1))),secPerStep=60/(Number(state.bpm)||120)/4;
+        audibleNotes.forEach(n=>{const t=playStartAt+Math.max(0,(Number(n.t)||0)-minT)*secPerStep,l=Math.max(.025,Number(n.l)*secPerStep);const o=tone(n.p,t,l,state.tracks[n.tr]?.wave||'triangle',(Number(n.velocity)||100)/100,n.tr);if(o)playVoices.push(o);});
+        const tick=()=>{if(!playing)return;padData.head=playStartStep+((audio().currentTime-playStartAt)/secPerStep);followPadPosition(padData.head,padData.lastPitch||audibleNotes.at(-1)?.p||72);drawStage();if(audio().currentTime>=playStartAt+Math.max(0,maxT-minT)*secPerStep+.05){stopPadPattern();drawStage();return;}raf=requestAnimationFrame(tick);};tick();
+      };
+      q('[data-pad-close]').addEventListener('click',()=>requestClosePadEditor());q('[data-pad-copy-main]').addEventListener('click',copyToMain);q('[data-pad-swap]').addEventListener('click',applySwap);q('[data-pad-settings-toggle]').addEventListener('click',()=>{const settings=q('[data-pad-settings]');settings.hidden=!settings.hidden;if(!settings.hidden)renderPadSettings();});q('[data-pad-add]').addEventListener('click',()=>{const options=pitches();if(!options.length){updatePadMessage('There are no note pitches to assign. Add a note to the Note Panel first.');return;}const before=padSnapshot(),used=new Set(pads.map(p=>p.pitch)),next=options.find(p=>!used.has(p))??options[0];pads.push({id:`pad-new-${Date.now()}-${pads.length}`,pitch:next,key:''});persistPads();pushPadHistory(before);renderPads();renderPadSettings();});let padSizeBefore=null;q('[data-pad-size]').addEventListener('pointerdown',()=>{padSizeBefore=padSnapshot();});q('[data-pad-size]').addEventListener('input',e=>{padSize=clamp(Number(e.target.value)||68,42,128);workspace.style.setProperty('--uix-pad-size',`${padSize}px`);q('[data-pad-size-value]').textContent=`${padSize}px`;persistPads();});q('[data-pad-size]').addEventListener('change',()=>{if(padSizeBefore)pushPadHistory(padSizeBefore);padSizeBefore=null;});q('[data-pad-assign-key]').addEventListener('click',()=>{assigningBefore=padSnapshot();assigningKey=true;assignPadIndex=-1;updatePadMessage('Tap a pad, then press a letter or number. Space moves the playhead.');});q('[data-pad-length]').value=String(padData.length);q('[data-pad-length]').addEventListener('change',e=>{const before=padSnapshot();padData.length=Math.max(1,Number(e.target.value)||2);pushPadHistory(before);});q('[data-pad-select-all]').addEventListener('click',selectAll);q('[data-pad-undo]').addEventListener('click',undoPad);q('[data-pad-redo]').addEventListener('click',redoPad);q('[data-pad-copy-local]').addEventListener('click',copyLocal);q('[data-pad-paste]').addEventListener('click',()=>pasteLocal(false));q('[data-pad-paste-origin]').addEventListener('click',()=>pasteLocal(true));q('[data-pad-delete]').addEventListener('click',deleteSelected);q('[data-pad-add-note]').addEventListener('click',addPadNoteAtHead);q('[data-pad-play]').addEventListener('click',playPattern);
+      overlay.querySelectorAll('[data-pad-tool]').forEach(b=>b.addEventListener('click',()=>{padData.tool=b.dataset.padTool;overlay.querySelectorAll('[data-pad-tool]').forEach(x=>x.classList.toggle('active',x===b));}));
+      const finishDrag=()=>{drag=null;twoPan=null;};
+      const showPadContextMenu=(x,y,index=-1)=>{if(index>=0&&!padData.selected.has(index)){padData.selected.clear();padData.selected.add(index);drawStage();}lastPadContextAt=Date.now();window.UIXApp?.showContextMenu?.([
+        {label:'Copy',icon:'⧉',shortcut:'Ctrl+C',disabled:!padData.selected.size,action:copyLocal},
+        {label:'Paste',icon:'▣',shortcut:'Ctrl+V',disabled:!(noteClipboard.length||state.clipboard?.length),action:()=>pasteLocal(false)},
+        {label:'Paste Origin',icon:'↥',shortcut:'Ctrl+Shift+V',disabled:!(noteClipboard.length||state.clipboard?.length),action:()=>pasteLocal(true)},
+        {label:'Select All',icon:'☑',shortcut:'Ctrl+A',action:selectAll},
+        {label:'Delete',icon:'×',shortcut:'Delete',disabled:!padData.selected.size,action:deleteSelected},
+        {label:'Undo',icon:'↶',shortcut:'Ctrl+Z',disabled:!padUndoStack.length,action:undoPad},
+        {label:'Redo',icon:'↷',shortcut:'Ctrl+Y',disabled:!padRedoStack.length,action:redoPad}
+      ],x,y);};
+      canvas.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(Date.now()-lastPadContextAt<450)return;const pos=stagePos(e),idx=noteHit(pos.x,pos.y);showPadContextMenu(e.clientX,e.clientY,idx);});
+      canvas.addEventListener('pointerdown',e=>{activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});canvas.setPointerCapture?.(e.pointerId);if(e.button===2){e.preventDefault();e.stopPropagation();const pos=stagePos(e),idx=noteHit(pos.x,pos.y);showPadContextMenu(e.clientX,e.clientY,idx);return;}if(activePointers.size>=2){if(padLongPressTimer){clearTimeout(padLongPressTimer);padLongPressTimer=0;}padLongPressPointer=null;padLongPressFired=false;if(drag?.before)restorePadSnapshot(drag.before);else if(drag?.type==='new'&&drag.index===padData.notes.length-1){padData.notes.pop();padData.selected.clear();drawStage();}drag=null;const pts=[...activePointers.values()];twoPan={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};return;}const c=stagePos(e);if(e.pointerType==='touch'){padLongPressStart={x:e.clientX,y:e.clientY};padLongPressPointer=e.pointerId;padLongPressFired=false;padLongPressTimer=setTimeout(()=>{padLongPressTimer=0;const wasDrawing=drag?.type==='new';const r=canvas.getBoundingClientRect(),pos={x:e.clientX-r.left,y:e.clientY-r.top},idx=noteHit(pos.x,pos.y);if(!wasDrawing&&idx>=0){padLongPressFired=true;drag=null;padData.selected.clear();padData.selected.add(idx);drawStage();showPadContextMenu(e.clientX,e.clientY,idx);}},550);}const before=padSnapshot();if(c.y<RULER&&c.x>=KEYW){padData.head=Math.max(0,Math.round(c.step/snapStep())*snapStep());followPadPosition(padData.head,padData.lastPitch||72);drawStage();return;}if(c.x<KEYW){previewPadPitch(c.p);return;}if(padData.tool==='pan'){drag={type:'pan',x:e.clientX,y:e.clientY,sx:padData.sx,sy:padData.sy};return;}const idx=noteHit(c.x,c.y);if(idx>=0){if(e.ctrlKey||e.metaKey||e.shiftKey){if(padData.selected.has(idx)){padData.selected.delete(idx);drawStage();return;}padData.selected.add(idx);}else if(!padData.selected.has(idx)){padData.selected.clear();padData.selected.add(idx);}const n=padData.notes[idx];const nx=KEYW+(n.t+n.l)*padData.zoom-padData.sx,resize=c.x>=nx-5;drag={type:'note',index:idx,startStep:c.step,startPitch:c.p,origT:n.t,origP:n.p,origL:n.l,resize,before,group:!resize&&padData.selected.size>1?[...padData.selected].map(i=>({index:i,t:padData.notes[i]?.t??0,p:padData.notes[i]?.p??n.p})):null};}else{padData.selected.clear();const t=Math.max(0,Math.round(c.step/snapStep())*snapStep()),n={t,l:padData.length,p:validMidiPitch(c.p),tr:state.cur,velocity:100,selected:true};padData.notes.push(n);const index=padData.notes.length-1;padData.selected.add(index);padData.lastPitch=n.p;drag={type:'new',index,startStep:t,startPitch:n.p,baseLength:padData.length,before};previewPadPitch(n.p);}drawStage();});
+      canvas.addEventListener('pointermove',e=>{if(!activePointers.has(e.pointerId))return;activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(padLongPressTimer&&padLongPressPointer===e.pointerId&&Math.hypot(e.clientX-(padLongPressStart?.x??e.clientX),e.clientY-(padLongPressStart?.y??e.clientY))>8){clearTimeout(padLongPressTimer);padLongPressTimer=0;padLongPressPointer=null;}if(padLongPressFired)return;if(activePointers.size>=2){const pts=[...activePointers.values()],mid={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};if(twoPan){padData.sx-=mid.x-twoPan.x;padData.sy-=mid.y-twoPan.y;twoPan=mid;clampPadView();drawStage();}return;}if(!drag)return;const c=stagePos(e);if(drag.type==='pan'){padData.sx-=e.clientX-drag.x;padData.sy-=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;clampPadView();drawStage();return;}const n=padData.notes[drag.index];if(!n)return;const step=Math.max(0,Math.round(c.step/snapStep())*snapStep());if(drag.type==='new'){n.l=Math.max(snapStep(),step-drag.startStep+snapStep());}else if(drag.resize){n.l=Math.max(snapStep(),step-drag.origT+snapStep());}else if(drag.group?.length){const dt=step-drag.startStep,startRow=rowFor(drag.startPitch),nowRow=rowFor(c.p),dp=startRow>=0&&nowRow>=0?nowRow-startRow:0;drag.group.forEach(item=>{const target=padData.notes[item.index];if(!target)return;target.t=Math.max(0,Math.round((item.t+dt)/snapStep())*snapStep());const row=rowFor(item.p);if(row>=0)target.p=validMidiPitch(pitches()[clamp(row+dp,0,pitches().length-1)]);});}else{n.t=Math.max(0,step-(drag.startStep-drag.origT));const startRow=rowFor(drag.origP),nowRow=rowFor(c.p);if(startRow>=0&&nowRow>=0){n.p=validMidiPitch(pitches()[clamp(startRow+(nowRow-startRow),0,pitches().length-1)]);}}followPadPosition(n.t+n.l,n.p);drawStage();});
+      canvas.addEventListener('pointerup',e=>{activePointers.delete(e.pointerId);if(padLongPressTimer&&padLongPressPointer===e.pointerId){clearTimeout(padLongPressTimer);padLongPressTimer=0;}if(activePointers.size<2)twoPan=null;if(activePointers.size===0){if(padLongPressFired){padLongPressFired=false;padLongPressPointer=null;padLongPressStart=null;finishDrag();drawStage();return;}if(drag?.type==='new'||drag?.type==='note'){const n=padData.notes[drag.index];if(n){padData.lastPitch=n.p;padData.head=Math.max(padData.head,n.t+n.l);q('[data-pad-length]').value=String(padData.length);}pushPadHistory(drag.before);}finishDrag();padLongPressPointer=null;padLongPressStart=null;drawStage();}});canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(padLongPressTimer)clearTimeout(padLongPressTimer);padLongPressTimer=0;padLongPressPointer=null;padLongPressStart=null;padLongPressFired=false;if(drag?.before)restorePadSnapshot(drag.before);finishDrag();drawStage();});canvas.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const r=canvas.getBoundingClientRect(),x=e.clientX-r.left-KEYW,anchor=(padData.sx+x)/padData.zoom;padData.zoom=clamp(padData.zoom*(e.deltaY<0?1.1:.9),6,80);padData.sx=Math.max(0,anchor*padData.zoom-x);updatePadZoomUI();}else{padData.sx+=e.deltaX;padData.sy+=e.deltaY;}clampPadView();drawStage();},{passive:false});
+      let resizingSplitter=false;divider.addEventListener('pointerdown',e=>{if(e.target.closest('[data-pad-swap]'))return;e.preventDefault();resizingSplitter=true;const rect=workspace.getBoundingClientRect(),vertical=window.matchMedia('(max-width:760px)').matches;splitDrag={axis:vertical?'y':'x',coord:vertical?e.clientY:e.clientX,ratio:splitRatio,total:vertical?rect.height:rect.width};divider.setPointerCapture?.(e.pointerId);});divider.addEventListener('pointermove',e=>{if(!resizingSplitter||!splitDrag)return;const coord=splitDrag.axis==='y'?e.clientY:e.clientX,delta=(coord-splitDrag.coord)/Math.max(1,splitDrag.total)*100;splitRatio=clamp(splitDrag.ratio+(workspace.classList.contains('swapped')?-delta:delta),25,70);workspace.style.setProperty('--pad-width',`${splitRatio}%`);persistPads();});const endSplit=()=>{resizingSplitter=false;splitDrag=null;};divider.addEventListener('pointerup',endSplit);divider.addEventListener('pointercancel',endSplit);
+      document.addEventListener('keydown',onPadKeydown,true);document.addEventListener('keyup',onPadKeyup,true);window.addEventListener('blur',onPadWindowBlur);document.addEventListener('visibilitychange',onPadVisibilityChange);window.addEventListener('resize',resize);if('ResizeObserver'in window){resizeObserver=new ResizeObserver(resize);resizeObserver.observe(notePanel);resizeObserver.observe(padPanel);}workspace.style.setProperty('--uix-pad-size',`${padSize}px`);persistPads();renderPads();renderPadSettings();resize();if(incoming.length&&(options.fromSelection||options.fromRecord)){const rows=incoming.map(n=>rowFor(n.p)).filter(r=>r>=0);if(rows.length)padData.sy=clamp((rows.reduce((a,r)=>a+r,0)/rows.length)*RH-(H-RULER)/2,0,Math.max(0,pitches().length*RH-(H-RULER)));padData.sx=0;clampPadView();drawStage();}overlay.focus({preventScroll:true});
+      overlay._uixPadClose=closePadEditor;overlay._uixPadRequestClose=requestClosePadEditor;modal._uixMidiClosePadEditor=()=>activePadOverlay?._uixPadClose?.();modal._uixMidiOpenPadEditor=openPadEditor;
+    }
+
     function deleteMidiNow(){const s=selectedMidiNotes();if(!s.length)return;const before=beginHistory();state.notes=state.notes.filter(n=>!n.selected);clearMidiSelection();pushHistory(before);draw();}
     function deleteMidi(){const s=selectedMidiNotes();if(!s.length)return status('Nothing selected');deleteMidiNow();}
     function midiSelectAll(){state.notes.filter(n=>n.tr===state.cur).forEach(n=>n.selected=true);state.noteAnchor=state.notes.find(n=>n.selected)||null;draw();}
@@ -840,12 +1160,15 @@
         {label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','midi'),disabled:!state.clipboard.length,action:()=>pasteMidi(target)},
         {label:'Paste Origin Note',icon:'↥',disabled:!state.clipboard.length,action:()=>pasteOriginMidi(target)},
         {label:'Edit in Record Note',icon:'●',disabled:selectedMidiNotes().length<1,action:()=>openRecordNoteModal(state,selectedMidiNotes().map(n=>({...n})),true)},
+        {label:'Edit (Pad Editor)',icon:'▦',disabled:selectedMidiNotes().length<1,action:()=>{const refs=selectedMidiNotes();if(!refs.length)return status('Select one or more DAW notes first');openPadEditor(refs.map(n=>({...n})),{fromSelection:true,sourceRefs:refs});}},
         {label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','midi'),disabled:!selectedMidiNotes().length,action:deleteMidi}
       ],x,y);
     }
     let drag=null;
     let longPressTimer=0,longPressPointer=null,longPressFired=false,longPressStart=null;
     const activePointers=new Map();let twoFingerPan=null;
+    let marqueeAutoPanRaf=0,marqueePointer=null;
+    const marqueePanTick=()=>{if(drag?.k!=='marquee'||!marqueePointer){marqueeAutoPanRaf=0;return;}const r=canvas.getBoundingClientRect(),edge=24;let dx=marqueePointer.x<r.left+edge?-Math.min(18,Math.ceil((r.left+edge-marqueePointer.x)/3)):marqueePointer.x>r.right-edge?Math.min(18,Math.ceil((marqueePointer.x-(r.right-edge))/3)):0,dy=marqueePointer.y<r.top+edge?-Math.min(18,Math.ceil((r.top+edge-marqueePointer.y)/3)):marqueePointer.y>r.bottom-edge?Math.min(18,Math.ceil((marqueePointer.y-(r.bottom-edge))/3)):0;const ox=state.sx,oy=state.sy;if(dx||dy){state.sx+=dx;state.sy+=dy;view.clampView();}const moving=state.sx!==ox||state.sy!==oy;if(moving){drag.box.x2=marqueePointer.x;drag.box.y2=marqueePointer.y;state.selectionBox={a:{x:drag.box.x1-r.left,y:drag.box.y1-r.top},b:{x:drag.box.x2-r.left,y:drag.box.y2-r.top}};selectInBox(drag.box,marqueePointer.modifiers,drag.baseSelected);draw();}const near=marqueePointer.x<r.left+edge||marqueePointer.x>r.right-edge||marqueePointer.y<r.top+edge||marqueePointer.y>r.bottom-edge;if(near&&moving)marqueeAutoPanRaf=requestAnimationFrame(marqueePanTick);else marqueeAutoPanRaf=0;};
     const midiPointerMidpoint=()=>{const pts=[...activePointers.values()];return pts.length>=2?{x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2}:null;};
     const cancelMidiLongPress=()=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=0;}longPressPointer=null;longPressStart=null;};
     canvas.addEventListener('contextmenu',e=>{if(longPressFired){e.preventDefault();e.stopPropagation();return;}const c=cell(e);if(c.x>=KEYW&&c.y>=RULER)state.pasteTarget={step:Math.max(0,c.step),p:validMidiPitch(c.p)};e.preventDefault();e.stopPropagation();showMidiContextMenu(e.clientX,e.clientY);});
@@ -873,11 +1196,12 @@
       drag={k:'pending',x:e.clientX,y:e.clientY,c0:c,changed:false,before:null,mod:e.shiftKey||e.ctrlKey||e.metaKey};
     });
     canvas.addEventListener('pointermove',e=>{
+      if(activePointers.has(e.pointerId))activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(longPressTimer&&longPressPointer===e.pointerId&&e.pointerType==='touch'){if(Math.hypot(e.clientX-(longPressStart?.x||e.clientX),e.clientY-(longPressStart?.y||e.clientY))>8)cancelMidiLongPress();}
       const c=cell(e);state.pasteTarget={step:Math.max(0,c.step),p:validMidiPitch(c.p)};
       if(activePointers.size>=2){
         const pt=midiPointerMidpoint();
-        if(pt&&twoFingerPan?.last){state.sx+=pt.x-twoFingerPan.last.x;state.sy+=pt.y-twoFingerPan.last.y;view.clampView();twoFingerPan.last=pt;draw();}
+        if(pt&&twoFingerPan?.last){state.sx-=pt.x-twoFingerPan.last.x;state.sy-=pt.y-twoFingerPan.last.y;view.clampView();twoFingerPan.last=pt;draw();}
         return;
       }
       if((e.buttons&3)===3){
@@ -892,13 +1216,13 @@
           cancelMidiLongPress();
           if(state.tool==='draw'&&!drag.mod){
             const step=snap(),before=beginHistory(),nn={t:Math.max(0,Math.round(drag.c0.step/step)*step),l:step,p:drag.c0.p,tr:state.cur,velocity:100,selected:true};
-            clearMidiSelection();state.notes.push(nn);state.noteAnchor=nn;drag={k:'createResize',n:nn,changed:true,before,lastStep:nn.t};preview(nn.p);draw();return;
+            clearMidiSelection();state.notes.push(nn);growTimelineForNotes(nn.t+nn.l);state.noteAnchor=nn;drag={k:'createResize',n:nn,changed:true,before,lastStep:nn.t};preview(nn.p);draw();return;
           }
           drag.k='marquee';drag.before=beginHistory();drag.baseSelected=new Set(selectedMidiNotes());drag.box={x1:drag.x,y1:drag.y,x2:e.clientX,y2:e.clientY};
         }
         else return;
       }
-      if(drag.k==='marquee'){drag.box.x2=e.clientX;drag.box.y2=e.clientY;state.selectionBox={a:{x:drag.box.x1-canvas.getBoundingClientRect().left,y:drag.box.y1-canvas.getBoundingClientRect().top},b:{x:drag.box.x2-canvas.getBoundingClientRect().left,y:drag.box.y2-canvas.getBoundingClientRect().top}};selectInBox(drag.box,e,drag.baseSelected);return;}
+      if(drag.k==='marquee'){drag.box.x2=e.clientX;drag.box.y2=e.clientY;marqueePointer={x:e.clientX,y:e.clientY,modifiers:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,shiftKey:e.shiftKey}};const edgeRect=canvas.getBoundingClientRect();state.selectionBox={a:{x:drag.box.x1-edgeRect.left,y:drag.box.y1-edgeRect.top},b:{x:drag.box.x2-edgeRect.left,y:drag.box.y2-edgeRect.top}};selectInBox(drag.box,e,drag.baseSelected);if((e.clientX<edgeRect.left+24||e.clientX>edgeRect.right-24||e.clientY<edgeRect.top+24||e.clientY>edgeRect.bottom-24)&&!marqueeAutoPanRaf)marqueeAutoPanRaf=requestAnimationFrame(marqueePanTick);return;}
       if(drag.k==='move'){
         const n=drag.n,step=snap();
         let baseT=Math.max(0,Math.round((c.step-drag.off)/step)*step);
@@ -911,14 +1235,14 @@
         const nextPitches=group.map(g=>validMidiPitch(anchoredP+g.dp));
         state.noteLayout=ensureNotePitches(state.noteLayout,nextPitches);
         const oldSignature=group.map(g=>`${g.n.t}:${g.n.p}`).join('|');
-        group.forEach((g,i)=>{g.n.t=Math.max(0,baseT+g.dt);g.n.p=nextPitches[i];});
+        group.forEach((g,i)=>{g.n.t=Math.max(0,baseT+g.dt);g.n.p=nextPitches[i];});growTimelineForNotes(Math.max(...group.map(g=>g.n.t+g.n.l)));
         const newSignature=group.map(g=>`${g.n.t}:${g.n.p}`).join('|');
         if(oldSignature!==newSignature)drag.changed=true;
         view.refreshRows();view.clampView();state.noteAnchor=n;draw();return;
       }
       if(drag.k==='resize'||drag.k==='createResize'){
         const n=drag.n,step=snap(),nl=Math.max(step,Math.round((c.step-n.t)/step)*step||step);
-        if(nl!==n.l){n.l=nl;drag.changed=true;}draw();return;
+        if(nl!==n.l){n.l=nl;drag.changed=true;growTimelineForNotes(n.t+n.l);}draw();return;
       }
       status((state.noteRowByPitch.has(c.p)?noteName(c.p)+' ('+c.p+') ':'')+'step '+Math.max(0,Math.floor(c.step))+' notes '+state.notes.length);
     });
@@ -929,16 +1253,16 @@
       if(!drag)return;
       if(drag.k==='pending'){addMidiNoteAt(drag.c0);drag=null;return;}
       if(drag.k==='marquee'){
-        const r=drag.box;selectInBox(r,e,drag.baseSelected);state.selectionBox=null;drag=null;updateHistoryUI();draw();return;
+        const r=drag.box;selectInBox(r,e,drag.baseSelected);if(marqueeAutoPanRaf)cancelAnimationFrame(marqueeAutoPanRaf);marqueeAutoPanRaf=0;marqueePointer=null;state.selectionBox=null;drag=null;updateHistoryUI();draw();return;
       }
       if(drag.before&&drag.changed)pushHistory(drag.before);
       drag=null;updateHistoryUI();draw();
     });
-    canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size<2)twoFingerPan=null;cancelMidiLongPress();longPressFired=false;drag=null;state.selectionBox=null;updateHistoryUI();draw();});
-    canvas.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey)state.zoom=Math.max(6,Math.min(80,state.zoom*(e.deltaY<0?1.1:.9)));else if(e.shiftKey)state.sx+=e.deltaY;else{state.sy+=e.deltaY;state.sx+=e.deltaX;}view.clampView();draw();},{passive:false});
+    canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size<2)twoFingerPan=null;if(marqueeAutoPanRaf)cancelAnimationFrame(marqueeAutoPanRaf);marqueeAutoPanRaf=0;marqueePointer=null;cancelMidiLongPress();longPressFired=false;drag=null;state.selectionBox=null;updateHistoryUI();draw();});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey){state.zoom=Math.max(6,Math.min(80,state.zoom*(e.deltaY<0?1.1:.9)));updateMidiZoomUI();}else if(e.shiftKey)state.sx+=e.deltaY;else{state.sy+=e.deltaY;state.sx+=e.deltaX;}view.clampView();draw();},{passive:false});
 
 
-    function stopOscs(){state.oscillators.forEach(o=>{try{o.stop();}catch{}});state.oscillators=[];}
+    function stopOscs(){state.oscillators.forEach(o=>{try{o.stop();}catch{}});state.oscillators=[];state.trackOscillators=(state.tracks||[]).map(()=>new Set());}
     const stepSec=()=>60/(Number(modal.querySelector('[data-midi-bpm]').value)||120)/4;
     function clearScheduler(){if(state.playTimer){clearInterval(state.playTimer);state.playTimer=0;}state.scheduled.clear();}
     function stop(){state.playing=false;state.playToken++;clearScheduler();stopOscs();cancelAnimationFrame(state.raf);state.previewNote=null;state.trackLevels=(state.tracks||[]).map(()=>0);state.head=state.start;modal.querySelector('[data-midi-play]').innerHTML='▶ <span>Play</span>';modal.querySelector('[data-midi-play]').classList.remove('active');draw();}
@@ -956,10 +1280,10 @@
           const horizon=nowStep+lookAhead/ss;
           for(let i=0;i<state.notes.length;i++){
             const n=state.notes[i],key=i;
-            if(state.scheduled.has(key)||n.t>horizon)continue;
+            if(state.scheduled.has(key)||n.t>horizon||state.tracks[n.tr]?.muted)continue;
             if(n.t+n.l<=from)continue;
             const st=Math.max(n.t,nowStep),dur=Math.max(.03,(n.l-(st-n.t))*ss),vel=Math.max(.02,Math.min(1,(Number(n.velocity)||100)/127));
-            tone(n.p,state.startedAt+st*ss,dur,state.tracks[n.tr]?.wave||'triangle',vel);state.scheduled.add(key);
+            tone(n.p,state.startedAt+st*ss,dur,state.tracks[n.tr]?.wave||'triangle',vel,n.tr);state.scheduled.add(key);
           }
         };
         schedule();state.playTimer=setInterval(schedule,pollMs);
@@ -968,7 +1292,7 @@
           if(!state.playing||token!==state.playToken)return;
           state.head=(a.currentTime-state.startedAt)/ss;
           state.trackLevels=(state.trackLevels||[]).map(v=>0);state.trackLoudness=(state.trackLoudness||[]).map(v=>0);
-          for(let ti=0;ti<state.tracks.length;ti++){let loud=null,lscore=-1;for(const n of state.notes){if(n.tr!==ti||state.head<n.t||state.head>=n.t+n.l)continue;const def=state.noteDefs?.[String(validMidiPitch(n.p))]||normalizeNoteDef(null,n.p),score=clamp((Number(def.amplitude)||.16)*(Number(n.velocity||100)/100),0,1);if(score>lscore){lscore=score;loud=n;}}if(loud){const progress=clamp((state.head-loud.t)/Math.max(1,loud.l),0,1);state.trackLevels[ti]=progress;state.trackLoudness[ti]=progress*lscore;} }
+          for(let ti=0;ti<state.tracks.length;ti++){if(state.tracks[ti]?.muted)continue;let loud=null,lscore=-1;for(const n of state.notes){if(n.tr!==ti||state.head<n.t||state.head>=n.t+n.l)continue;const def=state.noteDefs?.[String(validMidiPitch(n.p))]||normalizeNoteDef(null,n.p),score=clamp((Number(def.amplitude)||.16)*(Number(n.velocity||100)/100),0,1);if(score>lscore){lscore=score;loud=n;}}if(loud){const progress=clamp((state.head-loud.t)/Math.max(1,loud.l),0,1);state.trackLevels[ti]=progress;state.trackLoudness[ti]=progress*lscore;} }
           if(state.previewNote&&state.previewNote.until<=performance.now())state.previewNote=null;
           if(state.head>=end){if(state.loop){state.playing=false;clearScheduler();state.head=state.start;return play(true);}return stop();}
           const x=state.head*state.zoom-state.sx;if(x>state.W-KEYW-20)state.sx=state.head*state.zoom-40;draw();state.raf=requestAnimationFrame(tick);
@@ -992,7 +1316,7 @@
               nextTracks.push({name:track.name||`Track ${i+1}`,color:COLORS[index%COLORS.length],wave:'triangle',channel:track.channel??index%16});
               track.notes.forEach(n=>{const p=validMidiPitch(n.pitch);importedPitches.push(p);nextNotes.push({t:Math.max(0,Math.round(n.tick*4/song.ppq)),l:Math.max(1,Math.round(n.duration*4/song.ppq)),p,tr:index,velocity:100,selected:false});});
             });
-            const before=beginHistory();state.ppq=song.ppq||480;state.bpm=Math.round(song.bpm||120);state.notes=nextNotes;state.tracks=nextTracks.length?nextTracks:[{name:'Track 1',color:COLORS[0],wave:'triangle',channel:0}];state.trackLevels=state.tracks.map(()=>0);state.noteLayout=ensureNotePitches(state.noteLayout,importedPitches);state.noteDefs=ensureNoteDefs(state.noteDefs||{},importedPitches);saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);pushHistory(before);state.cur=0;state.sx=0;state.sy=Math.max(0,Math.min(Math.max(0,state.noteLayout.length*RH-state.H+RULER),Math.max(0,(state.noteLayout.length*RH-state.H)*0.5)));modal.querySelector('[data-midi-bpm]').value=state.bpm;renderTracks();view.clampView();draw();state.name=safeName(file.name);modal.querySelector('[data-midi-name]').textContent=`${state.name}`;
+            const before=beginHistory();state.ppq=song.ppq||480;state.bpm=Math.round(song.bpm||120);state.notes=nextNotes;state.tracks=nextTracks.length?nextTracks:[{name:'Track 1',color:COLORS[0],wave:'triangle',channel:0}];state.trackOscillators=state.tracks.map(()=>new Set());state.trackLevels=state.tracks.map(()=>0);state.trackLoudness=state.tracks.map(()=>0);state.timelineLength=Math.max(64,Math.ceil(state.notes.reduce((end,n)=>Math.max(end,n.t+n.l),0)/16)*16);state.noteLayout=ensureNotePitches(state.noteLayout,importedPitches);state.noteDefs=ensureNoteDefs(state.noteDefs||{},importedPitches);saveNoteLayout(state.noteLayout);saveNoteDefs(state.noteDefs);pushHistory(before);state.cur=0;state.sx=0;state.sy=Math.max(0,Math.min(Math.max(0,state.noteLayout.length*RH-state.H+RULER),Math.max(0,(state.noteLayout.length*RH-state.H)*0.5)));modal.querySelector('[data-midi-bpm]').value=state.bpm;renderTracks();view.clampView();draw();state.name=safeName(file.name);modal.querySelector('[data-midi-name]').textContent=`${state.name}`;
           };
           if(state.notes.length){const ask=window.UIXApp?.askConfirm;if(ask)ask('Import MIDI','Importing this MIDI will replace the current MIDI. Continue?',applyImported,'Import');else if(confirm('Importing this MIDI will replace the current MIDI. Continue?'))applyImported();}
           else applyImported();
@@ -1042,9 +1366,12 @@
     modal.querySelector('[data-midi-copy-local]').onclick=()=>openCopyLocalNotes();
     modal.querySelector('[data-midi-note-selector]').onclick=()=>openCurrentNoteSelector();
     modal.querySelector('[data-midi-record-note]').onclick=()=>openRecordNoteModal(state,null,false);
+    modal.querySelector('[data-midi-pad-editor]').onclick=()=>openPadEditor();
     const confirmMidiCancel=()=>{stop();if(window.UIXApp?.askConfirm)window.UIXApp.askConfirm('Cancel MIDI Editing','Cancel MIDI editing? Any unsaved changes will be lost.',closeEditor,'Cancel Editing');else closeEditor();};
     modal.querySelector('[data-midi-cancel]').onclick=confirmMidiCancel;
     modal._uixMidiStopPlayback=stop;
+    modal._uixMidiOpenPadEditor=openPadEditor;
+    modal._uixMidiClosePadEditor=()=>activePadOverlay?._uixPadClose?.();
     modal.querySelector('[data-midi-undo]').onclick=undo;
     modal.querySelector('[data-midi-redo]').onclick=redo;
     modal.tabIndex=0;modal.focus();
@@ -1061,7 +1388,17 @@
     renderTracks();resize();updateHistoryUI();
   }
 
-  function closeEditor(){if(!modal){activeShortcutHandler=null;return;}const m=modal;try{m._uixMidiStopPlayback?.();}catch{}modal=null;activeShortcutHandler=null;try{window.UIXApp?.closeModal?.(m);}catch{}m.remove();}
+  function closeEditor(skipPadGuard=false){
+    if(!modal){activeShortcutHandler=null;return;}
+    if(!skipPadGuard){
+      const padOverlay=document.querySelector('.uix-midi-pad-overlay');
+      if(typeof padOverlay?._uixPadRequestClose==='function'){
+        padOverlay._uixPadRequestClose(()=>closeEditor(true));
+        return;
+      }
+    }
+    const m=modal;try{m._uixMidiClosePadEditor?.();}catch{}try{m._uixMidiStopPlayback?.();}catch{}modal=null;activeShortcutHandler=null;try{window.UIXApp?.closeModal?.(m);}catch{}m.remove();
+  }
 
   function handleShortcut(command){return activeShortcutHandler?.(command);}
   window.UIXMIDIEditor = { openCreate, openEdit, close: closeEditor, handleShortcut };

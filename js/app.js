@@ -71,7 +71,8 @@
       renderOrderCache: null,
       renderOrderSceneId: '',
       editorVisualCacheRevision: 0,
-      variablesTreeExpanded: false
+      variablesTreeExpanded: false,
+      worldSceneTreeExpanded: true
     }
   };
 
@@ -197,6 +198,10 @@
     const scale=Math.max(.01,Number(cam?.scale)||1),h=720/scale,w=h*cameraAspectRatio(cam);
     return {w,h};
   }
+  function cameraReferenceWorldSize(cam=state.camera){
+    const h=720,w=h*cameraAspectRatio(cam);
+    return {w,h};
+  }
   function cameraVisibleViewForDisplay(cam,type,width,height){
     const base=cameraViewBaseSize(cam);width=Math.max(1,Number(width)||1);height=Math.max(1,Number(height)||1);
     if(type==='Crop'){
@@ -209,6 +214,30 @@
       if(displayAspect<baseAspect)return {w:base.w,h:base.w/displayAspect};
     }
     return {w:base.w,h:base.h};
+  }
+  // Match the in-editor camera guide to the viewport used by Play/Debug.  The
+  // runtime toolbar takes 44 CSS pixels; the canvas itself fills the remainder.
+  function editorRuntimeViewportSize(){
+    const vv=window.visualViewport;
+    const width=Math.max(1,Number(vv?.width)||Number(window.innerWidth)||1280);
+    const fullHeight=Math.max(1,Number(vv?.height)||Number(window.innerHeight)||720);
+    return {width,height:Math.max(1,fullHeight-44)};
+  }
+  function updateGameScreenPreview(){
+    const frame=$('#gameScreenPreviewFrame');
+    if(!frame)return;
+    const type=normalizeScreenType(state.game?.screenType);
+    const display=editorRuntimeViewportSize();
+    const view=cameraVisibleViewForDisplay(state.camera,type,display.width,display.height);
+    const ratio=Math.max(.05,Number(view.w)||1)/Math.max(.05,Number(view.h)||1);
+    const maxW=100,maxH=80;
+    let w,h;
+    if(ratio>=maxW/maxH){w=maxW;h=w/ratio;}else{h=maxH;w=h*ratio;}
+    frame.style.width=`${Math.max(4,w).toFixed(2)}px`;
+    frame.style.height=`${Math.max(4,h).toFixed(2)}px`;
+    const title=$('#gameScreenPreviewTitle'),details=$('#gameScreenPreviewDetails');
+    if(title)title.textContent=type;
+    if(details)details.textContent=`Visible frame ${Math.round(view.w)} × ${Math.round(view.h)} · updates live`;
   }
   function runtimeCameraMapping(canvas,cam=state.runtime?.camera||state.camera){
     const m=runtimeProjection(canvas),base=cameraViewBaseSize(cam),view=cameraVisibleViewForDisplay(cam,m.type,m.width,m.height);
@@ -228,8 +257,54 @@
   const CAMERA_ANIMATIONS=['Quick','Smooth','Linear','Ease In','Ease Out','Ease In Out','Sine In','Sine Out','Sine In Out','Back In Out'];
   function ensureSceneCamera(scene){ if(!scene)return defaultCamera(); if(!scene.camera) scene.camera=defaultCamera(); scene.camera.aspectRatio=normalizeCameraAspect(scene.camera.aspectRatio); return scene.camera; }
   function syncSceneCamera(){ const scene=currentScene(); if(scene){ state.camera=ensureSceneCamera(scene); } }
+  function defaultSkyBox(){
+    return {id:`skybox-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,name:'Sky Box',index:0,enabled:true,mode:'Fixed',renderMode:'Crop',scaleX:0,scaleY:0,repeatX:0,repeatY:0,source:'Sprite',sprites:[],animations:[],variation:'Singular',modulate:'#FFFFFFFF',strength:100,opacity:100,randomRotation:false,pixelated:true,closedGap:true,directionalMovement:false,scope:'Individual',fixedCoordinates:false,orientationAware:false,directionDeg:0,speed:0};
+  }
+  function normalizeSkyAssetEntry(entry){
+    if(typeof entry==='string')return {name:entry.split('/').pop()||'Sprite',src:entry};
+    if(!entry||typeof entry!=='object')return null;
+    const src=String(entry.src??entry.value??'');if(!src)return null;
+    return {name:String(entry.name||entry.label||'Sprite'),src,assetId:entry.assetId||entry.id||undefined};
+  }
+  function normalizeWorldScene(scene){
+    if(!scene||typeof scene!=='object')return {skyBox:null,skyBoxes:[]};
+    if(!scene.worldScene||typeof scene.worldScene!=='object')scene.worldScene={skyBox:null};
+    const world=scene.worldScene;
+    // Migrate old one-Sky-Box projects without discarding their existing data.
+    if(!Array.isArray(world.skyBoxes))world.skyBoxes=world.skyBox&&typeof world.skyBox==='object'?[world.skyBox]:[];
+    const base=defaultSkyBox();
+    world.skyBoxes=world.skyBoxes.filter(s=>s&&typeof s==='object');
+    world.skyBoxes.forEach((sky,i)=>{
+      sky.id=String(sky.id||`skybox-${i+1}-${Math.random().toString(36).slice(2,7)}`);
+      sky.name=String(sky.name||`Sky Box ${i+1}`);
+      sky.index=Number.isFinite(Number(sky.index))?Number(sky.index):i;
+      sky.enabled=sky.enabled!==false;
+      sky.mode=['Tile','Tiled Screen'].includes(sky.mode)?sky.mode:'Fixed';
+      sky.renderMode=['Crop','Stretch','Contain','Repeat'].includes(sky.renderMode)?sky.renderMode:'Crop';
+      sky.pixelated=sky.pixelated!==false;
+      ['scaleX','scaleY'].forEach(k=>{sky[k]=Number.isFinite(Number(sky[k]))?Number(sky[k]):0;});
+      ['repeatX','repeatY'].forEach(k=>{sky[k]=Math.max(0,Math.floor(Number(sky[k])||0));});
+      sky.source=sky.source==='Animation'?'Animation':'Sprite';
+      sky.sprites=(Array.isArray(sky.sprites)?sky.sprites:[]).map(normalizeSkyAssetEntry).filter(Boolean);
+      sky.animations=(Array.isArray(sky.animations)?sky.animations:[]).map((a,j)=>({name:String(a?.name||`Animation ${j+1}`),fps:Math.max(1,Math.min(60,Number(a?.fps)||8)),frames:(Array.isArray(a?.frames)?a.frames:[]).map(normalizeSkyAssetEntry).filter(Boolean)}));
+      sky.variation=['Random','Alternates','AlternateX','AlternateY','AlternateBoth'].includes(sky.variation)?sky.variation:'Singular';
+      sky.modulate=typeof sky.modulate==='string'&&sky.modulate?sky.modulate:base.modulate;
+      sky.strength=Math.max(0,Math.min(100,Number.isFinite(Number(sky.strength))?Number(sky.strength):100));
+      sky.opacity=Math.max(0,Math.min(100,Number.isFinite(Number(sky.opacity))?Number(sky.opacity):100));
+      sky.randomRotation=!!sky.randomRotation;sky.closedGap=sky.closedGap!==false;
+      sky.directionalMovement=!!sky.directionalMovement;sky.scope=sky.scope==='All'?'All':'Individual';sky.fixedCoordinates=!!sky.fixedCoordinates;sky.orientationAware=!!sky.orientationAware;
+      sky.directionDeg=Number.isFinite(Number(sky.directionDeg))?Number(sky.directionDeg):0;
+      sky.speed=Number.isFinite(Number(sky.speed))?Number(sky.speed):0;
+    });
+    world.skyBoxes.sort((a,b)=>Number(a.index)-Number(b.index));
+    // Compatibility alias: older project/runtime code expects the first box.
+    world.skyBox=world.skyBoxes[0]||null;
+    return world;
+  }
+  function sceneSkyBoxes(scene){return normalizeWorldScene(scene).skyBoxes||[];}
+  function syncSkyBoxCompatibility(world){world.skyBox=world.skyBoxes?.[0]||null;}
   function makeScene(name) {
-    return { id: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'scene'}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, nodes: [], variables: [], camera: defaultCamera() };
+    return { id: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'scene'}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, nodes: [], variables: [], camera: defaultCamera(), worldScene:{skyBox:null} };
   }
   function currentScene() { return state.scenes.find(s => s.id === state.currentSceneId) || state.scenes[0]; }
 
@@ -618,14 +693,28 @@
         nodes.forEach(n=>{
           const t=component(n,'transform'),st=d.startTransforms[n.id];
           if(!t||!st)return;
-          const startX=Number(st.position?.[0]??0),startY=Number(st.position?.[1]??0);
-          t.position=[Number((startX+tx).toFixed(12)),Number((startY+ty).toFixed(12))];
+          if(nodeRelativeMode(n)==='Screen'){
+            const startPos=editorNodeWorldPositionFromTransform(n,st);
+            const next=editorWorldPositionToTransformPosition(n,{x:startPos.x+tx,y:startPos.y+ty});
+            t.position=[Number(snapEditorValue(next.x,snap).toFixed(12)),Number(snapEditorValue(next.y,snap).toFixed(12))];
+          }else{
+            const startX=Number(st.position?.[0]??0),startY=Number(st.position?.[1]??0);
+            t.position=[Number((startX+tx).toFixed(12)),Number((startY+ty).toFixed(12))];
+          }
         });
       }else if(d.type==='rotate'){
         const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(b.x,b.y),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);let delta=(nowA-startA)*180/Math.PI;
         if(rotateSnap)delta=snapEditorValue(delta,rotateSnap);
         const rad=delta*Math.PI/180;
-        nodes.forEach(n=>{const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;const sp={x:Number(st.position?.[0]||0)-b.x,y:Number(st.position?.[1]||0)-b.y};if(unified){const q=rotatePoint(sp.x,sp.y,rad);t.position=[Number((b.x+q.x).toFixed(12)),Number((b.y+q.y).toFixed(12))];}else t.position=[Number(st.position?.[0]||0),Number(st.position?.[1]||0)];t.angle=[Number((Number(st.angle?.[0]||0)+delta).toFixed(12))];});
+        nodes.forEach(n=>{
+          const t=component(n,'transform'),st=d.startTransforms[n.id];if(!t||!st)return;
+          if(unified){
+            const startPos=editorNodeWorldPositionFromTransform(n,st),sp={x:startPos.x-b.x,y:startPos.y-b.y},q=rotatePoint(sp.x,sp.y,rad);
+            const next=editorWorldPositionToTransformPosition(n,{x:b.x+q.x,y:b.y+q.y});
+            t.position=[Number(next.x.toFixed(12)),Number(next.y.toFixed(12))];
+          }else t.position=[Number(st.position?.[0]||0),Number(st.position?.[1]||0)];
+          t.angle=[Number((Number(st.angle?.[0]||0)+delta).toFixed(12))];
+        });
       }else if(d.type==='scale'){
         let localDx=dx,localDy=dy;
         if(getEditorSettings().scaleGizmo==='Arrow'){
@@ -655,11 +744,11 @@
       requestWorkplaceDraw();
     }
   function defForScriptDoc(sn){return scriptNodeDefinition(sn?.defName)?.name||sn?.defName||'ScriptNode';}
-  function findNode(id) { return allNodes().find(x => x?.node?.id === id)?.node || null; }
+  function findNode(id) { if(id===null||id===undefined||id==='')return null;const key=String(id);return allNodes().find(x=>x?.node?.id!==null&&x?.node?.id!==undefined&&String(x.node.id)===key)?.node||null; }
   function findContainer(id, items = currentScene()?.nodes) {
     if (!Array.isArray(items)) return null;
     for (const item of items) {
-      if (item.id === id) return items;
+      if (String(item.id) === String(id)) return items;
       if (item.type === 'folder') {
         const result = findContainer(id, item.children);
         if (result) return result;
@@ -668,7 +757,7 @@
     return null;
   }
   function isDescendant(folder, id) {
-    return folder?.type === 'folder' && (Array.isArray(folder.children) ? folder.children : []).some(child => child.id === id || (child.type === 'folder' && isDescendant(child, id)));
+    return folder?.type === 'folder' && (Array.isArray(folder.children) ? folder.children : []).some(child => String(child.id) === String(id) || (child.type === 'folder' && isDescendant(child, id)));
   }
   function nodeComponents(node) {
     if (!node) return [];
@@ -691,7 +780,9 @@
     return value && !value.special && value.type === 'node' ? value : null;
   }
   function currentSelection() {
+    if (state.selectedId === 'world-scene') return { special: 'world-scene', name: 'World Scene', id: 'world-scene' };
     if (state.selectedId === 'scene-camera') return { special: 'camera', name: 'Scene Camera', id: 'scene-camera' };
+    if (state.selectedId === 'sky-box') return { special: 'sky-box', name: 'Sky Box', id: 'sky-box' };
     if (state.selectedId === 'variables') return { special: 'variables-root', name: 'Variables', id: 'variables' };
     if (state.selectedId === 'global-variables') return { special: 'global', scope: 'Global', name: 'Global Variables', id: 'global-variables' };
     if (state.selectedId === 'server-variables') return { special: 'variables', scope: 'Server', name: 'Server Variables', id: 'server-variables' };
@@ -714,7 +805,7 @@
   function normalizeSelectionState(){
     const valid=new Set(allNodes().map(x=>x.node.id));
     state.selectedIds=(Array.isArray(state.selectedIds)?state.selectedIds:[]).filter(id=>valid.has(id));
-    if(state.selectedId&&!valid.has(state.selectedId)&&!['scene-camera','variables','global-variables','server-variables','scene-variables','ui-components'].includes(state.selectedId))state.selectedId=state.selectedIds.at(-1)||'scene-camera';
+    if(state.selectedId&&!valid.has(state.selectedId)&&!['world-scene','scene-camera','sky-box','variables','global-variables','server-variables','scene-variables','ui-components'].includes(state.selectedId))state.selectedId=state.selectedIds.at(-1)||'scene-camera';
     if(state.selectionAnchorId&&!valid.has(state.selectionAnchorId))state.selectionAnchorId=null;
     if(state.selectedIds.length===1)state.selectedId=state.selectedIds[0];
   }
@@ -806,6 +897,7 @@
     flushPendingValueEditors();
     const id=node?.id;if(!id)return false;
     const mods=resolvedEditorModifiers(e);
+    if(!mods.shiftKey&&!mods.ctrlKey&&!mods.metaKey&&String(state.selectedId)===String(id)&&(state.selectedIds||[]).includes(id))return false;
     const rawList=visibleTreeItems();
     if(!rawList.some(item=>item.id===id))return false;
     const ids=rawList.map(n=>n.id);
@@ -1507,6 +1599,7 @@
       state.scenes = [scene]; state.sceneVariablesByScene = Object.create(null); state.sceneVariablesByScene[scene.id]=scene.variables; state.currentSceneId = scene.id; state.game.preferredSceneId = scene.id; state.camera = scene.camera;
     } else {
       state.game.screenType = normalizeScreenType(state.game.screenType);
+      state.scenes.forEach(scene=>normalizeWorldScene(scene));
       if (!state.game.preferredSceneId || !state.scenes.some(s => s.id === state.game.preferredSceneId)) state.game.preferredSceneId = state.scenes[0].id;
       syncSceneCamera();
     }
@@ -1665,8 +1758,21 @@
       rowWrap.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();onClick?.(e);});
       return rowWrap;
     };
-    const cameraRow=addSpecialRow('scene-camera','◉','Scene Camera',0,()=>{clearNodeSelection('scene-camera');renderAll();status('Selected Scene Camera');});
-    host.append(cameraRow);
+    const worldOpen=state.ui.worldSceneTreeExpanded!==false;
+    const worldRow=addSpecialRow('world-scene','◈','World Scene',0,(e)=>{
+      if(e?.target?.closest?.('.twisty')){state.ui.worldSceneTreeExpanded=!worldOpen;renderSelectionTree();return;}
+      if(state.selectedId==='world-scene')return;clearNodeSelection('world-scene');renderAll();status('Selected World Scene');
+    });
+    worldRow.querySelector('.twisty').textContent=worldOpen?'−':'+';
+    host.append(worldRow);
+    if(worldOpen){
+      const cameraRow=addSpecialRow('scene-camera','◉','Scene Camera',1,()=>{if(state.selectedId==='scene-camera')return;clearNodeSelection('scene-camera');renderAll();status('Selected Scene Camera');});
+      cameraRow.querySelector('.twisty').textContent='';
+      host.append(cameraRow);
+      const skyLabel=`Sky Box${sceneSkyBoxes(currentScene()).length>1?` (${sceneSkyBoxes(currentScene()).length})`:''}`;const skyRow=addSpecialRow('sky-box','▧',skyLabel,1,()=>{if(state.selectedId==='sky-box')return;clearNodeSelection('sky-box');renderAll();status('Selected Sky Box');});
+      skyRow.querySelector('.twisty').textContent='';
+      host.append(skyRow);
+    }
     const varsOpen=!!state.ui.variablesTreeExpanded;
     const variables=document.createElement('div');
     variables.className=`tree-node special-node${state.selectedId==='variables'?' selected':''}`;
@@ -1821,6 +1927,12 @@
     try{
       host.innerHTML='';
       const selection=currentSelection();
+      // The shared Add Component footer belongs only to a single regular Node.
+      // Variable, joystick, Sky Box and other special inspectors have their own
+      // add controls (or intentionally have none, like Scene Camera).
+      const footer=document.querySelector('.component-footer');
+      const nodeAddAllowed=!!selection&&!selection.special&&selection.type==='node'&&orderedMultiNodes().length<=1&&topLevelSelectedItems().length<=1;
+      if(footer)footer.style.display=nodeAddAllowed?'':'none';
       $('#componentTarget').textContent=selection?.name||'Nothing';
       const idEl=$('#selectionId');
       if(idEl)idEl.textContent=selection&&!selection.special?(selection.type==='folder'?String(selection.folderId??'—'):String(selection.numericId??'—')):'—';
@@ -1850,6 +1962,8 @@
       if(multiTreeItems.length>1){
         $('#componentTarget').textContent=`${selection?.name ? selection.name : 'Selection'} <${multiTreeItems.length}>`;
       }
+      if(selection.special==='world-scene')return renderWorldSceneInspector(host,currentScene(),false);
+      if(selection.special==='sky-box')return renderWorldSceneInspector(host,currentScene(),true);
       if(selection.special==='camera')return renderCameraInspector(host);
       if(selection.special==='variables-root')return host.append(empty('Select Scene, Global, or Server Variables.'));
       if(selection.special==='global')return renderVariables(host,'Global');
@@ -2194,7 +2308,135 @@
     const t = state.camera.transform;
     host.append(componentCard('Transform', [axisVectorField('Position', t.position, (x,y) => { t.position=[x,y]; drawWorkplace(); }), field('Angle', t.angle[0], 'number', v => { t.angle=[Number(v)||0]; drawWorkplace(); })], false, null, 'camera-transform'));
   }
-
+  function skyAssetRow(entry,label,remove,choose){
+    const row=document.createElement('div');row.className='world-skybox-asset-row';
+    const thumb=document.createElement('button');thumb.type='button';thumb.className='world-skybox-asset-preview';thumb.title='Click to replace this image; selecting multiple images inserts the extras below it';
+    if(entry?.src){const img=document.createElement('img');img.src=entry.src;img.alt='';thumb.append(img);}else thumb.textContent='▧';
+    const activate=()=>{if(typeof choose==='function')choose();};thumb.addEventListener('click',activate);
+    const info=document.createElement('div');info.className='world-skybox-asset-info';info.textContent=label||entry?.name||'Asset';info.title='Click to replace this image';info.tabIndex=0;info.setAttribute('role','button');info.addEventListener('click',activate);info.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate();}});
+    const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.textContent='Remove';btn.addEventListener('click',e=>{e.stopPropagation();pushHistory('Remove Sky Box Asset');remove();renderComponentPanel();drawWorkplace();});
+    row.append(thumb,info,btn);return row;
+  }
+  function selectedSkyEntries(assets,fallback='Sprite'){
+    const list=Array.isArray(assets)?assets:(assets?[assets]:[]);
+    return list.filter(a=>a?.value).map(a=>({name:String(a.name||a.filename||fallback),src:String(a.value),assetId:a.id||a.assetId||undefined}));
+  }
+  function editSkyBoxAssetAt(list,index,label){
+    if(!Array.isArray(list)||index<0||index>=list.length)return;
+    openAssetSelector('Sprite',assets=>{
+      const selected=selectedSkyEntries(assets,'Sprite');if(!selected.length)return;
+      pushHistory(`Replace ${label}`);
+      // First selection replaces the clicked preview. Any additional selections
+      // are inserted immediately after it, preserving their selection order.
+      list.splice(index,1,...selected);
+      renderComponentPanel();drawWorkplace();
+    },{isMulti:true});
+  }
+  function addSkyBoxSprites(sky){
+    openAssetSelector('Sprite',assets=>{
+      const selected=selectedSkyEntries(assets,'Sprite');if(!selected.length)return;
+      pushHistory('Add Sky Box Sprites');
+      const existing=new Set((sky.sprites||[]).map(a=>a.src));
+      selected.forEach(a=>{if(!existing.has(a.src)){sky.sprites.push(a);existing.add(a.src);}});
+      renderComponentPanel();drawWorkplace();
+    },{isMulti:true});
+  }
+  function addSkyBoxAnimationFrames(sky,index){
+    const anim=sky.animations[index];if(!anim)return;
+    openAssetSelector('Sprite',assets=>{
+      const selected=selectedSkyEntries(assets,'Frame');if(!selected.length)return;
+      pushHistory('Add Sky Box Animation Frames');
+      const existing=new Set((anim.frames||[]).map(a=>a.src));
+      selected.forEach(a=>{if(!existing.has(a.src)){anim.frames.push(a);existing.add(a.src);}});
+      renderComponentPanel();drawWorkplace();
+    },{isMulti:true});
+  }
+  function renderWorldSceneInspector(host,scene,showSkyBox=false){
+    const world=normalizeWorldScene(scene);
+    if(!showSkyBox){
+      const body=document.createDocumentFragment();
+      body.append(readOnlyField('Contains','Scene Camera and Sky Boxes'));
+      body.append(readOnlyField('Scene',scene?.name||'Scene'));
+      const hint=document.createElement('div');hint.className='world-skybox-hint';hint.textContent='World Scene groups the Scene Camera and its Sky Boxes. Each Sky Box has its own name, order and rendering settings.';body.append(hint);
+      host.append(componentCard('World Scene',body,false,null,'world-scene-info'));return;
+    }
+    const topActions=document.createElement('div');topActions.className='world-skybox-toolbar';
+    const addTop=document.createElement('button');addTop.type='button';addTop.className='btn primary';addTop.textContent='+ Add Sky Box';
+    addTop.addEventListener('click',()=>{pushHistory('Add Sky Box');const next=defaultSkyBox();next.name=uniqueSkyBoxName(world,`Sky Box ${world.skyBoxes.length+1}`);next.index=world.skyBoxes.length?Math.max(...world.skyBoxes.map(s=>Number(s.index)||0))+1:0;world.skyBoxes.push(next);normalizeWorldScene(scene);renderComponentPanel();drawWorkplace();});
+    const importTop=document.createElement('button');importTop.type='button';importTop.className='btn';importTop.textContent='Import Sky Box';importTop.addEventListener('click',()=>importSkyBoxFile(scene));
+    topActions.append(addTop,importTop);host.append(topActions);
+    if(!world.skyBoxes.length){const hint=document.createElement('div');hint.className='world-skybox-hint';hint.textContent='No Sky Boxes yet. Add one or import a .skybox.ndc file.';host.append(hint);return;}
+    world.skyBoxes.forEach((sky)=>{
+      const mutate=(action,draw=true,refresh=false)=>{action();syncSkyBoxCompatibility(world);if(refresh)renderComponentPanel();if(draw)drawWorkplace();};
+      const controls=[];
+      controls.push(field('Name',sky.name,'text',v=>mutate(()=>{const next=String(v||'').trim();if(!next)return;const duplicate=world.skyBoxes.some(other=>other!==sky&&String(other.name||'').trim().toLowerCase()===next.toLowerCase());if(duplicate){status('Sky Box name already exists');return;}sky.name=next;},true,true),null,()=>sky.name,{live:false}));
+      controls.push(field('Index',sky.index,'number',v=>mutate(()=>{sky.index=Math.floor(Number(v)||0);world.skyBoxes.sort((a,b)=>Number(a.index)-Number(b.index));},true,true),null,()=>sky.index));
+      controls.push(checkboxField('Enabled',sky.enabled,v=>mutate(()=>{sky.enabled=v;})));
+      controls.push(field('Mode',sky.mode,'custom-select',v=>mutate(()=>{sky.mode=v;},true,true),['Fixed','Tile','Tiled Screen'],()=>sky.mode));
+      controls.push(field('Render Mode',sky.renderMode,'custom-select',v=>mutate(()=>{sky.renderMode=v;},true,true),['Crop','Stretch','Contain','Repeat'],()=>sky.renderMode));
+      const wantsScale=['Crop','Stretch','Repeat'].includes(sky.renderMode);
+      if(wantsScale){controls.push(field('Scale X',sky.scaleX,'number',v=>mutate(()=>{sky.scaleX=Number.isFinite(Number(v))?Number(v):0;})));controls.push(field('Scale Y',sky.scaleY,'number',v=>mutate(()=>{sky.scaleY=Number.isFinite(Number(v))?Number(v):0;})));}
+      if(sky.renderMode==='Repeat'){controls.push(field('Repeat X',sky.repeatX,'number',v=>mutate(()=>{sky.repeatX=Math.max(0,Math.min(64,Math.floor(Number(v)||0)));})));controls.push(field('Repeat Y',sky.repeatY,'number',v=>mutate(()=>{sky.repeatY=Math.max(0,Math.min(64,Math.floor(Number(v)||0)));})));}
+      controls.push(field('Source',sky.source,'custom-select',v=>mutate(()=>{sky.source=v;},true,true),['Sprite','Animation'],()=>sky.source));
+      controls.push(field('Variation',sky.variation,'custom-select',v=>mutate(()=>{sky.variation=v;}),['Singular','Random','Alternates','AlternateX','AlternateY','AlternateBoth'],()=>sky.variation));
+      controls.push(colorField('Modulate',sky.modulate,v=>mutate(()=>{sky.modulate=v;})));
+      controls.push(field('Strength',sky.strength,'number',v=>mutate(()=>{sky.strength=Math.max(0,Math.min(100,Number(v)||0));})));
+      controls.push(field('Opacity',sky.opacity,'number',v=>mutate(()=>{sky.opacity=Math.max(0,Math.min(100,Number(v)||0));})));
+      controls.push(checkboxField('Rand Rotation',sky.randomRotation,v=>mutate(()=>{sky.randomRotation=v;})));
+      controls.push(checkboxField('Pixelated',sky.pixelated!==false,v=>mutate(()=>{sky.pixelated=!!v;})));
+      controls.push(checkboxField('Closed Gap',sky.closedGap!==false,v=>mutate(()=>{sky.closedGap=!!v;})));
+      controls.push(checkboxField('Directional Movement',sky.directionalMovement===true,v=>mutate(()=>{sky.directionalMovement=!!v;},true,true)));
+      if(sky.directionalMovement){
+        controls.push(field('Scope',sky.scope||'Individual','custom-select',v=>mutate(()=>{sky.scope=v==='All'?'All':'Individual';},true,true),['Individual','All'],()=>sky.scope||'Individual'));
+        if(sky.scope==='Individual')controls.push(checkboxField('Fixed Coordinates',sky.fixedCoordinates===true,v=>mutate(()=>{sky.fixedCoordinates=!!v;},true,true)));
+        controls.push(checkboxField('Orientation Aware',sky.orientationAware===true,v=>mutate(()=>{sky.orientationAware=!!v;})));
+        controls.push(field('Direction Deg',sky.directionDeg??0,'number',v=>mutate(()=>{sky.directionDeg=Number.isFinite(Number(v))?Number(v):0;})));
+        controls.push(field('Speed',sky.speed??0,'number',v=>mutate(()=>{sky.speed=Number.isFinite(Number(v))?Number(v):0;})));
+      }
+      const section=componentCard(`Sky Box · ${sky.name||'Unnamed'}`,controls,false,null,`world-skybox:${sky.id}`);
+      const assetsHost=document.createElement('div');assetsHost.className='world-skybox-assets';
+      if(sky.source==='Sprite'){
+        const title=document.createElement('div');title.className='world-skybox-assets-title';title.textContent='Sprites';assetsHost.append(title);
+        if(!sky.sprites.length){const none=document.createElement('div');none.className='world-skybox-hint';none.textContent='No sprites selected yet.';assetsHost.append(none);}
+        sky.sprites.forEach((entry,i)=>assetsHost.append(skyAssetRow(entry,entry.name,()=>sky.sprites.splice(i,1),()=>editSkyBoxAssetAt(sky.sprites,i,'Sky Box Sprite'))));
+        const add=document.createElement('button');add.type='button';add.className='btn world-skybox-add';add.textContent='+ Add Sprite';add.addEventListener('click',()=>addSkyBoxSprites(sky));assetsHost.append(add);
+      }else{
+        const title=document.createElement('div');title.className='world-skybox-assets-title';title.textContent='Animations';assetsHost.append(title);
+        sky.animations.forEach((anim,i)=>{
+          const block=document.createElement('div');block.className='world-skybox-animation';
+          const head=document.createElement('div');head.className='world-skybox-animation-head';
+          const name=document.createElement('input');name.type='text';name.value=anim.name||`Animation ${i+1}`;name.setAttribute('aria-label','Animation name');name.addEventListener('change',()=>{if(name.value!==anim.name){pushHistory('Rename Sky Box Animation');anim.name=name.value.trim()||`Animation ${i+1}`;renderComponentPanel();drawWorkplace();}});
+          const fps=document.createElement('label');fps.className='world-skybox-fps';fps.append(document.createTextNode('FPS '));const fInput=document.createElement('input');fInput.type='number';fInput.min='1';fInput.max='60';fInput.value=String(anim.fps||8);fInput.addEventListener('change',()=>{pushHistory('Edit Sky Box Animation FPS');anim.fps=Math.max(1,Math.min(60,Number(fInput.value)||8));drawWorkplace();});fps.append(fInput);
+          const remove=document.createElement('button');remove.type='button';remove.className='btn';remove.textContent='Delete';remove.addEventListener('click',()=>{pushHistory('Delete Sky Box Animation');sky.animations.splice(i,1);renderComponentPanel();drawWorkplace();});head.append(name,fps,remove);block.append(head);
+          if(!anim.frames.length){const none=document.createElement('div');none.className='world-skybox-hint';none.textContent='No frames selected.';block.append(none);}
+          anim.frames.forEach((fr,fi)=>block.append(skyAssetRow(fr,`${fi+1}. ${fr.name}`,()=>anim.frames.splice(fi,1),()=>editSkyBoxAssetAt(anim.frames,fi,'Sky Box Animation Frame'))));
+          const addFrames=document.createElement('button');addFrames.type='button';addFrames.className='btn world-skybox-add';addFrames.textContent='+ Add Frames';addFrames.addEventListener('click',()=>addSkyBoxAnimationFrames(sky,i));block.append(addFrames);assetsHost.append(block);
+        });
+        const addAnim=document.createElement('button');addAnim.type='button';addAnim.className='btn world-skybox-add';addAnim.textContent='+ Add Animation';addAnim.addEventListener('click',()=>{pushHistory('Add Sky Box Animation');sky.animations.push({name:`Animation ${sky.animations.length+1}`,fps:8,frames:[]});renderComponentPanel();drawWorkplace();});assetsHost.append(addAnim);
+      }
+      section.querySelector('.component-body')?.append(assetsHost);
+      const actions=document.createElement('div');actions.className='world-skybox-item-actions';
+      const moveActions=document.createElement('div');moveActions.className='world-skybox-action-row';
+      const fileActions=document.createElement('div');fileActions.className='world-skybox-action-row';
+      const exportBtn=document.createElement('button');exportBtn.type='button';exportBtn.className='btn';exportBtn.textContent='Export SKYBOX';exportBtn.addEventListener('click',()=>exportSkyBoxFile(sky));
+      const up=document.createElement('button');up.type='button';up.className='btn';up.textContent='Move Up';up.title='Higher index draws above lower Sky Boxes';up.addEventListener('click',()=>moveSkyBoxBy(sky,1,world,scene));
+      const down=document.createElement('button');down.type='button';down.className='btn';down.textContent='Move Down';down.addEventListener('click',()=>moveSkyBoxBy(sky,-1,world,scene));
+      const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Remove';remove.addEventListener('click',()=>{pushHistory('Remove Sky Box');world.skyBoxes=world.skyBoxes.filter(x=>x!==sky);world.skyBoxes.forEach((x,i)=>x.index=i);syncSkyBoxCompatibility(world);renderComponentPanel();drawWorkplace();});
+      moveActions.append(up,down);fileActions.append(exportBtn,remove);actions.append(moveActions,fileActions);section.querySelector('.component-body')?.append(actions);host.append(section);
+    });
+    const note=document.createElement('div');note.className='world-skybox-hint';note.textContent='Lower Index values draw behind higher Index values. Direction Deg: 90 moves left; Orientation Aware rotates each tile’s movement direction with its randomized tile orientation.';host.append(note);
+  }
+  function uniqueSkyBoxName(world,base){const names=new Set((world.skyBoxes||[]).map(s=>String(s.name||'').trim().toLowerCase()));let name=String(base||'Sky Box').trim()||'Sky Box',n=2;while(names.has(name.toLowerCase()))name=`${base} ${n++}`;return name;}
+  function moveSkyBoxBy(sky,step,world,scene){
+    const sorted=world.skyBoxes.slice().sort((a,b)=>Number(a.index)-Number(b.index)),i=sorted.indexOf(sky),j=i+step;if(i<0||j<0||j>=sorted.length)return;
+    pushHistory('Reorder Sky Boxes');const a=sorted[i],b=sorted[j],av=Number(a.index),bv=Number(b.index),ai=Number.isFinite(av)?av:i,bi=Number.isFinite(bv)?bv:j;a.index=bi;b.index=ai;world.skyBoxes.sort((x,y)=>Number(x.index)-Number(y.index));syncSkyBoxCompatibility(world);renderComponentPanel();drawWorkplace();
+  }
+  async function exportSkyBoxFile(sky){
+    try{if(!window.UIXNDCCodec?.encode)throw new Error('NDC codec unavailable');const bytes=window.UIXNDCCodec.encode({format:'node2d-skybox',version:1,skyBox:clone(sky)});const base=String(sky.name||'Sky Box').trim().replace(/[\\/:*?"<>|]+/g,'-')||'Sky Box';downloadBytes(bytes,`${base}.skybox.ndc`,'application/octet-stream');status(`Exported ${base}.skybox.ndc`);}catch(err){status(`Could not export Sky Box: ${err.message||err}`);}
+  }
+  function importSkyBoxFile(scene){
+    const input=document.createElement('input');input.type='file';input.accept='.skybox.ndc,.ndc,application/octet-stream';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;try{if(!window.UIXNDCCodec?.decode)throw new Error('NDC codec unavailable');const data=window.UIXNDCCodec.decode(new Uint8Array(await file.arrayBuffer()));const raw=data?.format==='node2d-skybox'?data.skyBox:(data?.skyBox||data?.worldScene?.skyBox||null);if(!raw||typeof raw!=='object')throw new Error('This is not a Node2D Sky Box NDC file');const world=normalizeWorldScene(scene),sky=clone(raw);sky.id=`skybox-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;sky.name=uniqueSkyBoxName(world,String(sky.name||file.name.replace(/\.skybox\.ndc$/i,'')));sky.index=world.skyBoxes.length?Math.max(...world.skyBoxes.map(s=>Number(s.index)||0))+1:0;pushHistory('Import Sky Box');world.skyBoxes.push(sky);normalizeWorldScene(scene);renderComponentPanel();drawWorkplace();status(`Imported Sky Box “${sky.name}”`);}catch(err){status(`Could not import Sky Box: ${err.message||err}`);}};input.click();
+  }
   function renderNodeCard(node) {
     const body = document.createDocumentFragment();
     const row = document.createElement('div'); row.className = 'property-row property-row-stack';
@@ -2207,7 +2449,7 @@
       body.append(checkboxField('Visibility',nodeComp.visible!==false,v=>{pushHistory('Edit Visibility');nodeComp.visible=!!v;drawWorkplace();}));
       body.append(field('Relative',nodeComp.relative==='Screen'?'Screen':'World','custom-select',v=>{
         pushHistory('Edit Relative');
-        nodeComp.relative=v==='Screen'?'Screen':'World';
+        setNodeRelativeModePreservingPosition(node,v);
         drawWorkplace();
       },['World','Screen'],()=>nodeComp.relative==='Screen'?'Screen':'World'));
     }
@@ -2262,7 +2504,7 @@
     activeComponentInspectorContext={node,comp:rawInspectorComponent||comp,type:comp?.type||''};
     let rows = [];
     switch (comp.type) {
-      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();}), field('Relative',comp.relative||'World','custom-select',v=>{comp.relative=v==='Screen'?'Screen':'World';drawWorkplace();},['World','Screen'],()=>comp.relative==='Screen'?'Screen':'World')]; break;
+      case 'node': rows = [checkboxField('Visibility',comp.visible!==false,v=>{comp.visible=!!v;drawWorkplace();}), field('Relative',comp.relative||'World','custom-select',v=>{setNodeRelativeModePreservingPosition(node,v);drawWorkplace();},['World','Screen'],()=>comp.relative==='Screen'?'Screen':'World')]; break;
       case 'script': rows = [field('Name', comp.name || '', 'text', v => comp.name = v), field('Edit', 'Edit', 'button', () => openScriptEditor(node))]; break;
       case 'transform': rows = [axisVectorField('Position', comp.position, (x,y) => { comp.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.scale, (x,y) => { comp.scale=[Number.isFinite(Number(x))?Number(x):1, Number.isFinite(Number(y))?Number(y):1]; drawWorkplace(); }), field('Angle', comp.angle[0], 'number', v => { comp.angle=[Number(v)||0]; drawWorkplace(); })]; break;
       case 'text': rows = renderTextRows(node, comp); break;
@@ -2922,20 +3164,20 @@
     if(path)multiMarkerFor(input,wrap,path);return wrap;
   }
 
-  function field(label,value,type='text',onChange=()=>{},options=[],getCurrentValue=null){
+  function field(label,value,type='text',onChange=()=>{},options=[],getCurrentValue=null,commitOptions=null){
     const path=multiReadPathFromValue(value);
     const row=document.createElement('div');row.className='property-row';const l=document.createElement('span');l.className='property-label';l.textContent=label;const c=document.createElement('div');c.className='property-control';
     if(type==='readonly'){c.append(Object.assign(document.createElement('div'),{className:'readonly-value',textContent:value??''}));}
     else if(type==='textarea'){
       const i=document.createElement('textarea');i.value=value??'';
-      bindValueCommit(i,()=>i.value,onChange,label,path,{live:true});
+      bindValueCommit(i,()=>i.value,onChange,label,path,commitOptions||{live:true});
       c.append(i);
     }
     else if(type==='button'){const b=document.createElement('button');b.className='script-button';b.textContent=value;b.addEventListener('click',onChange);c.append(b);}
     else if(type==='custom-select') c.append(customSelect(value,options,onChange,activeMultiComponentContext,path,label,getCurrentValue));
     else {
       const i=document.createElement('input');i.type=type==='number'?'number':'text';i.value=value??'';
-      bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label,path,{live:true});
+      bindValueCommit(i,()=>type==='number'?Number(i.value):i.value,onChange,label,path,commitOptions || (type==='text'?{live:true}:null));
       c.append(i);
     }
     row.append(l,c);
@@ -3063,6 +3305,222 @@
     if(state.color?.live&&typeof state.color.onChange==='function'){try{state.color.onChange(rgbaToHex(state.color.rgba));}catch{}}
   }
   function drawColorWheel(){const c=$('#colorWheel'),ctx=c.getContext('2d'),cx=130,cy=130,r=112;ctx.clearRect(0,0,c.width,c.height);for(let i=0;i<360;i++){const a=(i-90)*Math.PI/180;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+Math.PI/180);ctx.closePath();ctx.fillStyle=`hsl(${i},100%,50%)`;ctx.fill();}ctx.globalCompositeOperation='destination-in';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.strokeStyle='#707070';ctx.strokeRect(18,18,224,224);const hsv=state.color?.hsv||rgbToHsv(state.color?.rgba);const a=(Number(hsv?.h||0)-90)*Math.PI/180,s=clamp(Number(hsv?.s||0),0,1),ix=cx+Math.cos(a)*r*s,iy=cy+Math.sin(a)*r*s;ctx.beginPath();ctx.arc(ix,iy,7,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#111';ctx.stroke();}
+  function screenPickerCssRgba(value){
+    const s=String(value||'').trim();
+    if(!s||s==='transparent'||s==='none')return null;
+    if(/^#[0-9a-f]{3,8}$/i.test(s)){
+      let h=s.slice(1);
+      if(h.length===3||h.length===4)h=h.split('').map(c=>c+c).join('');
+      if(h.length===6)h+='ff';
+      if(h.length!==8)return null;
+      const n=parseInt(h,16);return[((n>>>24)&255)/255,((n>>>16)&255)/255,((n>>>8)&255)/255,(n&255)/255];
+    }
+    const m=s.match(/^rgba?\((.*)\)$/i);
+    if(!m)return null;
+    const parts=m[1].replace(/\s*\/\s*/,' ').trim().split(/[\s,]+/).filter(Boolean);
+    if(parts.length<3)return null;
+    const channel=v=>clamp(parseFloat(v)*(String(v).includes('%')?.01:1/255),0,1);
+    const alpha=v=>v===undefined?1:clamp(parseFloat(v)*(String(v).includes('%')?.01:1),0,1);
+    const out=[channel(parts[0]),channel(parts[1]),channel(parts[2]),alpha(parts[3])];
+    return out.every(Number.isFinite)?out:null;
+  }
+  function screenPickerCanvasPixel(canvas,x,y){
+    try{
+      const rect=canvas.getBoundingClientRect();
+      if(!rect.width||!rect.height)return null;
+      const px=Math.floor((x-rect.left)*canvas.width/rect.width);
+      const py=Math.floor((y-rect.top)*canvas.height/rect.height);
+      if(px<0||py<0||px>=canvas.width||py>=canvas.height)return null;
+      const d=canvas.getContext('2d',{willReadFrequently:true})?.getImageData(px,py,1,1).data;
+      if(!d)return null;
+      return[d[0]/255,d[1]/255,d[2]/255,d[3]/255];
+    }catch{return null;}
+  }
+  function screenPickerImagePixel(img,x,y){
+    try{
+      if(!img.complete||!img.naturalWidth||!img.naturalHeight)return null;
+      const rect=img.getBoundingClientRect();
+      if(!rect.width||!rect.height)return null;
+      const sx=Math.min(img.naturalWidth-1,Math.max(0,Math.floor((x-rect.left)*img.naturalWidth/rect.width)));
+      const sy=Math.min(img.naturalHeight-1,Math.max(0,Math.floor((y-rect.top)*img.naturalHeight/rect.height)));
+      const c=document.createElement('canvas');c.width=1;c.height=1;
+      const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,sx,sy,1,1,0,0,1,1);
+      const d=g.getImageData(0,0,1,1).data;return[d[0]/255,d[1]/255,d[2]/255,d[3]/255];
+    }catch{return null;}
+  }
+  function screenPickerSplitCssList(value){
+    const out=[];let part='',depth=0,quote='';
+    for(const ch of String(value||'')){
+      if(quote){part+=ch;if(ch===quote)quote='';continue;}
+      if(ch==='"'||ch==="'"){quote=ch;part+=ch;continue;}
+      if(ch==='(')depth++;else if(ch===')')depth=Math.max(0,depth-1);
+      if(ch===','&&depth===0){out.push(part.trim());part='';}else part+=ch;
+    }
+    if(part.trim())out.push(part.trim());return out;
+  }
+  function screenPickerGradientColor(image,x,y,rect){
+    const m=String(image||'').trim().match(/^(linear-gradient|repeating-linear-gradient|radial-gradient|repeating-radial-gradient)\((.*)\)$/i);
+    if(!m||!rect.width||!rect.height)return null;
+    const kind=m[1].toLowerCase(),args=screenPickerSplitCssList(m[2]);
+    if(args.length<2)return null;
+    let angle=180,firstStop=0,radial=false;
+    if(kind.includes('radial')){
+      radial=true;
+      if(/^(circle|ellipse|closest-|farthest-|at\s)/i.test(args[0]))firstStop=1;
+    }else if(/^(to\s|[-+]?\d*\.?\d+deg$|[-+]?\d*\.?\d+turn$|[-+]?\d*\.?\d+rad$)/i.test(args[0])){
+      const direction=args[0].toLowerCase();firstStop=1;
+      if(direction.startsWith('to ')){
+        const right=direction.includes('right'),left=direction.includes('left'),top=direction.includes('top'),bottom=direction.includes('bottom');
+        angle=right?(top?45:bottom?135:90):left?(top?315:bottom?225:270):(top?0:bottom?180:180);
+      }else if(direction.endsWith('turn'))angle=parseFloat(direction)*360;
+      else if(direction.endsWith('rad'))angle=parseFloat(direction)*180/Math.PI;
+      else angle=parseFloat(direction);
+    }
+    const stops=[];
+    for(const token of args.slice(firstStop)){
+      let colorToken=token.trim(),pos=null;
+      const pm=colorToken.match(/\s+(-?(?:\d*\.)?\d+%?)\s*$/);
+      if(pm){pos=pm[1].endsWith('%')?parseFloat(pm[1])/100:parseFloat(pm[1]);colorToken=colorToken.slice(0,pm.index).trim();}
+      const color=screenPickerCssRgba(colorToken);
+      if(color)stops.push({color,pos});
+    }
+    if(stops.length<2)return null;
+    if(stops[0].pos==null)stops[0].pos=0;
+    if(stops[stops.length-1].pos==null)stops[stops.length-1].pos=1;
+    for(let i=0;i<stops.length;){
+      if(stops[i].pos!=null){i++;continue;}
+      const from=i-1;let to=i;while(to<stops.length&&stops[to].pos==null)to++;
+      if(from>=0&&to<stops.length){const step=(stops[to].pos-stops[from].pos)/(to-from);for(let j=i;j<to;j++)stops[j].pos=stops[from].pos+step*(j-from);}
+      i=to+1;
+    }
+    let t;
+    if(radial){
+      const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+      t=Math.hypot((x-cx)/(rect.width/2),(y-cy)/(rect.height/2))/Math.SQRT2;
+    }else{
+      const a=((angle%360)+360)%360*Math.PI/180,dx=Math.sin(a),dy=-Math.cos(a),len=Math.abs(dx)*rect.width+Math.abs(dy)*rect.height;
+      t=.5+(((x-(rect.left+rect.width/2))*dx+(y-(rect.top+rect.height/2))*dy)/Math.max(1,len));
+    }
+    if(kind.startsWith('repeating-')){const span=stops[stops.length-1].pos-stops[0].pos;if(span>0)t=((t-stops[0].pos)%span+span)%span+stops[0].pos;}
+    t=clamp(t,stops[0].pos,stops[stops.length-1].pos);
+    let a=stops[0],b=stops[stops.length-1];
+    for(let i=0;i<stops.length-1;i++){if(t>=stops[i].pos&&t<=stops[i+1].pos){a=stops[i];b=stops[i+1];break;}}
+    const f=b.pos===a.pos?0:clamp((t-a.pos)/(b.pos-a.pos),0,1);
+    return a.color.map((v,i)=>v+(b.color[i]-v)*f);
+  }
+  function screenPickerTextAt(node,x,y){
+    try{
+      for(const child of Array.from(node.childNodes||[])){
+        if(child.nodeType!==Node.TEXT_NODE||!String(child.nodeValue||'').trim())continue;
+        const range=document.createRange();range.selectNodeContents(child);
+        const hit=Array.from(range.getClientRects()).some(r=>x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom);
+        range.detach?.();if(hit)return true;
+      }
+    }catch{}
+    return false;
+  }
+  function screenPickerNodeLayers(node,x,y){
+    const cs=getComputedStyle(node),layers=[],rect=node.getBoundingClientRect();
+    const bg=screenPickerCssRgba(cs.backgroundColor);if(bg&&bg[3]>0)layers.push(bg);
+    const images=screenPickerSplitCssList(cs.backgroundImage).filter(v=>v&&v!=='none');
+    for(let i=images.length-1;i>=0;i--){const color=screenPickerGradientColor(images[i],x,y,rect);if(color&&color[3]>0)layers.push(color);}
+    if(node instanceof HTMLCanvasElement){const pixel=screenPickerCanvasPixel(node,x,y);if(pixel&&pixel[3]>0)layers.push(pixel);}
+    else if(node instanceof HTMLImageElement){const pixel=screenPickerImagePixel(node,x,y);if(pixel&&pixel[3]>0)layers.push(pixel);}
+    else if(node instanceof HTMLVideoElement){
+      try{if(node.readyState>=2&&node.videoWidth&&node.videoHeight){const sx=Math.min(node.videoWidth-1,Math.max(0,Math.floor((x-rect.left)*node.videoWidth/Math.max(1,rect.width))));const sy=Math.min(node.videoHeight-1,Math.max(0,Math.floor((y-rect.top)*node.videoHeight/Math.max(1,rect.height))));const c=document.createElement('canvas');c.width=c.height=1;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(node,sx,sy,1,1,0,0,1,1);const d=g.getImageData(0,0,1,1).data;layers.push([d[0]/255,d[1]/255,d[2]/255,d[3]/255]);}}catch{}
+    }
+    const bw=[parseFloat(cs.borderTopWidth)||0,parseFloat(cs.borderRightWidth)||0,parseFloat(cs.borderBottomWidth)||0,parseFloat(cs.borderLeftWidth)||0];
+    const nearTop=y>=rect.top&&y<=rect.top+bw[0],nearRight=x<=rect.right&&x>=rect.right-bw[1],nearBottom=y<=rect.bottom&&y>=rect.bottom-bw[2],nearLeft=x>=rect.left&&x<=rect.left+bw[3];
+    if(nearTop){const c=screenPickerCssRgba(cs.borderTopColor);if(c&&c[3]>0)layers.push(c);}
+    else if(nearRight){const c=screenPickerCssRgba(cs.borderRightColor);if(c&&c[3]>0)layers.push(c);}
+    else if(nearBottom){const c=screenPickerCssRgba(cs.borderBottomColor);if(c&&c[3]>0)layers.push(c);}
+    else if(nearLeft){const c=screenPickerCssRgba(cs.borderLeftColor);if(c&&c[3]>0)layers.push(c);}
+    if(node.namespaceURI==='http://www.w3.org/2000/svg'){
+      const fill=String(cs.fill||'');if(fill&&fill!=='none'){const c=screenPickerCssRgba(fill);if(c&&c[3]>0){c[3]*=clamp(parseFloat(cs.fillOpacity)||1,0,1);layers.push(c);}}
+      const stroke=String(cs.stroke||'');if(stroke&&stroke!=='none'){const c=screenPickerCssRgba(stroke);if(c&&c[3]>0){c[3]*=clamp(parseFloat(cs.strokeOpacity)||1,0,1);layers.push(c);}}
+    }
+    if(screenPickerTextAt(node,x,y)){const c=screenPickerCssRgba(cs.color);if(c&&c[3]>0)layers.push(c);}
+    if((node instanceof HTMLInputElement||node instanceof HTMLTextAreaElement)&&String(node.value||'').length){
+      const text=screenPickerCssRgba(cs.color);if(text&&text[3]>0){
+        const left=rect.left+(parseFloat(cs.paddingLeft)||4),top=rect.top+(rect.height-parseFloat(cs.fontSize||'14'))/2;
+        if(x>=left&&x<=Math.min(rect.right,left+rect.width*.75)&&y>=top-2&&y<=top+(parseFloat(cs.fontSize)||14)+2)layers.push(text);
+      }
+    }
+    const opacity=Number.parseFloat(cs.opacity);
+    return {node,layers,opacity:Number.isFinite(opacity)?clamp(opacity,0,1):1};
+  }
+  function screenPickerOver(dst,src){
+    const sa=clamp(Number(src?.[3]??0),0,1),da=clamp(Number(dst?.[3]??0),0,1),oa=sa+da*(1-sa);
+    if(oa<=0)return[0,0,0,0];
+    return[(src[0]*sa+dst[0]*da*(1-sa))/oa,(src[1]*sa+dst[1]*da*(1-sa))/oa,(src[2]*sa+dst[2]*da*(1-sa))/oa,oa];
+  }
+  function screenPickerCompositeEntries(entries,start=0,end=entries.length,ignoreOpacityNode=null){
+    let out=[0,0,0,0],i=start;
+    while(i<end){
+      const entry=entries[i],node=entry.node;
+      if(node!==ignoreOpacityNode&&entry.opacity<.999){
+        let j=i+1;while(j<end&&node.contains(entries[j].node))j++;
+        const group=screenPickerCompositeEntries(entries,i,j,node);group[3]*=entry.opacity;
+        out=screenPickerOver(out,group);i=j;continue;
+      }
+      for(const layer of entry.layers)out=screenPickerOver(out,layer);
+      i++;
+    }
+    return out;
+  }
+  function screenPickerSampleAt(x,y){
+    let stack=[];
+    try{stack=document.elementsFromPoint(x,y)||[];}catch{}
+    stack=stack.filter(node=>node instanceof Element&&!node.closest('.uix-screen-picker')&&node.id!=='colorModal'&&!node.closest('#colorModal'));
+    if(!stack.length)return null;
+    const entries=[];
+    for(const node of stack.slice().reverse()){
+      if(node===document.documentElement)continue;
+      if(node.hidden||getComputedStyle(node).display==='none'||getComputedStyle(node).visibility==='hidden')continue;
+      entries.push(screenPickerNodeLayers(node,x,y));
+    }
+    let rgba=screenPickerCompositeEntries(entries);
+    if(rgba[3]<1)rgba=screenPickerOver([1,1,1,1],rgba);
+    if(!rgba||rgba[3]<=0)return null;
+    return rgbaToHex([rgba[0],rgba[1],rgba[2],1]);
+  }
+  function startInternalScreenPicker(){
+    if(!state.color||document.querySelector('.uix-screen-picker'))return;
+    const colorModal=$('#colorModal'),restoreColorModal=!!colorModal&&!colorModal.hidden;
+    const savedStack=modalStack.slice(),savedFocus=document.activeElement;
+    if(restoreColorModal){
+      colorModal.hidden=true;
+      modalStack=modalStack.filter(id=>id!==colorModal.id);
+      modalStack.forEach((id,index)=>{const m=$('#'+id);if(m)m.style.zIndex=String(200011+index);});
+      refreshModalBackdrop();syncModalLayerState();
+    }
+    const root=document.createElement('div');root.className='uix-screen-picker';
+    root.innerHTML='<div class="uix-screen-picker-crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div><div class="uix-screen-picker-readout"><span data-screen-picker-swatch></span><strong data-screen-picker-hex>#FFFFFFFF</strong><small>Node2D only · tap a visible color · Cancel to stop</small></div><button type="button" class="uix-screen-picker-cancel">Cancel</button>';
+    document.body.append(root);
+    const cross=root.querySelector('.uix-screen-picker-crosshair'),readout=root.querySelector('[data-screen-picker-hex]'),swatch=root.querySelector('[data-screen-picker-swatch]'),cancel=root.querySelector('.uix-screen-picker-cancel');
+    let lastHex=null,active=true,pointerId=null;
+    const restore=()=>{
+      if(!restoreColorModal||!colorModal)return;
+      colorModal.hidden=false;colorModal.classList.add('modal-stack-active');
+      modalStack=savedStack.slice();
+      modalStack.forEach((id,index)=>{const m=$('#'+id);if(m){m.hidden=false;m.style.zIndex=String(200011+index);m.classList.add('modal-stack-active');}});
+      refreshModalBackdrop();syncModalLayerState();
+      if(savedFocus instanceof HTMLElement&&savedFocus.isConnected){try{savedFocus.focus({preventScroll:true});}catch{}}
+    };
+    const clean=()=>{if(!active)return;active=false;document.removeEventListener('pointerdown',onDown,true);document.removeEventListener('pointermove',onMove,true);document.removeEventListener('pointerup',onUp,true);document.removeEventListener('pointercancel',onCancel,true);document.removeEventListener('keydown',onKey,true);root.remove();restore();};
+    const setPreview=(x,y)=>{if(!active)return;cross.style.left=`${x}px`;cross.style.top=`${y}px`;const hex=screenPickerSampleAt(x,y);if(!hex)return;lastHex=hex;readout.textContent=hex.toUpperCase();swatch.style.background=hex;cross.querySelector('b').style.background=hex;};
+    const commit=()=>{if(lastHex&&state.color){try{const alpha=Number(state.color.rgba?.[3]??1);const a=Math.round(clamp(alpha,0,1)*255).toString(16).padStart(2,'0');const rgba=parseColor(lastHex.slice(0,7)+a);state.color.rgba=rgba;state.color.hsv=rgbToHsv(rgba);}catch{}}clean();if(state.color)syncColorUI();};
+    const onDown=e=>{if(!active)return;if(e.target===cancel||cancel.contains(e.target))return;pointerId=e.pointerId;setPreview(e.clientX,e.clientY);e.preventDefault();e.stopPropagation();};
+    const onMove=e=>{if(!active)return;setPreview(e.clientX,e.clientY);if(e.pointerId===pointerId){e.preventDefault();e.stopPropagation();}};
+    const onUp=e=>{if(!active||e.pointerId!==pointerId)return;e.preventDefault();e.stopPropagation();pointerId=null;setPreview(e.clientX,e.clientY);commit();};
+    const onCancel=e=>{if(pointerId===e.pointerId)pointerId=null;setPreview(e.clientX,e.clientY);};
+    const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();clean();}};
+    cancel.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();clean();});
+    document.addEventListener('pointerdown',onDown,true);document.addEventListener('pointermove',onMove,true);document.addEventListener('pointerup',onUp,true);document.addEventListener('pointercancel',onCancel,true);document.addEventListener('keydown',onKey,true);
+    root.querySelector('.uix-screen-picker-readout').setAttribute('aria-live','polite');
+    status('Screen color picker active. The Color window is temporarily hidden.');
+  }
+  function pickScreenColor(){if(state.color)startInternalScreenPicker();}
   function pickWheel(e){const wheel=$('#colorWheel');if(!wheel)return;const rect=wheel.getBoundingClientRect(),sx=260/Math.max(1,rect.width),sy=260/Math.max(1,rect.height),x=(e.clientX-rect.left)*sx-130,y=(e.clientY-rect.top)*sy-130,dist=Math.hypot(x,y);if(dist>112)return;const h=(Math.atan2(y,x)*180/Math.PI+360+90)%360,s=clamp(dist/112,0,1),v=clamp(Number(state.color.hsv?.v??1),0,1),rgb=hsvToRgb(h,s,v);state.color.hsv={h,s,v};state.color.rgba=[rgb[0],rgb[1],rgb[2],state.color.rgba[3]];syncColorUI();}
   function hsvToRgb(h,s,v){const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let r=0,g=0,b=0;if(h<60)[r,g,b]=[c,x,0];else if(h<120)[r,g,b]=[x,c,0];else if(h<180)[r,g,b]=[0,c,x];else if(h<240)[r,g,b]=[0,x,c];else if(h<300)[r,g,b]=[x,0,c];else[r,g,b]=[c,0,x];return[r+m,g+m,b+m];}
   function applyColor(){try{const rgba=parseColor($('#colorTextInput').value);state.color.onChange(rgbaToHex(rgba));state.color.live=false;state.runtime&& (state.runtime._colorInputLiveDispatch=false);closeModal($('#colorModal'));renderComponentPanel();drawWorkplace();}catch{status('Invalid color value');}}
@@ -3363,7 +3821,7 @@
       title.textContent=next;
       input?.classList.remove('uix-validation-error-flash');
       renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();scheduleInspectorRefresh();
-    });
+    },[],null,{live:false});
     applyVariableNameInputRules(nameRow.querySelector('input'));
     body.append(nameRow);
     body.append(field('Data Type',v.dataType,'custom-select',x=>{
@@ -3580,6 +4038,7 @@
       workplaceMetricsDirty=true;
       const visible=resizeWorkplaceCanvas();
       if(visible)drawWorkplace();
+      updateGameScreenPreview();
     });
   }
 
@@ -3672,8 +4131,405 @@
     const ts=Array.isArray(sprite?.textureSize)?sprite.textureSize:[0,0],base=constrainImageSize(img)||{w:img.naturalWidth||1,h:img.naturalHeight||1};
     return {w:Math.max(1,Number(ts[0])>0?Number(ts[0]):base.w),h:Math.max(1,Number(ts[1])>0?Number(ts[1]):base.h)};
   }
+  const skyBoxTintCache=new WeakMap();
+  function skyBoxAssets(sky){
+    if(!sky)return [];
+    if(sky.source==='Animation')return (sky.animations||[]).filter(a=>(a?.frames||[]).length).map(a=>({name:a.name||'Animation',frames:a.frames,fps:Number(a.fps)||8}));
+    return (sky.sprites||[]).filter(a=>a?.src).map(a=>({name:a.name||'Sprite',src:a.src}));
+  }
+  function skyBoxFrameSource(entry,sky,now){
+    if(!entry)return '';
+    if(sky?.source!=='Animation')return String(entry.src||'');
+    const frames=entry.frames||[];if(!frames.length)return '';
+    const index=Math.floor(Math.max(0,now)*(Math.max(1,Number(entry.fps)||8)/1000))%frames.length;
+    return String(frames[index]?.src||frames[0]?.src||'');
+  }
+  function skyBoxCellHash(col,row,salt=0){
+    // Coordinate-only integer hash: each tile always gets the same result at a
+    // given position, even after camera movement or re-entering runtime.
+    let x=(Math.trunc(Number(col)||0)|0),y=(Math.trunc(Number(row)||0)|0);
+    let h=Math.imul(x^0x9e3779b9,0x85ebca6b);
+    h^=Math.imul(y^0xc2b2ae35,0x27d4eb2d);
+    h^=Math.imul((Number(salt)||0)^0x165667b1,0x9e3779b1);
+    h=Math.imul(h^(h>>>16),0x7feb352d);
+    h=Math.imul(h^(h>>>15),0x846ca68b);
+    return (h^(h>>>16))>>>0;
+  }
+  function skyBoxPositiveMod(value,count){return ((value%count)+count)%count;}
+  function skyBoxChooseIndex(count,sky,col=0,row=0,columns=64){
+    if(!count)return -1;
+    const mode=sky?.variation||'Singular';
+    if(mode==='Random')return skyBoxCellHash(col,row,0x51ed270b)%count;
+    if(mode==='AlternateX')return skyBoxPositiveMod(Math.trunc(col),count);
+    if(mode==='AlternateY')return skyBoxPositiveMod(Math.trunc(row),count);
+    if(mode==='AlternateBoth')return skyBoxPositiveMod(Math.trunc(col)+Math.trunc(row),count);
+    if(mode==='Alternates')return skyBoxPositiveMod(Math.trunc(row)*Math.max(1,columns)+Math.trunc(col),count);
+    return 0;
+  }
+  function skyBoxChooseEntry(entries,sky,col=0,row=0,columns=64){return entries[skyBoxChooseIndex(entries.length,sky,col,row,columns)]||null;}
+  const skyBoxImageIds=new WeakMap();let skyBoxNextImageId=1;
+  const skyBoxScreenTileCache=new WeakMap(),skyBoxWorldTileCache=new WeakMap(),skyBoxEditorPreviewCache=new WeakMap();
+  function skyBoxImageId(image){if(!image||typeof image!=='object')return 0;let id=skyBoxImageIds.get(image);if(!id){id=skyBoxNextImageId++;skyBoxImageIds.set(image,id);}return id;}
+  function skyBoxResolveEntries(entries,sky,now){
+    return entries.map(entry=>{
+      const source=skyBoxFrameSource(entry,sky,now),raw=source?getAssetImage(source):null;
+      const ready=!!raw?.complete&&Number(raw.naturalWidth||raw.width)>0&&Number(raw.naturalHeight||raw.height)>0;
+      const image=ready?skyBoxTintedImage(raw,sky):null;
+      return {entry,source,raw:ready?raw:null,image,id:skyBoxImageId(image)};
+    });
+  }
+  function skyBoxReadyEntry(resolved){return resolved.find(row=>row?.raw&&row?.image)||null;}
+  function skyBoxResolvedImage(resolved,sky,col,row,columns=1024){
+    const item=resolved[skyBoxChooseIndex(resolved.length,sky,col,row,columns)];
+    return item?.image||skyBoxReadyEntry(resolved)?.image||null;
+  }
+  function skyBoxRenderSignature(sky,resolved,...extra){
+    return [sky?.mode,sky?.source,sky?.renderMode,sky?.variation,sky?.scaleX,sky?.scaleY,sky?.repeatX,sky?.repeatY,sky?.modulate,sky?.strength,sky?.opacity,sky?.pixelated!==false,sky?.closedGap!==false,!!sky?.randomRotation,!!sky?.directionalMovement,sky?.scope,!!sky?.fixedCoordinates,!!sky?.orientationAware,sky?.directionDeg,sky?.speed,...extra,resolved.map(row=>row.id).join(',')].join('|');
+  }
+  function skyBoxCreateCanvas(width,height){
+    const w=Math.max(1,Math.ceil(width)),h=Math.max(1,Math.ceil(height));
+    try{if(typeof OffscreenCanvas==='function')return new OffscreenCanvas(w,h);}catch{}
+    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;return canvas;
+  }
+  function skyBoxTintedImage(img,sky){
+    const strength=Math.max(0,Math.min(1,(Number(sky?.strength)||0)/100));
+    if(!img||strength<=0)return img;
+    let tint;try{tint=parseColor(sky.modulate||'#FFFFFFFF');}catch{tint=[1,1,1,1];}
+    if(tint.every(v=>v===1))return img;
+    const key=[...tint,strength].map(v=>Number(v).toFixed(4)).join(':');
+    let map=skyBoxTintCache.get(img);if(!map){map=new Map();skyBoxTintCache.set(img,map);}if(map.has(key))return map.get(key);
+    try{
+      const iw=Math.max(1,Math.min(4096,img.naturalWidth||img.width||1)),ih=Math.max(1,Math.min(4096,img.naturalHeight||img.height||1));
+      const scale=Math.min(1,4096/iw,4096/ih),w=Math.max(1,Math.round(iw*scale)),h=Math.max(1,Math.round(ih*scale));
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const c=canvas.getContext('2d',{willReadFrequently:true});if(!c)return img;
+      c.drawImage(img,0,0,w,h);const data=c.getImageData(0,0,w,h),p=data.data;
+      const fr=1-strength+tint[0]*strength,fg=1-strength+tint[1]*strength,fb=1-strength+tint[2]*strength,fa=1-strength+tint[3]*strength;
+      for(let i=0;i<p.length;i+=4){p[i]=Math.round(p[i]*fr);p[i+1]=Math.round(p[i+1]*fg);p[i+2]=Math.round(p[i+2]*fb);p[i+3]=Math.round(p[i+3]*fa);}
+      c.putImageData(data,0,0);map.set(key,canvas);while(map.size>8)map.delete(map.keys().next().value);return canvas;
+    }catch{return img;}
+  }
+  function skyBoxOpacity(sky){return Math.max(0,Math.min(1,Number(sky?.opacity??100)/100));}
+  function skyBoxSmoothing(ctx,sky){
+    const pixelated=sky?.pixelated!==false;
+    ctx.imageSmoothingEnabled=!pixelated;
+    if(!pixelated&&'imageSmoothingQuality' in ctx)ctx.imageSmoothingQuality='high';
+  }
+  function skyBoxScale(sky,axis){return Math.max(.01,1+(Number(sky?.[axis])||0));}
+  function skyBoxTileDimensions(sky,img,referenceW,referenceH){
+    const iw=Math.max(1,img?.naturalWidth||img?.width||1),ih=Math.max(1,img?.naturalHeight||img?.height||1);
+    const sx=skyBoxScale(sky,'scaleX'),sy=skyBoxScale(sky,'scaleY');
+    if(sky.renderMode==='Repeat'){
+      const rx=Math.max(0,Math.min(64,Math.floor(Number(sky.repeatX)||0))),ry=Math.max(0,Math.min(64,Math.floor(Number(sky.repeatY)||0)));
+      return {w:Math.max(1,(rx?Math.max(1,referenceW/rx):iw)*sx),h:Math.max(1,(ry?Math.max(1,referenceH/ry):ih)*sy)};
+    }
+    const useScale=['Crop','Stretch'].includes(sky.renderMode);
+    const w=iw*(useScale?sx:1),h=ih*(useScale?sy:1);
+    return {w:Math.max(1,w),h:Math.max(1,h)};
+  }
+  function drawSkyBoxImageInCell(ctx,img,x,y,w,h,renderMode){
+    const iw=Math.max(1,img?.naturalWidth||img?.width||1),ih=Math.max(1,img?.naturalHeight||img?.height||1);
+    if(renderMode==='Crop'){
+      const fit=Math.max(w/iw,h/ih),dw=iw*fit,dh=ih*fit;
+      ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+    }else if(renderMode==='Contain'){
+      const fit=Math.min(w/iw,h/ih),dw=iw*fit,dh=ih*fit;
+      ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+    }else{
+      ctx.drawImage(img,x,y,w,h);
+    }
+  }
+  function skyBoxGapPadding(ctx,sky){
+    if(sky?.closedGap===false)return 0;
+    let scale=1,dpr=1;
+    try{
+      const t=ctx.getTransform?.();
+      if(t)scale=Math.max(.01,Math.hypot(t.a,t.b));
+      const canvas=ctx.canvas,rect=canvas?.getBoundingClientRect?.();
+      const cssWidth=Number(rect?.width)||Number(canvas?.clientWidth)||0;
+      if(cssWidth>0&&Number(canvas?.width)>0)dpr=Math.max(.5,Math.min(8,canvas.width/cssWidth));
+    }catch{}
+    // Keep at least ~2 CSS pixels of overlap, independent of devicePixelRatio.
+    // The old calculation divided by the backing-store scale directly, so on a
+    // high-DPI canvas it could shrink the overlap below half a CSS pixel.
+    const logicalScale=Math.max(.01,scale/dpr);
+    return 2/logicalScale;
+  }
+  function drawSkyBoxTileCell(ctx,img,x,y,w,h,sky,renderMode,turns=0){
+    const pad=skyBoxGapPadding(ctx,sky),closed=sky?.closedGap!==false;
+    ctx.save();
+    if(!closed){ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();}
+    if(turns){
+      ctx.translate(x+w/2,y+h/2);ctx.rotate(turns*Math.PI/2);
+      // Quarter-turns swap the pre-rotation bounds. Without this, a non-square
+      // tile rotates into a narrower/taller rectangle and exposes seams while moving.
+      const odd=(turns%2)===1;
+      const drawW=(odd?h:w)+pad*2,drawH=(odd?w:h)+pad*2;
+      drawSkyBoxImageInCell(ctx,img,-drawW/2,-drawH/2,drawW,drawH,renderMode);
+    }else drawSkyBoxImageInCell(ctx,img,x-pad,y-pad,w+pad*2,h+pad*2,renderMode);
+    ctx.restore();
+  }
+  function skyBoxMovingVector(sky,turns=0){
+    const degrees=(Number(sky?.directionDeg)||0)+((sky?.scope==='Individual'&&sky?.orientationAware)?turns*90:0),r=degrees*Math.PI/180;
+    // Node2D convention: 90 degrees means left; rotating a tile rotates its
+    // movement heading by the same quarter-turn when Orientation Aware is on.
+    return {x:-Math.sin(r),y:Math.cos(r)};
+  }
+  function skyBoxMovementEnabled(sky){return !!sky?.directionalMovement&&Math.abs(Number(sky?.speed)||0)>.0001;}
+  function drawSkyBoxMovingScreenTiles(ctx,sky,width,height,now=performance.now(),tileMetrics=null){
+    const entries=skyBoxAssets(sky);if(!entries.length)return;
+    const resolved=tileMetrics?.resolved||skyBoxResolveEntries(entries,sky,now),first=skyBoxReadyEntry(resolved);if(!first)return;
+    let {w:tileW,h:tileH}=tileMetrics?.tileW>0&&tileMetrics?.tileH>0?{w:Number(tileMetrics.tileW),h:Number(tileMetrics.tileH)}:skyBoxTileDimensions(sky,first.raw,width,height);
+    tileW=Math.max(1,Math.min(width*2,tileW));tileH=Math.max(1,Math.min(height*2,tileH));
+    let cols=Math.max(1,Math.ceil(width/tileW)+3),rows=Math.max(1,Math.ceil(height/tileH)+3);
+    if(cols*rows>12000){const k=Math.sqrt(cols*rows/12000);tileW*=k;tileH*=k;cols=Math.ceil(width/tileW)+3;rows=Math.ceil(height/tileH)+3;}
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    const speed=Number(sky.speed)||0,travel=now/1000*speed,scope=sky.scope==='All'?'All':'Individual',drawMode=sky.renderMode==='Repeat'?'Stretch':sky.renderMode;
+    ctx.save();ctx.globalAlpha*=opacity;ctx.beginPath();ctx.rect(0,0,width,height);ctx.clip();skyBoxSmoothing(ctx,sky);
+    if(scope==='All'){
+      const baseV=skyBoxMovingVector({...sky,scope:'All'},0),rawX=baseV.x*travel,rawY=baseV.y*travel;
+      const shiftCol=Math.floor(rawX/tileW),shiftRow=Math.floor(rawY/tileH),phaseX=rawX-shiftCol*tileW,phaseY=rawY-shiftRow*tileH;
+      const firstCol=-1,lastCol=Math.ceil(width/tileW)+1,firstRow=-1,lastRow=Math.ceil(height/tileH)+1;
+      for(let row=firstRow;row<=lastRow;row++)for(let col=firstCol;col<=lastCol;col++){
+        const sourceCol=col-shiftCol,sourceRow=row-shiftRow,img=skyBoxResolvedImage(resolved,sky,sourceCol,sourceRow,1024)||first.image;
+        const turns=sky.randomRotation?skyBoxCellHash(sourceCol,sourceRow,0xa511e9b3)%4:0;
+        drawSkyBoxTileCell(ctx,img,col*tileW+phaseX-tileW,row*tileH+phaseY-tileH,tileW,tileH,sky,sky.renderMode==='Repeat'?'Stretch':sky.renderMode,turns);
+      }
+    }else if(sky.fixedCoordinates===true){
+      // Keep each tile's cell anchored. Scroll its chosen sprite inside that cell,
+      // repeating the same image at the cell edges like a panel with a scrolling texture.
+      const seamPad=skyBoxGapPadding(ctx,sky);
+      for(let row=-1;row<rows;row++)for(let col=-1;col<cols;col++){
+        const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image;
+        const turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0,v=skyBoxMovingVector(sky,turns);
+        const x=col*tileW,y=row*tileH,shiftX=(((v.x*travel)%tileW+tileW)%tileW),shiftY=(((v.y*travel)%tileH+tileH)%tileH);
+        ctx.save();ctx.beginPath();
+        // Each cell remains anchored, while its texture loops internally. Expand the
+        // cell clip slightly when Closed Gap is on so fractional transform sampling
+        // cannot expose a one-pixel line between neighboring cells.
+        ctx.rect(x-seamPad,y-seamPad,tileW+seamPad*2,tileH+seamPad*2);ctx.clip();
+        for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++)drawSkyBoxTileCell(ctx,img,x+shiftX+ox*tileW,y+shiftY+oy*tileH,tileW,tileH,sky,drawMode,turns);
+        ctx.restore();
+      }
+    }else{
+      const wrapW=width+tileW,wrapH=height+tileH;
+      for(let row=-1;row<rows;row++)for(let col=-1;col<cols;col++){
+        const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image;
+        const turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0,v=skyBoxMovingVector(sky,turns),x=((col*tileW+v.x*travel+tileW)%wrapW+wrapW)%wrapW-tileW,y=((row*tileH+v.y*travel+tileH)%wrapH+wrapH)%wrapH-tileH;
+        drawSkyBoxTileCell(ctx,img,x,y,tileW,tileH,sky,drawMode,turns);
+      }
+    }
+    ctx.restore();
+  }
+  function drawSceneSkyBox(ctx,sky,width,height,now=performance.now()){
+    if(!ctx||!sky||sky.enabled===false||width<=0||height<=0)return;
+    normalizeSkyBoxForRender(sky);
+    const entries=skyBoxAssets(sky);if(!entries.length)return;
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    if(skyBoxMovementEnabled(sky)){drawSceneSkyBoxScreenTiles(ctx,sky,width,height,now);return;}
+    // Repeat is still a Fixed/screen-attached background, but uses the cached tile renderer.
+    if(sky.renderMode==='Repeat'){drawSceneSkyBoxScreenTiles(ctx,sky,width,height,now);return;}
+    const resolved=skyBoxResolveEntries(entries,sky,now),first=skyBoxReadyEntry(resolved);if(!first)return;
+    const img=skyBoxResolvedImage(resolved,sky,0,0,1024)||first.image;
+    const iw=Math.max(1,img.naturalWidth||img.width||1),ih=Math.max(1,img.naturalHeight||img.height||1);
+    ctx.save();ctx.globalAlpha*=opacity;ctx.beginPath();ctx.rect(0,0,width,height);ctx.clip();skyBoxSmoothing(ctx,sky);
+    let dw=width,dh=height;
+    if(sky.renderMode==='Contain'){const fit=Math.min(width/iw,height/ih);dw=iw*fit;dh=ih*fit;}
+    else if(sky.renderMode==='Crop'){const fit=Math.max(width/iw,height/ih);dw=iw*fit*skyBoxScale(sky,'scaleX');dh=ih*fit*skyBoxScale(sky,'scaleY');}
+    else {dw=width*skyBoxScale(sky,'scaleX');dh=height*skyBoxScale(sky,'scaleY');}
+    ctx.drawImage(img,(width-dw)/2,(height-dh)/2,dw,dh);ctx.restore();
+  }
+  function drawSceneSkyBoxScreenTiles(ctx,sky,width,height,now=performance.now(),tileMetrics=null){
+    if(!ctx||!sky||sky.enabled===false||width<=0||height<=0)return;
+    normalizeSkyBoxForRender(sky);
+    const entries=skyBoxAssets(sky);if(!entries.length)return;
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    if(skyBoxMovementEnabled(sky)){drawSkyBoxMovingScreenTiles(ctx,sky,width,height,now,tileMetrics);return;}
+    const resolved=tileMetrics?.resolved||skyBoxResolveEntries(entries,sky,now),first=skyBoxReadyEntry(resolved);if(!first)return;
+    let {w:tileW,h:tileH}=tileMetrics?.tileW>0&&tileMetrics?.tileH>0?{w:Number(tileMetrics.tileW),h:Number(tileMetrics.tileH)}:skyBoxTileDimensions(sky,first.raw,width,height);
+    let cols=Math.max(1,Math.ceil(width/tileW)+1),rows=Math.max(1,Math.ceil(height/tileH)+1);
+    const cellCount=cols*rows;if(cellCount>16384){const factor=Math.sqrt(cellCount/16384);tileW*=factor;tileH*=factor;cols=Math.max(1,Math.ceil(width/tileW)+1);rows=Math.max(1,Math.ceil(height/tileH)+1);}
+    const signature=skyBoxRenderSignature(sky,resolved,width,height,tileW,tileH,tileMetrics?.signature||'screen-default');
+    let cache=skyBoxScreenTileCache.get(sky);
+    if(!cache||cache.signature!==signature){
+      const canvas=skyBoxCreateCanvas(width,height),c=canvas.getContext('2d');if(!c)return;
+      c.setTransform(canvas.width/width,0,0,canvas.height/height,0,0);c.clearRect(0,0,width,height);c.beginPath();c.rect(0,0,width,height);c.clip();skyBoxSmoothing(c,sky);
+      for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+        const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image,turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0;
+        drawSkyBoxTileCell(c,img,col*tileW,row*tileH,tileW,tileH,sky,sky.renderMode==='Repeat'?'Stretch':sky.renderMode,turns);
+      }
+      cache={signature,canvas};skyBoxScreenTileCache.set(sky,cache);
+    }
+    ctx.save();ctx.globalAlpha*=opacity;skyBoxSmoothing(ctx,sky);ctx.drawImage(cache.canvas,0,0,width,height);ctx.restore();
+  }
+  function skyBoxEditorScreenMetrics(width,height){
+    const type=normalizeScreenType(state.game?.screenType),base=cameraViewBaseSize(state.camera),view=cameraVisibleViewForDisplay(state.camera,type,width,height);
+    let scaleX,scaleY;
+    if(type==='Windowboxing'){scaleX=scaleY=Math.min(width/base.w,height/base.h);}
+    else if(type==='Stretch'){scaleX=width/base.w;scaleY=height/base.h;}
+    else if(type==='Crop'){scaleX=scaleY=Math.max(width/base.w,height/base.h);}
+    else{scaleX=scaleY=Math.min(width/Math.max(1,view.w),height/Math.max(1,view.h));}
+    return {type,base,view,scaleX,scaleY};
+  }
+  function skyBoxEditorOutputSize(){
+    const display=editorRuntimeViewportSize();
+    // Runtime CSS keeps the Windowboxing canvas at 16:9 and centers it inside
+    // the available viewport. Render the editor preview at those same output
+    // dimensions first; otherwise Crop/Contain/Repeat are evaluated against a
+    // tall phone viewport while Play is drawing into a landscape canvas.
+    if(normalizeScreenType(state.game?.screenType)==='Windowboxing'){
+      const aspect=16/9;
+      return {width:Math.max(1,Math.round(Math.min(display.width,display.height*aspect))),height:Math.max(1,Math.round(Math.min(display.height,display.width/aspect)))};
+    }
+    return display;
+  }
+  function skyBoxEditorPreviewCanvas(sky,now=performance.now()){
+    if(!sky||typeof sky!=='object')return null;
+    const display=skyBoxEditorOutputSize(),width=Math.max(1,Math.round(display.width)),height=Math.max(1,Math.round(display.height)),metrics=skyBoxEditorScreenMetrics(width,height);
+    const resolved=skyBoxResolveEntries(skyBoxAssets(sky),sky,now);
+    const signature=skyBoxRenderSignature(sky,resolved,width,height,metrics.type,metrics.view.w,metrics.view.h,metrics.scaleX,metrics.scaleY,'editor-runtime-screen');
+    const old=skyBoxEditorPreviewCache.get(sky);if(!skyBoxMovementEnabled(sky)&&old?.signature===signature)return old.canvas;
+    const canvas=skyBoxCreateCanvas(width,height),ctx=canvas.getContext('2d');if(!ctx)return null;
+    ctx.clearRect(0,0,width,height);ctx.imageSmoothingEnabled=sky.pixelated===false;if(!sky.pixelated&&'imageSmoothingQuality' in ctx)ctx.imageSmoothingQuality='high';
+    if(sky.mode==='Tiled Screen'){
+      const first=skyBoxReadyEntry(resolved),ref=cameraReferenceWorldSize(state.camera),dims=first?skyBoxTileDimensions(sky,first.raw,ref.w,ref.h):null;
+      const tileMetrics=dims?{tileW:dims.w*metrics.scaleX,tileH:dims.h*metrics.scaleY,resolved,signature:`editor-runtime:${metrics.type}:${width}:${height}:${metrics.scaleX}:${metrics.scaleY}`}:{resolved};
+      drawSceneSkyBoxScreenTiles(ctx,sky,width,height,now,tileMetrics);
+    }else drawSceneSkyBox(ctx,sky,width,height,now);
+    if(!skyBoxMovementEnabled(sky))skyBoxEditorPreviewCache.set(sky,{signature,canvas});
+    return canvas;
+  }
+  function drawEditorScreenSkyBoxPreview(ctx,sky,camera,now=performance.now()){
+    if(!ctx||!camera||!sky||sky.enabled===false)return;
+    const canvas=skyBoxEditorPreviewCanvas(sky,now);if(!canvas)return;
+    // In Play the fixed/screen background fills the whole output canvas, but
+    // the world camera frame may only occupy part of it (Windowboxing). Crop
+    // exactly the pixel rectangle covered by the runtime camera mapping before
+    // placing that view inside the editor camera outline. Stretch, Crop and
+    // Smart Camera map to the full output, so their source rectangle naturally
+    // remains the whole canvas.
+    const metrics=skyBoxEditorScreenMetrics(canvas.width,canvas.height);
+    const visibleW=Math.max(1,Math.min(canvas.width,metrics.view.w*metrics.scaleX));
+    const visibleH=Math.max(1,Math.min(canvas.height,metrics.view.h*metrics.scaleY));
+    const sourceX=Math.max(0,(canvas.width-visibleW)/2);
+    const sourceY=Math.max(0,(canvas.height-visibleH)/2);
+    ctx.save();ctx.translate(camera.x,camera.y);ctx.rotate(Number(camera.angle)||0);
+    ctx.beginPath();ctx.rect(-camera.w/2,-camera.h/2,camera.w,camera.h);ctx.clip();
+    ctx.imageSmoothingEnabled=sky.pixelated===false;
+    ctx.drawImage(canvas,sourceX,sourceY,visibleW,visibleH,-camera.w/2,-camera.h/2,camera.w,camera.h);ctx.restore();
+  }
+  function drawEditorScreenTileSkyBox(ctx,sky,camera,now=performance.now()){
+    return drawEditorScreenSkyBoxPreview(ctx,sky,camera,now);
+  }
+  function drawSceneSkyBoxWorldTiles(ctx,sky,camera,now=performance.now()){
+    if(!ctx||!sky||sky.enabled===false)return;
+    normalizeSkyBoxForRender(sky);
+    const entries=skyBoxAssets(sky);if(!entries.length)return;
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    const resolved=skyBoxResolveEntries(entries,sky,now),first=skyBoxReadyEntry(resolved);if(!first)return;
+    const refW=Math.max(1,Number(camera.referenceW)||Number(camera.viewW)||1280),refH=Math.max(1,Number(camera.referenceH)||Number(camera.viewH)||720);
+    let {w:tileW,h:tileH}=skyBoxTileDimensions(sky,first.raw,refW,refH);
+    // Avoid pathological billions-of-cells scenes while keeping ordinary tile sizes unchanged.
+    tileW=Math.max(refW/192,tileW);tileH=Math.max(refH/192,tileH);
+    const cx=Number(camera.x)||0,cy=Number(camera.y)||0,viewW=Math.max(1,Number(camera.viewW)||refW),viewH=Math.max(1,Number(camera.viewH)||refH),angle=Number(camera.angle)||0;
+    const c=Math.abs(Math.cos(angle)),sn=Math.abs(Math.sin(angle));
+    const reachX=c*viewW/2+sn*viewH/2+tileW,reachY=sn*viewW/2+c*viewH/2+tileH;
+    if(skyBoxMovementEnabled(sky)){
+      if(sky.scope==='Individual'&&sky.fixedCoordinates===true)drawSkyBoxFixedCoordinateWorldTiles(ctx,sky,camera,resolved,first,tileW,tileH,reachX,reachY,now);
+      else drawSkyBoxMovingWorldTiles(ctx,sky,camera,resolved,first,tileW,tileH,reachX,reachY,now);
+      return;
+    }
+    const firstCol=Math.floor((cx-reachX)/tileW),lastCol=Math.ceil((cx+reachX)/tileW),firstRow=Math.floor((cy-reachY)/tileH),lastRow=Math.ceil((cy+reachY)/tileH);
+    // Cache the world in deterministic chunks. Moving the camera only draws cached chunks;
+    // content is invalidated when its inputs/assets change, not as the view scrolls.
+    const chunkCols=Math.max(1,Math.min(32,Math.floor(512/tileW)||1));
+    const chunkRows=Math.max(1,Math.min(32,Math.floor(512/tileH)||1));
+    const signature=skyBoxRenderSignature(sky,resolved,tileW,tileH,chunkCols,chunkRows,refW,refH);
+    let cache=skyBoxWorldTileCache.get(sky);
+    if(!cache||cache.signature!==signature){cache={signature,chunks:new Map()};skyBoxWorldTileCache.set(sky,cache);}
+    ctx.save();ctx.globalAlpha*=opacity;skyBoxSmoothing(ctx,sky);
+    const firstChunkCol=Math.floor(firstCol/chunkCols),lastChunkCol=Math.floor(lastCol/chunkCols),firstChunkRow=Math.floor(firstRow/chunkRows),lastChunkRow=Math.floor(lastRow/chunkRows);
+    for(let chunkRow=firstChunkRow;chunkRow<=lastChunkRow;chunkRow++)for(let chunkCol=firstChunkCol;chunkCol<=lastChunkCol;chunkCol++){
+      const key=`${chunkCol},${chunkRow}`,startCol=chunkCol*chunkCols,startRow=chunkRow*chunkRows;
+      let piece=cache.chunks.get(key);
+      if(!piece){
+        const worldW=chunkCols*tileW,worldH=chunkRows*tileH,scale=Math.min(1,1024/worldW,1024/worldH);
+        const canvas=skyBoxCreateCanvas(worldW*scale,worldH*scale),cctx=canvas.getContext('2d');
+        if(!cctx)continue;
+        cctx.setTransform(canvas.width/worldW,0,0,canvas.height/worldH,0,0);cctx.clearRect(0,0,worldW,worldH);cctx.beginPath();cctx.rect(0,0,worldW,worldH);cctx.clip();skyBoxSmoothing(cctx,sky);
+        for(let localRow=0;localRow<chunkRows;localRow++)for(let localCol=0;localCol<chunkCols;localCol++){
+          const col=startCol+localCol,row=startRow+localRow,img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image;
+          const turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0;
+          drawSkyBoxTileCell(cctx,img,localCol*tileW,localRow*tileH,tileW,tileH,sky,sky.renderMode==='Repeat'?'Stretch':sky.renderMode,turns);
+        }
+        piece={canvas,width:worldW,height:worldH};cache.chunks.set(key,piece);
+        while(cache.chunks.size>20)cache.chunks.delete(cache.chunks.keys().next().value);
+      }else{cache.chunks.delete(key);cache.chunks.set(key,piece);}
+      ctx.drawImage(piece.canvas,startCol*tileW,startRow*tileH,piece.width,piece.height);
+    }
+    ctx.restore();
+  }
+  function drawSkyBoxFixedCoordinateWorldTiles(ctx,sky,camera,resolved,first,tileW,tileH,reachX,reachY,now){
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    const cx=Number(camera.x)||0,cy=Number(camera.y)||0,travel=(now/1000)*(Number(sky.speed)||0);
+    const firstCol=Math.floor((cx-reachX)/tileW)-1,lastCol=Math.ceil((cx+reachX)/tileW)+1;
+    const firstRow=Math.floor((cy-reachY)/tileH)-1,lastRow=Math.ceil((cy+reachY)/tileH)+1;
+    const maxCells=12000,estimated=Math.max(1,lastCol-firstCol+1)*Math.max(1,lastRow-firstRow+1),stride=estimated>maxCells?Math.ceil(Math.sqrt(estimated/maxCells)):1;
+    const seamPad=skyBoxGapPadding(ctx,sky),drawMode=sky.renderMode==='Repeat'?'Stretch':sky.renderMode;
+    ctx.save();ctx.globalAlpha*=opacity;skyBoxSmoothing(ctx,sky);
+    for(let row=firstRow;row<=lastRow;row+=stride)for(let col=firstCol;col<=lastCol;col+=stride){
+      const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image,turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0,v=skyBoxMovingVector(sky,turns);
+      const x=col*tileW,y=row*tileH,shiftX=(((v.x*travel)%tileW+tileW)%tileW),shiftY=(((v.y*travel)%tileH+tileH)%tileH),cw=tileW*stride,ch=tileH*stride;
+      ctx.save();ctx.beginPath();ctx.rect(x-seamPad,y-seamPad,cw+seamPad*2,ch+seamPad*2);ctx.clip();
+      for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++)drawSkyBoxTileCell(ctx,img,x+shiftX+ox*cw,y+shiftY+oy*ch,cw,ch,sky,drawMode,turns);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  function drawSkyBoxMovingWorldTiles(ctx,sky,camera,resolved,first,tileW,tileH,reachX,reachY,now){
+    const opacity=skyBoxOpacity(sky);if(opacity<=0)return;
+    const cx=Number(camera.x)||0,cy=Number(camera.y)||0,viewW=Math.max(1,Number(camera.viewW)||1280),viewH=Math.max(1,Number(camera.viewH)||720),angle=Number(camera.angle)||0;
+    const c=Math.abs(Math.cos(angle)),sn=Math.abs(Math.sin(angle)),speed=Number(sky.speed)||0,travel=now/1000*speed;
+    ctx.save();ctx.globalAlpha*=opacity;skyBoxSmoothing(ctx,sky);
+    if(sky.scope==='All'){
+      const v=skyBoxMovingVector({...sky,scope:'All'},0),offX=v.x*travel,offY=v.y*travel;
+      const firstCol=Math.floor((cx-reachX-offX)/tileW),lastCol=Math.ceil((cx+reachX-offX)/tileW),firstRow=Math.floor((cy-reachY-offY)/tileH),lastRow=Math.ceil((cy+reachY-offY)/tileH);
+      for(let row=firstRow;row<=lastRow;row++)for(let col=firstCol;col<=lastCol;col++){
+        const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image,turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0;
+        drawSkyBoxTileCell(ctx,img,col*tileW+offX,row*tileH+offY,tileW,tileH,sky,sky.renderMode==='Repeat'?'Stretch':sky.renderMode,turns);
+      }
+    }else{
+      // Each tile is an independent moving object. Its source stays tied to its
+      // initial world-cell coordinate, so Random does not reshuffle at runtime.
+      const span=Math.max(viewW,viewH)+Math.max(tileW,tileH),bounded=span>0?((travel%span)+span)%span:0;
+      const firstCol=Math.floor((cx-reachX-bounded)/tileW)-1,lastCol=Math.ceil((cx+reachX+bounded)/tileW)+1;
+      const firstRow=Math.floor((cy-reachY-bounded)/tileH)-1,lastRow=Math.ceil((cy+reachY+bounded)/tileH)+1;
+      const maxCells=12000,estimated=Math.max(1,lastCol-firstCol+1)*Math.max(1,lastRow-firstRow+1),stride=estimated>maxCells?Math.ceil(Math.sqrt(estimated/maxCells)):1;
+      for(let row=firstRow;row<=lastRow;row+=stride)for(let col=firstCol;col<=lastCol;col+=stride){
+        const img=skyBoxResolvedImage(resolved,sky,col,row,1024)||first.image,turns=sky.randomRotation?skyBoxCellHash(col,row,0xa511e9b3)%4:0,v=skyBoxMovingVector(sky,turns);
+        const offX=v.x*bounded,offY=v.y*bounded;
+        drawSkyBoxTileCell(ctx,img,col*tileW+offX,row*tileH+offY,tileW*stride,tileH*stride,sky,sky.renderMode==='Repeat'?'Stretch':sky.renderMode,turns);
+      }
+    }
+    ctx.restore();
+  }
+  function drawEditorWorldSkyBox(ctx,sky,camera,now=performance.now()){
+    if(!ctx||!camera)return;
+    const angle=Number(camera.angle)||0,corners=[[-camera.w/2,-camera.h/2],[camera.w/2,-camera.h/2],[camera.w/2,camera.h/2],[-camera.w/2,camera.h/2]].map(([x,y])=>{const p=rotatePoint(x,y,angle);return{x:camera.x+p.x,y:camera.y+p.y};});
+    ctx.save();ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);ctx.closePath();ctx.clip();
+    const base=cameraReferenceWorldSize(state.camera);
+    drawSceneSkyBoxWorldTiles(ctx,sky,{x:camera.x,y:camera.y,viewW:camera.w,viewH:camera.h,angle,referenceW:base.w,referenceH:base.h},now);
+    ctx.restore();
+  }
+  function normalizeSkyBoxForRender(sky){
+    if(!sky||typeof sky!=='object')return;
+    sky.mode=['Tile','Tiled Screen'].includes(sky.mode)?sky.mode:'Fixed';sky.source=sky.source==='Animation'?'Animation':'Sprite';
+    sky.renderMode=['Crop','Stretch','Contain','Repeat'].includes(sky.renderMode)?sky.renderMode:'Crop';sky.pixelated=sky.pixelated!==false;sky.closedGap=sky.closedGap!==false;sky.directionalMovement=!!sky.directionalMovement;sky.scope=sky.scope==='All'?'All':'Individual';sky.fixedCoordinates=!!sky.fixedCoordinates;sky.orientationAware=!!sky.orientationAware;sky.directionDeg=Number(sky.directionDeg)||0;sky.speed=Number(sky.speed)||0;
+    if(!Array.isArray(sky.sprites))sky.sprites=[];if(!Array.isArray(sky.animations))sky.animations=[];
+  }
   function hasAnimatedVisuals(){
-    return allNodes().some(({node})=>{if(node.type!=='node')return false;const visual=nodeVisualSource(node);return !!visual?.animated;});
+    const skies=sceneSkyBoxes(currentScene());
+    const animatedSky=skies.some(sky=>sky?.enabled!==false&&(skyBoxMovementEnabled(sky)||(sky?.source==='Animation'&&(sky.animations||[]).some(a=>(a.frames||[]).length>1))));
+    return animatedSky||allNodes().some(({node})=>{if(node.type!=='node')return false;const visual=nodeVisualSource(node);return !!visual?.animated;});
   }
   function ensureEditorAnimationLoop(){
     if(state.runtime.running || !hasAnimatedVisuals() || editorAnimationRAF)return;
@@ -3770,7 +4626,10 @@
     const rect=getWorkplaceRect();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='copy';ctx.globalAlpha=1;ctx.clearRect(0,0,canvas.width,canvas.height);ctx.globalCompositeOperation='source-over';ctx.setTransform(dpr,0,0,dpr,0,0);
     // Editor Workplace stays neutral; camera BG Color is runtime-only.
     ctx.fillStyle='#202020';ctx.fillRect(0,0,rect.width,rect.height);drawGrid(ctx,rect);
-    ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);drawAxes(ctx);drawCameraViewport(ctx,rect);drawSelectedSubCameraViewports(ctx,selectedSceneNodes().filter(n=>runtimeNodeVisible(n)));
+    ctx.save();ctx.translate(rect.width/2+state.pan.x,rect.height/2+state.pan.y);ctx.scale(state.zoom,state.zoom);
+    const skyCam=cameraEditorFrame(),skies=sceneSkyBoxes(currentScene()),skyNow=performance.now();
+    for(const sky of skies){if(sky?.enabled===false)continue;if(sky.mode==='Tile')drawEditorWorldSkyBox(ctx,sky,skyCam,skyNow);else drawEditorScreenSkyBoxPreview(ctx,sky,skyCam,skyNow);}
+    drawAxes(ctx);drawCameraViewport(ctx,rect);drawSelectedSubCameraViewports(ctx,selectedSceneNodes().filter(n=>runtimeNodeVisible(n)));
     const renderNodes=sortedRenderNodes();
     const halfW=rect.width/(2*Math.max(.01,state.zoom))+220,stateHalfH=rect.height/(2*Math.max(.01,state.zoom))+180;
     const centerX=-state.pan.x/state.zoom,centerY=-state.pan.y/state.zoom;
@@ -3888,25 +4747,51 @@
     const mode=component(node,'node')?.relative;
     return mode==='Screen'?'Screen':'World';
   }
+  function setNodeRelativeModePreservingPosition(node,value){
+    const next=value==='Screen'?'Screen':'World';
+    const selected=selectedSceneNodes();
+    const targets=selected.length>1&&selected.includes(node)?selected:[node];
+    for(const target of targets){
+      const nodeComp=component(target,'node'),transform=component(target,'transform');
+      if(!nodeComp||!transform)continue;
+      const previous=nodeRelativeMode(target);
+      if(previous===next)continue;
+      const currentWorld=editorNodeWorldPosition(target);
+      nodeComp.relative=next;
+      const raw=editorWorldPositionToTransformPosition(target,currentWorld);
+      transform.position=[Number(raw.x.toFixed(12)),Number(raw.y.toFixed(12))];
+    }
+  }
 
   function cameraEditorFrame(){
     const pos=getEditorCameraWorldPosition();
     const canvas=$('#workplaceCanvas');
     const rect=canvas?.getBoundingClientRect?.()||{width:1280,height:720};
     const type=normalizeScreenType(state.game.screenType);
-    const view=cameraVisibleViewForDisplay(state.camera,type,rect.width,rect.height);
-    return {x:pos.x,y:pos.y,w:view.w,h:view.h,angle:Number(state.camera.transform?.angle?.[0]||0)*Math.PI/180,type,aspect:view.w/view.h};
+    // Smart Camera and Crop depend on the actual output viewport aspect ratio,
+    // not the editor's narrower center column between its side panels.
+    const display=(type==='Smart Camera'||type==='Crop')?editorRuntimeViewportSize():{width:rect.width,height:rect.height};
+    const view=cameraVisibleViewForDisplay(state.camera,type,display.width,display.height);
+    return {x:pos.x,y:pos.y,w:view.w,h:view.h,angle:Number(state.camera.transform?.angle?.[0]||0)*Math.PI/180,type,aspect:view.w/view.h,logicalW:1280,logicalH:720};
   }
-  function editorNodeWorldPosition(node){
-    const raw=component(node,'transform')||{position:[0,0]};
+  function editorNodeWorldPositionFromTransform(node,rawTransform){
+    const raw=rawTransform||component(node,'transform')||{position:[0,0]};
     const px=Number(raw.position?.[0]||0),py=Number(raw.position?.[1]||0);
     if(nodeRelativeMode(node)!=='Screen')return{x:px,y:py};
-    const canvas=$('#workplaceCanvas'),rect=canvas?.getBoundingClientRect?.()||{width:1280,height:720};
-    const projection=runtimeProjectionFromSize(rect.width,rect.height);
-    const view=cameraVisibleViewForDisplay(state.camera,projection.type,rect.width,rect.height);
-    const sx=view.w/Math.max(1,projection.viewW),sy=view.h/Math.max(1,projection.viewH);
-    const cam=cameraEditorFrame(),q=rotatePoint(px*sx,py*sy,cam.angle);
+    // Screen-relative transform values use the canonical 1280×720 screen
+    // coordinate system. Scale them to the camera outline's visible box so
+    // edge/center placement is proportional and remains correct for Smart
+    // Camera, camera zoom/aspect changes, and portrait output.
+    const cam=cameraEditorFrame();
+    const q=rotatePoint(px*(cam.w/1280),py*(cam.h/720),cam.angle);
     return{x:Number(cam.x||0)+q.x,y:Number(cam.y||0)+q.y};
+  }
+  function editorNodeWorldPosition(node){return editorNodeWorldPositionFromTransform(node,component(node,'transform')||{position:[0,0]});}
+  function editorWorldPositionToTransformPosition(node,worldPosition){
+    if(nodeRelativeMode(node)!=='Screen')return{x:Number(worldPosition?.x)||0,y:Number(worldPosition?.y)||0};
+    const cam=cameraEditorFrame();
+    const local=inverseRotatePoint(Number(worldPosition?.x||0)-cam.x,Number(worldPosition?.y||0)-cam.y,cam.angle);
+    return {x:local.x*1280/Math.max(1e-6,cam.w),y:local.y*720/Math.max(1e-6,cam.h)};
   }
   function rotatePoint(x,y,a){const c=Math.cos(a),s=Math.sin(a);return {x:x*c-y*s,y:x*s+y*c};}
   function inverseRotatePoint(x,y,a){return rotatePoint(x,y,-a);}
@@ -4112,11 +4997,18 @@
     tc.imageSmoothingEnabled=!pixelated;tc.imageSmoothingQuality=pixelated?'low':'high';
     spriteDrawFitted(tc,img,0,0,cw,ch,scaleType);
     if(modulate&&modulate!=='#FFFFFFFF'&&strength>0){
-      const tint=document.createElement('canvas');tint.width=cw;tint.height=ch;
-      const xc=tint.getContext('2d');
-      xc.drawImage(tile,0,0);
-      xc.globalCompositeOperation='source-in';xc.fillStyle=colorCss(modulate,'rgba(255,255,255,1)');xc.fillRect(0,0,cw,ch);
-      tc.globalAlpha=strength;tc.drawImage(tint,0,0);tc.globalAlpha=1;
+      // Match Sprite Editor modulation: lerp every RGBA channel between the original
+      // pixel and (original * modulationColor). This preserves the same alpha math.
+      try{
+        const rgba=tc.getImageData(0,0,cw,ch),d=rgba.data;let tint=[1,1,1,1];
+        try{tint=parseColor(modulate);}catch{}
+        const amount=clamp(Number(strength)||0,0,1),fr=1-amount+clamp(tint[0],0,1)*amount,fg=1-amount+clamp(tint[1],0,1)*amount,fb=1-amount+clamp(tint[2],0,1)*amount,fa=1-amount+clamp(tint[3],0,1)*amount;
+        for(let i=0;i<d.length;i+=4){d[i]=Math.round(d[i]*fr);d[i+1]=Math.round(d[i+1]*fg);d[i+2]=Math.round(d[i+2]*fb);d[i+3]=Math.round(d[i+3]*fa);}
+        tc.putImageData(rgba,0,0);
+      }catch{
+        // Cross-origin/tainted sources cannot be pixel-read; retain a best-effort tint.
+        const tintCanvas=document.createElement('canvas');tintCanvas.width=cw;tintCanvas.height=ch;const xc=tintCanvas.getContext('2d');xc.drawImage(tile,0,0);xc.globalCompositeOperation='source-in';xc.fillStyle=colorCss(modulate,'rgba(255,255,255,1)');xc.fillRect(0,0,cw,ch);tc.globalAlpha=strength;tc.drawImage(tintCanvas,0,0);tc.globalAlpha=1;
+      }
     }
     let pattern=null;
     try{pattern=document.createElement('canvas').getContext('2d').createPattern(tile,'repeat');if(pattern&&pattern.setTransform)pattern.setTransform(new DOMMatrix().scale(tileW/cw,tileH/ch));}catch{pattern=null;}
@@ -4398,7 +5290,8 @@
       if(selectionMods.shiftKey||selectionMods.ctrlKey||selectionMods.metaKey){
         clearTimeout(longPressTimer);return;
       }
-      clearNodeSelection('scene-camera');renderSelectionTree();renderComponentPanel();
+      // Empty workspace is a pan surface, not a selection-clearing surface.
+      // Keep the current Inspector target until another actual node is selected.
       clearTimeout(longPressTimer);startPan(e);
     });
     canvas.addEventListener('pointermove',e=>{
@@ -4441,7 +5334,7 @@
     if(d.multi)return updateMultiGizmoDrag(e);
     const n=d.node,g=gizmoTarget(n),t=g.transform,current=screenToWorld(e.clientX,e.clientY),dx=current.x-d.startWorld.x,dy=current.y-d.startWorld.y,settings=d.settings||getEditorSettings(),snap=Math.max(0,Number(settings.moveScaleSnap)||0),rotateSnap=Math.max(0,Number(settings.rotateSnap)||0);
     if(d.type==='move'){
-      const ga=Number(d.gizmoAngle||g.angle||0),local=rotatePoint(dx,dy,-ga);let lx=local.x,ly=local.y;if(d.axis==='x')ly=0;if(d.axis==='y')lx=0;if(snap>0){if(d.axis!=='y')lx=snapEditorValue(lx,snap);if(d.axis!=='x')ly=snapEditorValue(ly,snap);}const worldDelta=rotatePoint(lx,ly,ga),delta=nodeRelativeMode(n)==='Screen'?rotatePoint(worldDelta.x,worldDelta.y,-Number(cameraEditorFrame().angle||0)*Math.PI/180):worldDelta;const px=Number(d.startTransform.position[0]||0)+delta.x,py=Number(d.startTransform.position[1]||0)+delta.y;t.position=[Number(snapEditorValue(px,snap).toFixed(12)),Number(snapEditorValue(py,snap).toFixed(12))];
+      const ga=Number(d.gizmoAngle||g.angle||0),local=rotatePoint(dx,dy,-ga);let lx=local.x,ly=local.y;if(d.axis==='x')ly=0;if(d.axis==='y')lx=0;if(snap>0){if(d.axis!=='y')lx=snapEditorValue(lx,snap);if(d.axis!=='x')ly=snapEditorValue(ly,snap);}const worldDelta=rotatePoint(lx,ly,ga),startPos=editorNodeWorldPositionFromTransform(n,d.startTransform),next=editorWorldPositionToTransformPosition(n,{x:startPos.x+worldDelta.x,y:startPos.y+worldDelta.y}),px=next.x,py=next.y;t.position=[Number(snapEditorValue(px,snap).toFixed(12)),Number(snapEditorValue(py,snap).toFixed(12))];
     }else if(d.type==='rotate'){
       const r=$('#workplaceCanvas').getBoundingClientRect(),center=worldToScreen(g.center[0],g.center[1]),cx=r.left+center.x,cy=r.top+center.y,startA=Math.atan2(d.startPointerY-cy,d.startPointerX-cx),nowA=Math.atan2(e.clientY-cy,e.clientX-cx);
       const raw=d.startTransform.angle[0]+(nowA-startA)*180/Math.PI;t.angle=[rotateSnap?snapEditorValue(raw,rotateSnap):raw];
@@ -4812,6 +5705,7 @@
     const legacySceneVars=clone(data.sceneVariablesByScene||{});
     state.scenes.forEach(scene=>{
       if(!Array.isArray(scene.variables))scene.variables=Array.isArray(legacySceneVars[scene.id])?legacySceneVars[scene.id]:[];
+      normalizeWorldScene(scene);
     });
     state.currentSceneId=data.currentSceneId&&state.scenes.some(s=>s.id===data.currentSceneId)?data.currentSceneId:state.scenes[0].id;
     state.selectedId=data.selectedId||'scene-camera';
@@ -5260,13 +6154,17 @@
       const options=state.scenes.map(s=>s.name);
       const selected=state.scenes.find(s=>s.id===state.game.preferredSceneId)||state.scenes[0];
       state.game.preferredSceneId=selected?.id||'';
-      const wrap=customSelect(selected?.name||'No Scene',options,name=>{const scene=state.scenes.find(s=>s.name===name);if(scene){state.game.preferredSceneId=scene.id;resetAutoSaveTimer();status(`Preferred Scene: ${scene.name}`);}});
+      const wrap=customSelect(selected?.name||'No Scene',options,name=>{const scene=state.scenes.find(s=>s.name===name);if(scene){state.game.preferredSceneId=scene.id;resetAutoSaveTimer();status(`Preferred Scene: ${scene.name}`);}},null,null,'Preferred Scene',()=>state.scenes.find(s=>s.id===state.game.preferredSceneId)?.name||'No Scene');
       wrap.classList.add('preferred-scene-custom-select');host.append(wrap);
     }
     const screenHost=$('#screenTypeControl');
     if(screenHost){
       screenHost.innerHTML='';
-      const wrap=customSelect(state.game.screenType,SCREEN_TYPES,value=>{state.game.screenType=normalizeScreenType(value);drawWorkplace();resetAutoSaveTimer();status(`Screen Type: ${state.game.screenType}`);});
+      const wrap=customSelect(state.game.screenType,SCREEN_TYPES,value=>{
+        state.game.screenType=normalizeScreenType(value);
+        drawWorkplace();requestWorkplaceDraw();updateGameScreenPreview();resetAutoSaveTimer();
+        status(`Screen Type: ${state.game.screenType}`);
+      },null,null,'Screen Type',()=>state.game.screenType);
       wrap.classList.add('screen-type-custom-select');screenHost.append(wrap);
     }
     const reqHost=$('#gameRequirementsControl');
@@ -5289,6 +6187,7 @@
       const interim=$('#micSpeechInterim');if(interim){interim.checked=state.game.mic.interimResults!==false;interim.onchange=()=>{state.game.mic.interimResults=interim.checked;resetAutoSaveTimer();};}
     }
     showModal($('#gameSettingsModal'));
+    updateGameScreenPreview();
   }
 
   // ---------------- Assets ----------------
@@ -5625,10 +6524,15 @@
   function deleteMIDIAsset(asset){
     askConfirm('Delete MIDI',`Delete “${asset?.name||'MIDI'}”?`,()=>{const list=state.assets.MIDI,idx=list.findIndex(a=>a===asset||a.value===asset?.value);if(idx<0)return;list.splice(idx,1);renderAssetManager();},'Delete');
   }
-  function saveSpriteFrames(oldAssets,frames){
-    const old=Array.isArray(oldAssets)?oldAssets:[],list=state.assets.Sprite;
-    frames.forEach((frame,i)=>{const source=old[i];if(source){replaceSpriteAsset(source,frame);}else addSpriteAsset(frame);});
-    while(old.length>frames.length){const extra=old[old.length-1];const idx=list.findIndex(a=>a===extra);if(idx>=0)list.splice(idx,1);old.pop();}
+  function saveSpriteFrames(oldAssets,frames,frameSources=null){
+    const old=Array.isArray(oldAssets)?oldAssets.slice():[],oldSet=new Set(old),list=state.assets.Sprite,used=new Set();
+    frames.forEach((frame,i)=>{
+      const source=Array.isArray(frameSources)?frameSources[i]:old[i];
+      if(source&&oldSet.has(source)&&list.includes(source)){replaceSpriteAsset(source,frame);used.add(source);}
+      else addSpriteAsset(frame);
+    });
+    // Any source frame not represented after Delete or Merge Down is removed.
+    old.forEach(source=>{if(used.has(source))return;const idx=list.findIndex(a=>a===source);if(idx>=0)list.splice(idx,1);});
     renderAssetManager();drawWorkplace();
   }
 
@@ -6490,9 +7394,107 @@
     showModal($('#expressionModal'));
     setTimeout(()=>$('#expressionInput')?.focus(),0);
   }
-  function inferExpressionValue(source){const preview=expressionContext();return Function('ctx','Math','scriptHere','"use strict";return ('+source+');')(preview,Math,preview.scriptHere);}
+  function maskExpressionLiterals(source){
+    const out=String(source??'').split('');let i=0;
+    while(i<out.length){
+      const c=out[i],n=out[i+1];
+      if(c==="'"||c==='"'||c==='`'){
+        const quote=c;out[i]=' ';i++;
+        while(i<out.length){const q=out[i];if(q==='\\'){out[i]=' ';if(i+1<out.length&&out[i+1]!=='\n')out[i+1]=' ';i+=2;continue;}if(q===quote){out[i]=' ';i++;break;}if(q!=='\n'&&q!=='\r')out[i]=' ';i++;}
+        continue;
+      }
+      if(c==='/'&&n==='/'){out[i]=out[i+1]=' ';i+=2;while(i<out.length&&out[i]!=='\n'){out[i]=' ';i++;}continue;}
+      if(c==='/'&&n==='*'){out[i]=out[i+1]=' ';i+=2;while(i<out.length&&!(out[i]==='*'&&out[i+1]==='/')){if(out[i]!=='\n'&&out[i]!=='\r')out[i]=' ';i++;}if(i<out.length){out[i]=out[i+1]=' ';i+=2;}continue;}
+      i++;
+    }
+    return out.join('');
+  }
+  function expressionBraceEnd(mask,open){let depth=0;for(let i=open;i<mask.length;i++){if(mask[i]==='{')depth++;else if(mask[i]==='}'&&--depth===0)return i;}return -1;}
+  function expressionIIFEBlockRanges(source){
+    const mask=maskExpressionLiterals(source),ranges=[],seen=new Set();
+    const add=(open)=>{const end=expressionBraceEnd(mask,open);if(end<0||seen.has(open))return;const tail=mask.slice(end+1);if(!/^\s*\)\s*\(/.test(tail))return;seen.add(open);ranges.push({start:open,end});};
+    const arrow=/=>\s*\{/g;let m;while((m=arrow.exec(mask))){const open=mask.indexOf('{',m.index+m[0].length-1);if(open>=0)add(open);}
+    const fn=/\bfunction\b/g;while((m=fn.exec(mask))){let i=m.index+m[0].length;while(/\s/.test(mask[i]||''))i++;if(mask[i]==='*'){i++;while(/\s/.test(mask[i]||''))i++;}if(/[$\w]/.test(mask[i]||'')){while(/[$\w]/.test(mask[i]||''))i++;while(/\s/.test(mask[i]||''))i++;}if(mask[i]!=='(')continue;let d=0,j=i;for(;j<mask.length;j++){if(mask[j]==='(')d++;else if(mask[j]===')'&&--d===0)break;}if(j<0||j>=mask.length)continue;j++;while(/\s/.test(mask[j]||''))j++;if(mask[j]==='{')add(j);}
+    ranges.sort((a,b)=>a.start-b.start||b.end-a.end);return ranges;
+  }
+  function tokenizeIIFEBody(source){
+    const s=String(source??''),out=[];let i=0;
+    while(i<s.length){const c=s[i],n=s[i+1];if(/\s/.test(c)){i++;continue;}
+      if(c==='/'&&n==='/'){i+=2;while(i<s.length&&s[i]!=='\n')i++;continue;}
+      if(c==='/'&&n==='*'){i+=2;while(i<s.length&&!(s[i]==='*'&&s[i+1]==='/'))i++;i=Math.min(s.length,i+2);continue;}
+      if(c==="'"||c==='"'||c==='`'){const start=i,q=c;i++;while(i<s.length){if(s[i]==='\\'){i+=2;continue;}if(s[i]===q){i++;break;}i++;}out.push({v:'LITERAL',start,end:i});continue;}
+      if(/[A-Za-z_$]/.test(c)){const start=i++;while(i<s.length&&/[\w$]/.test(s[i]))i++;out.push({v:s.slice(start,i),start,end:i});continue;}
+      if(/[0-9]/.test(c)){const start=i++;while(i<s.length&&/[\w.]/.test(s[i]))i++;out.push({v:'NUMBER',start,end:i});continue;}
+      const op=['===','!==','=>','==','!=','<=','>=','&&','||','??','?.','++','--','**','+=','-=','*=','/='].find(x=>s.startsWith(x,i));if(op){out.push({v:op,start:i,end:i+op.length});i+=op.length;continue;}
+      out.push({v:c,start:i,end:i+1});i++;
+    }
+    return out;
+  }
+  function checkIIFEHasValueReturn(body){
+    const t=tokenizeIIFEBody(body);
+    const matching=(open,left,right)=>{let d=0;for(let i=open;i<t.length;i++){if(t[i].v===left)d++;else if(t[i].v===right){d--;if(d===0)return i;}}return -1;};
+    const continuation=new Set(['.','?.','(','[',',','?',':','+','-','*','/','%','&&','||','??','===','==','!==','!=','<','>','<=','>=','**','&','|','^','in','of','instanceof']);
+    const hasLineBreak=(a,b)=>a>=0&&b>=0&&/\r?\n/.test(body.slice(a,b));
+    const skipStatement=(i)=>{
+      let p=0,b=0,c=0;
+      for(let j=i;j<t.length;j++){
+        const v=t[j].v;
+        if(j>i&&p===0&&b===0&&c===0&&hasLineBreak(t[j-1].end,t[j].start)&&!continuation.has(v)&&!continuation.has(t[j-1].v))return j;
+        if(v==='(')p++;else if(v===')'){if(p===0)return j;p--;}else if(v==='[')b++;else if(v===']')b=Math.max(0,b-1);else if(v==='{')c++;else if(v==='}'){if(c===0&&p===0&&b===0)return j;c=Math.max(0,c-1);}else if(v===';'&&p===0&&b===0&&c===0)return j+1;
+      }
+      return t.length;
+    };
+    const parseSequence=(begin,stopAtBrace=false)=>{
+      let i=begin,guaranteesReturn=false;
+      while(i<t.length&&!(stopAtBrace&&t[i].v==='}')){
+        const statement=parse(i);
+        if(statement.next<=i)break;
+        if(!guaranteesReturn&&statement.guaranteesReturn)guaranteesReturn=true;
+        i=statement.next;
+      }
+      return {next:i,guaranteesReturn};
+    };
+    const parse=(i)=>{
+      if(i>=t.length)return {next:i,guaranteesReturn:false};
+      if(t[i].v===';')return {next:i+1,guaranteesReturn:false};
+      if(t[i].v==='{'){
+        const inner=parseSequence(i+1,true),close=inner.next<t.length&&t[inner.next].v==='}'?inner.next+1:inner.next;
+        return {next:close,guaranteesReturn:inner.guaranteesReturn};
+      }
+      if(t[i].v==='return'){
+        const next=t[i+1];
+        if(!next||next.v===';'||next.v==='}'||hasLineBreak(t[i].end,next.start))throw new SyntaxError('IIFE lambda must return a value on every return path');
+        return {next:skipStatement(i+1),guaranteesReturn:true};
+      }
+      if(t[i].v==='if'){
+        let open=i+1;while(open<t.length&&t[open].v!=='('&&t[open].v!==';'&&t[open].v!=='{')open++;
+        const close=matching(open,'(',')');if(open>=t.length||close<0)return {next:skipStatement(i),guaranteesReturn:false};
+        const yes=parse(close+1);let k=yes.next,no=null;
+        if(t[k]?.v==='else')no=parse(k+1);
+        return {next:no?no.next:k,guaranteesReturn:!!(no&&yes.guaranteesReturn&&no.guaranteesReturn)};
+      }
+      if(t[i].v==='else')return parse(i+1);
+      // Loops, switch, try/catch and throwing paths do not prove a value return.
+      return {next:skipStatement(i),guaranteesReturn:false};
+    };
+    if(!parseSequence(0,false).guaranteesReturn)throw new SyntaxError('IIFE lambda must return a value on every control-flow path');
+  }
+  function validateIIFEExpressionSource(source){
+    const text=String(source??''),ranges=expressionIIFEBlockRanges(text);
+    for(const range of ranges)checkIIFEHasValueReturn(text.slice(range.start+1,range.end));
+    const masked=maskExpressionLiterals(text).split('');
+    for(const range of ranges)for(let i=range.start+1;i<range.end;i++)if(masked[i]!=='\n'&&masked[i]!=='\r')masked[i]=' ';
+    if(/(^|[^.\w$])let\b/.test(masked.join('')))throw new SyntaxError('let is reserved outside an immediately invoked lambda (IIFE); declare it inside (() => { ... })()');
+    return true;
+  }
+  function expressionUsesAsync(source){
+    const mask=maskExpressionLiterals(source);
+    return /\basync\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(mask)||/\basync\s+function(?:\s+[$A-Za-z_][$\w]*)?\s*\(/.test(mask);
+  }
+  function inferExpressionValue(source){validateIIFEExpressionSource(source);const preview=expressionContext();return Function('ctx','Math','scriptHere','"use strict";return ('+source+');')(preview,Math,preview.scriptHere);}
   function expressionTypeError(entry,value){
     const type=String(entry?.type||'str').toLowerCase();
+    if(value&&typeof value.then==='function')return null;
     if(type==='str') return null;
     if(value===null)return null;
     if(type==='int'||type==='number') return typeof value==='number'&&Number.isFinite(value)?null:'Expected a numeric expression (the evaluated result must be a number).';
@@ -6554,9 +7556,23 @@
   function insertExpressionByLabel(label){const found=Object.values(expressionGroups()).flat().find(x=>x.label===label);if(found)insertExpression(found.value);}
   function insertExpression(value){const input=$('#expressionInput');const start=input.selectionStart??input.value.length;const end=input.selectionEnd??start;input.value=input.value.slice(0,start)+value+input.value.slice(end);input.focus();input.selectionStart=input.selectionEnd=start+value.length;validateExpression();}
   function evaluateSelector(fn){try{const ctx=expressionContext();const value=typeof fn==='function'?fn(ctx):Array.isArray(fn)?fn:[];return Array.isArray(value)?value.map(v=>String(v)):[];}catch{return [];}}
+  function expressionCameraSnapshot(canvas,cam){
+    if(state.runtime?.running){
+      const map=runtimeCameraMapping(canvas||$('#runtimeCanvas'),cam||state.runtime.camera||state.camera);
+      const live=cam||state.runtime.camera||state.camera;
+      return {x:Number(live?.x)||0,y:Number(live?.y)||0,ratio:{x:Number(map.viewW)/Math.max(1,Number(map.baseW)||1280),y:Number(map.viewH)/Math.max(1,Number(map.baseH)||720)},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h:Number(map.viewH)||0,w:Number(map.viewW)||0,col:String(live?.bgColor||'#202020'),angle:Number(live?.angle)||0};
+    }
+    const frame=cameraEditorFrame(),live=state.camera;
+    return {x:Number(frame.x)||0,y:Number(frame.y)||0,ratio:{x:Number(frame.w)/1280,y:Number(frame.h)/720},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h:Number(frame.h)||0,w:Number(frame.w)||0,col:String(live?.bgColor||'#202020'),angle:Number(live?.transform?.angle?.[0])||0};
+  }
   function expressionContext(){
     const node=selectedNode(),sceneVars=sceneVariableList(),body=runtimeBodyForNode(node);
     const keybinds=keybindOptions();
+    const screenCanvas=state.runtime?.running?$('#runtimeCanvas'):$('#workplaceCanvas');
+    const screenRect=screenCanvas?.getBoundingClientRect?.()||{width:1280,height:720};
+    const screenCamera=state.runtime?.running?state.runtime.camera:state.camera;
+    const screenType=normalizeScreenType(state.game.screenType);
+    const screenView=cameraVisibleViewForDisplay(screenCamera,screenType,screenRect.width,screenRect.height);
     const expressionColorHelpers={
       rgb:(r,g,b)=>rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,1]),
       rgba:(r,g,b,a)=>{const alpha=Number(a);return rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,alpha>1?alpha/255:alpha]);}
@@ -6568,6 +7584,8 @@
       server:Object.fromEntries(state.serverVariables.map(v=>[v.name,v.value])),
       serverClient:(window.UIXNetwork?.getClients?.()||[]),
       sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
+      screen:{W:Number(screenView.w)||0,H:Number(screenView.h)||0},
+      camera:expressionCameraSnapshot(screenCanvas,screenCamera),
       variableNames:(state.globalVariables||[]).map(v=>v.name),
       serverVariableNames:(state.serverVariables||[]).map(v=>v.name),
       sceneVariableNames:sceneVars.map(v=>v.name),
@@ -6588,7 +7606,7 @@
       allNodes:allNodes().map(x=>x.node),
       folderOptions:allNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.folderId}]`),
       animations:(component(node,'animationsprite')?.animations||[]),
-      inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},mic:{decibel:-100,speech:'',active:false,speechActive:false},node,
+      inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},mic:{decibel:-100,speech:'',active:false,speechActive:false},get isVisible(){return !!node&&component(node,'node')?.visible!==false;},node,
       TouchUpX:Number(state.runtime?.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime?.inputs?.TouchUpY)||0,
       TouchDownX:Number(state.runtime?.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime?.inputs?.TouchDownY)||0,
       TouchMoveX:Number(state.runtime?.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime?.inputs?.TouchMoveY)||0,
@@ -6620,12 +7638,26 @@
       title:args===null?`Math.${name}`:`Parameters: ${args}`
     }));
     const list={
-      localVariables:(state.localVarsByNode[state.script.nodeId]||[]).map(v=>({label:v.name,value:`ctx.local.${v.name}`})),
+      'Local Vars':(state.localVarsByNode[state.script.nodeId]||[]).map(v=>({label:v.name,value:`ctx.local.${v.name}`,title:'Local variable scoped to this ScriptNode.'})),
+      'Scene Vars':sceneVariableList().map(v=>({label:v.name,value:`ctx.sceneVariables.${v.name}`,title:'Variable scoped to the current scene.'})),
+      'Global Vars':state.globalVariables.map(v=>({label:v.name,value:`ctx.global.${v.name}`,title:'Project-wide global variable.'})),
+      'Server Vars':state.serverVariables.map(v=>({label:v.name,value:`ctx.server.${v.name}`,title:'Server/shared variable.'})),
+      Camera:[
+        {label:'ctx.camera.x',value:'ctx.camera.x',title:'Camera center X in world coordinates.'},
+        {label:'ctx.camera.y',value:'ctx.camera.y',title:'Camera center Y in world coordinates.'},
+        {label:'ctx.camera.ratio.x',value:'ctx.camera.ratio.x',title:'Visible width ratio relative to the camera reference frame.'},
+        {label:'ctx.camera.ratio.y',value:'ctx.camera.ratio.y',title:'Visible height ratio relative to the camera reference frame.'},
+        {label:'ctx.camera.scale',value:'ctx.camera.scale',title:'Current camera zoom scale.'},
+        {label:'ctx.camera.speed',value:'ctx.camera.speed',title:'Camera follow/movement speed setting.'},
+        {label:'ctx.camera.h',value:'ctx.camera.h',title:'Visible camera height in world coordinates.'},
+        {label:'ctx.camera.w',value:'ctx.camera.w',title:'Visible camera width in world coordinates.'},
+        {label:'ctx.camera.col',value:'ctx.camera.col',title:'Camera background color.'},
+        {label:'ctx.camera.angle',value:'ctx.camera.angle',title:'Camera angle in degrees.'}
+      ],
+      Node:[{label:'Visible',value:'ctx.isVisible',title:'Whether the current Node is visible.'},{label:'Node',value:'ctx.node',title:'The current Node object.'},{label:'Name',value:'ctx.node.name',title:'Name of the current Node.'},{label:'ID',value:'ctx.node.id',title:'Unique ID of the current Node.'},{label:'Type',value:'ctx.node.type',title:'Type of the current Node.'}],
       Input:[{label:'Value',value:'ctx.input.value',title:'Current Input Component text value.'},{label:'Align',value:'ctx.input.align',title:'Vertical Input alignment: Top, Center, or Bottom.'},{label:'Justify',value:'ctx.input.justify',title:'Horizontal Input justification: Left, Center, or Right.'}],
       'Color Input':[{label:'Value',value:'ctx.color_value',title:'Current Color Input component color as a hex string.'}],
-      sceneVariables:sceneVariableList().map(v=>({label:v.name,value:`ctx.sceneVariables.${v.name}`})),
-      globalVariables:state.globalVariables.map(v=>({label:v.name,value:`ctx.global.${v.name}`})),
-      serverVariables:state.serverVariables.map(v=>({label:v.name,value:`ctx.server.${v.name}`})),
+      Screen:[{label:'W',value:'ctx.screen.W',title:'Current visible screen/camera width in scene coordinates.'},{label:'H',value:'ctx.screen.H',title:'Current visible screen/camera height in scene coordinates.'}],
       Events:keybindOptions().map(k=>({label:k,value:/^\d$/.test(k)?`ctx.events.key[\"${k}\"]`:`ctx.events.key.${k}`})),
       Touch:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Touch${k}`,value:`ctx.Touch${k}`})),
       Mouse:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
@@ -6665,10 +7697,11 @@
         {label:'parseInt(value)',value:'parseInt(value)',title:'Parse an integer from text.'},
         {label:'parseFloat(value)',value:'parseFloat(value)',title:'Parse a floating-point number from text.'},
         {label:'isNaN(value)',value:'isNaN(value)',title:'Check whether a value is NaN after numeric coercion.'},
-        {label:'ctx.isVisible',value:'ctx.isVisible',title:'Whether the current Node is visible.'},
         {label:'ctx.col.rgb(r, g, b)',value:'ctx.col.rgb(r, g, b)',title:'Returns a #RRGGBB hex color. r, g, b are 0–255.'},
         {label:'ctx.col.rgba(r, g, b, a)',value:'ctx.col.rgba(r, g, b, a)',title:'Returns a #RRGGBBAA hex color. r, g, b are 0–255 and a is 0–1.'},
         {label:'ctx.scriptStart',value:'ctx.scriptStart',title:'performance.now() timestamp in milliseconds when the current ScriptNode started or was called.'},
+        {label:'IIFE Lambda',value:'(()=>{ return "code here" })()',title:'A return-valued immediately invoked lambda. Use let inside the IIFE. Every control-flow path must return a value.'},
+        {label:'Function IIFE',value:'(function(){ return "code here"; })()',title:'Function-expression form of a return-valued IIFE.'},
         {label:'ctx.ontick.exec(()=>{ return expression })',value:'ctx.ontick.exec(()=>{ return expression })',title:'Evaluate a lambda immediately and keep only this value slot live. The same lambda is re-evaluated internally every runtime tick without executing the whole ScriptNode again.'}
       ],
       Operators:[
@@ -6978,19 +8011,30 @@
     }
     const out=[];const walk=(items,parent=null)=> (Array.isArray(items)?items:[]).forEach(node=>{if(!node||typeof node!=='object'||node.id===undefined||node.id===null)return;if(node.type==='folder')normalizeFolder(node);out.push({node,parent});if(node.type==='folder')walk(node.children,node);});walk(scene?.nodes);return out;
   }
+  function runtimeSetIdMap(map,id,value){
+    if(!map||id===null||id===undefined)return;
+    map.set(id,value);
+    map.set(String(id),value);
+  }
+  function runtimeDeleteIdMap(map,id){
+    if(!map||id===null||id===undefined)return;
+    map.delete(id);map.delete(String(id));
+  }
   function runtimeFindNode(id){
-    const rt=state.runtime;if(rt?.nodeById?.has(id))return rt.nodeById.get(id)||null;
-    return runtimeAllNodes().find(x=>x?.node?.id===id)?.node||null;
+    if(id===null||id===undefined||id==='')return null;
+    const rt=state.runtime,key=String(id);
+    if(rt?.nodeById){if(rt.nodeById.has(id))return rt.nodeById.get(id)||null;if(rt.nodeById.has(key))return rt.nodeById.get(key)||null;}
+    return runtimeAllNodes().find(x=>x?.node?.id!==null&&x?.node?.id!==undefined&&String(x.node.id)===key)?.node||null;
   }
   function runtimeRebuildCaches(){
     const rt=state.runtime;if(!rt)return;
     const entries=[],nodes=[],nodeById=new Map(),parentById=new Map(),folderByLabel=new Map();
-    const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){if(!node||typeof node!=='object')continue;entries.push({node,parent});parentById.set(node.id,parent||null);if(node.type==='node'){nodes.push(node);nodeById.set(node.id,node);}else if(node.type==='folder'){normalizeFolder(node);folderByLabel.set(`${node.name} [${node.folderId}]`,node);walk(node.children,node);}}};
+    const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){if(!node||typeof node!=='object'||node.id===null||node.id===undefined)continue;entries.push({node,parent});runtimeSetIdMap(parentById,node.id,parent||null);if(node.type==='node'){nodes.push(node);runtimeSetIdMap(nodeById,node.id,node);}else if(node.type==='folder'){normalizeFolder(node);folderByLabel.set(`${node.name} [${node.folderId}]`,node);walk(node.children,node);}}};
     walk(rt.scene?.nodes);
     const bodyById=new Map(),bodyByNumericId=new Map(),bodiesByName=new Map(),physicsBodies=[],joints=[];
     for(const body of (rt.bodies||[])){
-      if(!body?.node?.id)continue;
-      bodyById.set(body.node.id,body);
+      if(body?.node?.id===null||body?.node?.id===undefined)continue;
+      runtimeSetIdMap(bodyById,body.node.id,body);
       const numericId=Number(body.node.numericId);
       if(Number.isFinite(numericId))bodyByNumericId.set(numericId,body);
       const bodyName=String(body.node.name||'');
@@ -6999,7 +8043,7 @@
       if(body.physics||body.collider)physicsBodies.push(body);
     }
     for(const owner of (rt.bodies||[])){
-      if(!owner?.node?.id)continue;
+      if(owner?.node?.id===null||owner?.node?.id===undefined)continue;
       for(const j of (owner.joints?.joints||[])){
         const targetId=String(j.object||''),target=bodyById.get(targetId);
         if(!target||target===owner)continue;
@@ -7028,7 +8072,7 @@
           eventScriptsByName.set(name,list);
         }
       }
-      eventScriptsByNode.set(node.id,byDef);
+      runtimeSetIdMap(eventScriptsByNode,node.id,byDef);
       const connections=Array.isArray(rt.dynamicConnectionsByNode?.[node.id])?rt.dynamicConnectionsByNode[node.id]:[];
       for(const c of connections){
         if(!c?.from||!c?.to||!c?.output)continue;
@@ -7287,15 +8331,15 @@
     rt.bodies.push(body);
     rt.renderBodies.push(body);
     if(body.physics||body.collider)rt.physicsBodies.push(body);
-    rt.bodyById.set(copy.id,body);
+    runtimeSetIdMap(rt.bodyById,copy.id,body);
     rt.bodyByNumericId?.set(copy.numericId,body);
     const copyName=String(copy.name||'');
     if(!rt.bodiesByName?.has(copyName))rt.bodiesByName?.set(copyName,[]);
     rt.bodiesByName?.get(copyName)?.push(body);
-    rt.nodeById.set(copy.id,copy);
+    runtimeSetIdMap(rt.nodeById,copy.id,copy);
     rt.nodeEntries.push({node:copy,parent});
     rt.nodeList.push(copy);
-    rt.parentById.set(copy.id,parent);
+    runtimeSetIdMap(rt.parentById,copy.id,parent);
     if(rt.shared?.allNodes&&!rt.shared.allNodes.includes(copy))rt.shared.allNodes.push(copy);
     rt.renderOrderDirty=true;
     runtimeRegisterScripts(copy,sourceScripts,sourceConnections);
@@ -7315,17 +8359,17 @@
     return copy;
   }
   function runtimeDestroyNode(node){
-    const rt=state.runtime;if(!node||!rt)return false;const id=String(node.id||''),body=rt.bodyById.get(id);if(!rt.nodeById.has(id)&&!body)return false;runtimeDeactivateValueTickSlotsForNode(id);runtimeDeactivateReactiveBindingsForNode(id);
+    const rt=state.runtime;if(!node||!rt||node.id===null||node.id===undefined)return false;const rawId=node.id,id=String(rawId),body=rt.bodyById.get(rawId)||rt.bodyById.get(id);if(!rt.nodeById.has(rawId)&&!rt.nodeById.has(id)&&!body)return false;runtimeDeactivateValueTickSlotsForNode(id);runtimeDeactivateReactiveBindingsForNode(id);
     // Capture every owned script before removing the node so compiled/context memory is released too.
     const ownedScriptIds=new Set();
     for(const [sid,ownerId] of rt.scriptOwnerById||[])if(String(ownerId)===id)ownedScriptIds.add(String(sid));
     for(const sn of rt.dynamicScriptsByNode?.[id]||[])if(sn?.id)ownedScriptIds.add(String(sn.id));
-    const parent=rt.parentById.get(id)||null,container=parent?.children||rt.scene?.nodes;if(Array.isArray(container)){const i=container.findIndex(x=>x?.id===id);if(i>=0)container.splice(i,1);}
+    const parent=rt.parentById.get(rawId)||rt.parentById.get(id)||null,container=parent?.children||rt.scene?.nodes;if(Array.isArray(container)){const i=container.findIndex(x=>x?.id!==null&&x?.id!==undefined&&String(x.id)===id);if(i>=0)container.splice(i,1);}
     const deadScripts=ownedScriptIds;for(const sid of deadScripts){rt.scriptById.delete(sid);rt.scriptOwnerById.delete(sid);delete rt.intervalStates[sid];}
-    for(const [name,list] of rt.eventScriptsByName){const next=list.filter(x=>x.node?.id!==id&&!deadScripts.has(x.sn?.id));if(next.length)rt.eventScriptsByName.set(name,next);else rt.eventScriptsByName.delete(name);}
-    rt.eventScriptsByNode.delete(id);
+    for(const [name,list] of rt.eventScriptsByName){const next=list.filter(x=>String(x.node?.id??'')!==id&&!deadScripts.has(String(x.sn?.id??'')));if(next.length)rt.eventScriptsByName.set(name,next);else rt.eventScriptsByName.delete(name);}
+    runtimeDeleteIdMap(rt.eventScriptsByNode,rawId);
     for(const [from,byOut] of rt.routesByScriptOutput){for(const [out,list] of byOut){const next=list.filter(c=>!deadScripts.has(c.from)&&!deadScripts.has(c.to));if(next.length)byOut.set(out,next);else byOut.delete(out);}if(!byOut.size)rt.routesByScriptOutput.delete(from);}
-    rt.timers=(rt.timers||[]).filter(t=>t?.nodeId!==id&&!deadScripts.has(t?.key));rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>n?.id!==id);
+    rt.timers=(rt.timers||[]).filter(t=>String(t?.nodeId??'')!==id&&!deadScripts.has(String(t?.key??'')));rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>String(n?.id??'')!==id);
     delete rt.dynamicScriptsByNode[id];delete rt.dynamicConnectionsByNode[id];delete rt.localVarsByNode[id];delete rt.followTargets[id];delete rt.aiTargets[id];Object.values(rt.followTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});Object.values(rt.aiTargets||{}).forEach(v=>{if(v?.targetId===id)v.targetId='';});
     for(const other of rt.nodeList||[]){
       if(!other||String(other.id||'')===id)continue;
@@ -7335,22 +8379,22 @@
       const cam=component(other,'camera');if(cam&&String(cam.followId||'')===id)cam.followId='';
     }
 
-    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>pair?.[0]?.node?.id!==id&&pair?.[1]?.node?.id!==id));
-    rt.joints=(rt.joints||[]).filter(j=>j?.bodyA?.node?.id!==id&&j?.bodyB?.node?.id!==id&&String(j?.targetId||'')!==id);
+    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));
+    rt.joints=(rt.joints||[]).filter(j=>String(j?.bodyA?.node?.id??'')!==id&&String(j?.bodyB?.node?.id??'')!==id&&String(j?.targetId??'')!==id);
     rt.timers=(rt.timers||[]).filter(t=>!deadScripts.has(String(t?.key||''))&&String(t?.nodeId||'')!==id);
     rt.intervalStates=Object.fromEntries(Object.entries(rt.intervalStates||{}).filter(([sid,st])=>!deadScripts.has(String(sid))&&String(st?.nodeId||'')!==id));
     rt.pendingOnLoad=(rt.pendingOnLoad||[]).filter(n=>String(n?.id||'')!==id);
     rt.signalQueue=(rt.signalQueue||[]).filter(q=>String(q?.nodeId||q?.ownerId||'')!==id&&!deadScripts.has(String(q?.scriptId||q?.key||'')));
-    rt.contextByNode?.delete(id);
+    runtimeDeleteIdMap(rt.contextByNode,rawId);
     for(const sid of deadScripts)runtimeDeactivateValueTickDescriptorForScript(rt.compiledScriptById?.get(String(sid)));
     rt.scriptStartById?.delete?.(id);
     for(const sid of deadScripts)rt.scriptStartById?.delete?.(sid);
-    rt.compiledPlanByNode?.delete(id);
+    runtimeDeleteIdMap(rt.compiledPlanByNode,rawId);
     for(const sid of deadScripts){rt.compiledScriptById?.delete(String(sid));rt.scriptStartById?.delete(String(sid));}
-    rt.textInputEditors?.delete?.(id);
-    if(rt.textInputEditor?.nodeId===id)rt.textInputEditor=null;
-    if(body){let i=rt.bodies.indexOf(body);if(i>=0)rt.bodies.splice(i,1);i=rt.renderBodies.indexOf(body);if(i>=0)rt.renderBodies.splice(i,1);i=rt.physicsBodies.indexOf(body);if(i>=0)rt.physicsBodies.splice(i,1);rt.bodyById.delete(id);rt.bodyByNumericId?.delete(Number(node.numericId));const arr=rt.bodiesByName?.get(String(node.name||''));if(arr){const ai=arr.indexOf(body);if(ai>=0)arr.splice(ai,1);if(!arr.length)rt.bodiesByName.delete(String(node.name||''));}}
-    let i=rt.nodeList.findIndex(n=>n?.id===id);if(i>=0)rt.nodeList.splice(i,1);i=rt.nodeEntries.findIndex(e=>e.node?.id===id);if(i>=0)rt.nodeEntries.splice(i,1);rt.nodeById.delete(id);rt.parentById.delete(id);if(rt.shared?.allNodes){i=rt.shared.allNodes.findIndex(n=>n?.id===id);if(i>=0)rt.shared.allNodes.splice(i,1);}rt.numericIds.delete(Number(node.numericId));
+    runtimeDeleteIdMap(rt.textInputEditors,rawId);
+    if(String(rt.textInputEditor?.nodeId??'')===id)rt.textInputEditor=null;
+    if(body){let i=rt.bodies.indexOf(body);if(i>=0)rt.bodies.splice(i,1);i=rt.renderBodies.indexOf(body);if(i>=0)rt.renderBodies.splice(i,1);i=rt.physicsBodies.indexOf(body);if(i>=0)rt.physicsBodies.splice(i,1);runtimeDeleteIdMap(rt.bodyById,rawId);rt.bodyByNumericId?.delete(Number(node.numericId));const arr=rt.bodiesByName?.get(String(node.name||''));if(arr){const ai=arr.indexOf(body);if(ai>=0)arr.splice(ai,1);if(!arr.length)rt.bodiesByName.delete(String(node.name||''));}}
+    let i=rt.nodeList.findIndex(n=>n?.id!==null&&n?.id!==undefined&&String(n.id)===id);if(i>=0)rt.nodeList.splice(i,1);i=rt.nodeEntries.findIndex(e=>e.node?.id!==null&&e.node?.id!==undefined&&String(e.node.id)===id);if(i>=0)rt.nodeEntries.splice(i,1);runtimeDeleteIdMap(rt.nodeById,rawId);runtimeDeleteIdMap(rt.parentById,rawId);if(rt.shared?.allNodes){i=rt.shared.allNodes.findIndex(n=>n?.id!==null&&n?.id!==undefined&&String(n.id)===id);if(i>=0)rt.shared.allNodes.splice(i,1);}rt.numericIds.delete(Number(node.numericId));
     if(body){body.node=null;body.physics=null;body.collider=null;body.t=null;body._shapeCache=null;body._shapeKey=null;body._scriptShapeCache=null;body._scriptShapeKey=null;body._aabbCache=null;body._aabbCacheKey=null;body._massCache=null;}
     return true;
   }
@@ -7833,6 +8877,7 @@
     if(cached)return cached;
     const compiled={fn:null,error:null,text,type};
     try{
+      validateIIFEExpressionSource(text);
       validateRuntimeExpressionSafety(rewritten);
       compiled.fn=Function('ctx','Math','scriptHere','__NODE2D_ONTICK_BREAK__',`"use strict"; return (${rewritten});`);
       compiled.source=rewritten;
@@ -7929,7 +8974,7 @@
       def,
       specs,
       values:Object.create(null),
-      reuseValues:def?.func?.constructor?.name!=='AsyncFunction',
+      reuseValues:def?.func?.constructor?.name!=='AsyncFunction'&&!specs.some(spec=>spec.kind==='expr'&&expressionUsesAsync(spec.source||'')),
       liveSlotCount:0,
       nodeId:null,
       eventFilter,
@@ -7944,8 +8989,10 @@
   function runtimeFillCompiledValues(desc,node,ctx){
     if(desc&&node)desc.nodeId=String(node.id||'');
     const values=desc.reuseValues?desc.values:Object.create(null);
+    if(!desc.reuseValues)desc.values=values;
     const specs=desc.specs;
     const expressionMap=desc.sn?.expressions||{};
+    const pending=[];
     for(let i=0;i<specs.length;i++){
       const spec=specs[i];
       if(spec.kind==='const'){
@@ -8002,6 +9049,9 @@
           if(!Object.prototype.hasOwnProperty.call(values,'__liveSlots'))Object.defineProperty(values,'__liveSlots',{configurable:true,enumerable:false,writable:true,value:Object.create(null)});
           values.__liveSlots[spec.name]=spec.liveSlot;
           values[spec.name]=runtimeMakeReactiveValue(spec.liveSlot);
+        }else if(value&&typeof value.then==='function'){
+          values[spec.name]=spec.entry?.value??spec.fallback;
+          pending.push(Promise.resolve(value).then(resolved=>{values[spec.name]=runtimeValidateExpressionValue(resolved,spec.type);}));
         }else{
           values[spec.name]=runtimeValidateExpressionValue(value,spec.type);
         }
@@ -8010,7 +9060,7 @@
         state.runtime.lastError=String(error?.message||error);
       }
     }
-    return values;
+    return pending.length?Promise.all(pending).then(()=>values):values;
   }
   function runtimeRefreshCachedContext(ctx,node){
     const rt=state.runtime;
@@ -8314,6 +9364,7 @@
     // components can replace their objects while the runtime is running.
     const live=(name,getter)=>{try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:getter});}catch{}};
     live('transform',()=>runtimeBodyForNode(node)?.t||component(node,'transform')||{});
+    live('camera',()=>expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera));
     live('text',()=>component(node,'text')||{});
     live('input',()=>{const c=component(node,'input')||{};return {get value(){return String(c.txt??'');},get align(){return c.align||'Center';},get justify(){return c.justify||'Left';}};});
     live('colorInput',()=>component(node,'colorinput')||{});
@@ -8525,10 +9576,10 @@
           for(const out of Object.keys(route))if(!outputs.includes(out))ordered.push({out,targets:route[out].slice()});
           ops[i].routes=ordered;
         }
-        plan={signature,ops,pcByScriptId:new Map(),startByEvent:Object.create(null)};
+        plan={signature,ops,pcByScriptId:new Map(),startByEvent:Object.create(null),asyncValues:compiled.some(c=>(c?.specs||[]).some(spec=>spec.kind==='expr'&&expressionUsesAsync(spec.source||'')))};
         rt.compiledPlanCache.set(signature,plan);
       }
-      if(!plan.runner&&!plan.cyclic)plan.runner=runtimeCompilePlanRunner(plan);
+      if(!plan.runner&&!plan.cyclic&&!plan.asyncValues)plan.runner=runtimeCompilePlanRunner(plan);
       if(plan.runner&&!plan.poolRunner)plan.poolRunner=runtimeCompilePlanPoolRunner(plan);
       for(let i=0;i<compiled.length;i++){
         plan.pcByScriptId.set(compiled[i].id,i);
@@ -8550,12 +9601,46 @@
     if(stack.top>=stack.stackPc.length){stack.stackPc.push(pc);stack.stackNode.push(node);stack.top++;return;}
     stack.stackPc[stack.top]=pc;stack.stackNode[stack.top]=node;stack.top++;
   }
+  async function runtimeExecuteCompiledAsync(instance,rootPc,node){
+    const rt=state.runtime,stack=[{pc:rootPc,owner:node}];let ops=0,lastResult=null;
+    const report=(actual,owner,error)=>{const msg=String(error?.message||error);rt.lastError=msg;runtimeOutput('error',`ScriptNode ${actual?.def?.name||'Unknown'} on ${owner?.name||'Node'}: ${msg}`);};
+    while(stack.length){
+      if(++ops>20000)throw new Error(`Script execution limit exceeded on ${node.name}`);
+      const {pc,owner}=stack.pop(),op=instance.plan.ops[pc],actual=instance.scriptsByPc[pc];
+      if(!op||!actual||!actual.def||!scriptRequirementEnabled(actual.def))continue;
+      runtimeSetScriptStart(actual);
+      const rawCtx=runtimeGetCachedContext(owner,actual),ctx=runtimeCreateReactiveContext(rawCtx);
+      try{Object.defineProperty(ctx,'__activeValueSlots',{configurable:true,enumerable:false,writable:true,value:actual.values});}catch{ctx.__activeValueSlots=actual.values;}
+      try{
+        const filled=runtimeFillCompiledValues(actual,owner,ctx);
+        if(filled&&typeof filled.then==='function')await filled;
+      }catch(error){report(actual,owner,error);continue;}
+      if(actual.def.receiver&&actual.def.name==='Interval'){
+        const v=actual.values,key=actual.id,cancellable=!!(v.cancellable??v.Cancellable);
+        rt.intervalStates[key] ||= {active:false,next:0,ms:1000,cancellable:false,fired:false,nodeId:owner.id,lastInputFrame:-1};
+        const st=rt.intervalStates[key];st.active=true;st.ms=Math.max(1,Number(v.Milliseconds)||1000);st.cancellable=cancellable;st.fired=false;st.nodeId=owner.id;st.lastInputFrame=rt.frameCounter||0;st.next=performance.now()+st.ms;continue;
+      }
+      if(actual.def.receiver&&actual.def.name==='Timeout'){
+        const v=actual.values,now=performance.now(),ms=Math.max(0,Number(v.Milliseconds)||0),cancellable=!!(v.cancellable??v.Cancellable);
+        rt.timers.push({kind:'timeout',key:actual.id,nodeId:owner.id,at:now+ms,cancellable,inputFrame:rt.frameCounter||0});continue;
+      }
+      let result;
+      try{result=actual.def.func(ctx,actual.values);if(result&&typeof result.then==='function')result=await result;}
+      catch(error){report(actual,owner,error);continue;}
+      if(ctx?.__terminalScriptId===String(actual.id))return lastResult;
+      lastResult=result||{};
+      const routes=op.routes||[];
+      for(let ri=routes.length-1;ri>=0;ri--){const route=routes[ri];if(!result?.[route.out])continue;const targets=route.targets||[];for(let ti=targets.length-1;ti>=0;ti--){const targetPc=targets[ti],targetDesc=instance.scriptsByPc[targetPc];if(!targetDesc)continue;runtimeMarkCompiledInput(targetDesc,owner);stack.push({pc:targetPc,owner});}}
+    }
+    return lastResult;
+  }
   function runtimeExecuteCompiled(comp,node){
     const rt=state.runtime;if(!comp||!node||!rt)return null;
     const instance=comp.instance||rt.compiledPlanByNode?.get(node.id);
     if(!instance)return null;
     const plan=instance.plan,rootPc=plan.pcByScriptId.get(comp.id);
     if(rootPc==null)return null;
+    if(plan.asyncValues)return runtimeExecuteCompiledAsync(instance,rootPc,node).catch(error=>{const msg=String(error?.message||error);state.runtime.lastError=msg;runtimeOutput('error',`Async ScriptNode execution on ${node?.name||'Node'}: ${msg}`);return null;});
     if(plan.runner)return plan.runner(comp,node);
     const stack=rt.executionPool||{stackPc:[],stackNode:[],top:0,maxOps:20000};rt.executionPool=stack;stack.top=0;
     runtimeExecutionPush(rootPc,node,stack);
@@ -9117,7 +10202,7 @@ function updateRuntimeAnimations(dt){
     const applySetNode=v=>{if(node){if(v?.Name!==null&&v?.Name!==undefined)node.name=String(v.Name);if(v?.Id!==null&&v?.Id!==undefined){const n=Number(v.Id);if(Number.isFinite(n))node.numericId=n;}}};
     const ctx={
       local:locals,global:globals,server:serverVars,serverClient:(window.UIXNetwork?.getClients?.()||[]),network:window.UIXNetwork||null,scene:sceneVars,sceneVariables:sceneVars,
-      transform:body?.t||component(node,'transform')||{},col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
+      transform:body?.t||component(node,'transform')||{},camera:expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       PointerUpX:Number(state.runtime.inputs?.PointerUpX)||0,PointerUpY:Number(state.runtime.inputs?.PointerUpY)||0,PointerDownX:Number(state.runtime.inputs?.PointerDownX)||0,PointerDownY:Number(state.runtime.inputs?.PointerDownY)||0,PointerMoveX:Number(state.runtime.inputs?.PointerMoveX)||0,PointerMoveY:Number(state.runtime.inputs?.PointerMoveY)||0,PointerId:Number(state.runtime.inputs?.PointerId)||0,PointerType:String(state.runtime.inputs?.PointerType||'mouse'),
@@ -9533,6 +10618,11 @@ function updateRuntimeAnimations(dt){
       scaleX=width/baseW;scaleY=height/baseH;
     }else if(type==='Crop'){
       const s=Math.max(width/baseW,height/baseH);scaleX=scaleY=s;offsetX=(width-baseW*s)/2;offsetY=(height-baseH*s)/2;
+    }else if(type==='Smart Camera'){
+      const cam=state.runtime?.camera||state.camera;
+      const view=cameraVisibleViewForDisplay(cam,type,width,height);
+      const s=Math.min(width/Math.max(1,view.w),height/Math.max(1,view.h));
+      scaleX=scaleY=s;viewW=view.w;viewH=view.h;offsetX=(width-viewW*s)/2;offsetY=(height-viewH*s)/2;
     }else{
       const s=height/baseH;scaleX=scaleY=s;viewW=width/s;viewH=baseH;
     }
@@ -9652,12 +10742,18 @@ function updateRuntimeAnimations(dt){
     return null;
   }
   function runtimeScreenNodePosition(node,t,m){
-    let x=Number(t.position?.[0]||0),y=Number(t.position?.[1]||0);
-    if(m?.type==='Smart Camera'){
-      x*=m.viewW/RUNTIME_BASE_WIDTH;
-      y*=m.viewH/RUNTIME_BASE_HEIGHT;
-    }
-    return {x,y};
+    // Position values use a canonical 1280×720 screen space centered at the
+    // camera frame. Smart Camera and Crop may expose a different visible frame
+    // for the actual output aspect ratio, so scale Screen-relative positions
+    // to that visible frame rather than to the full design canvas. Keep this
+    // mapping local to Screen-relative nodes so joystick layout remains intact.
+    const type=String(m?.type||normalizeScreenType(state.game.screenType));
+    const cam=state.runtime?.camera||state.camera;
+    const view=(type==='Smart Camera'||type==='Crop')
+      ?cameraVisibleViewForDisplay(cam,type,Math.max(1,Number(m?.width)||1280),Math.max(1,Number(m?.height)||720))
+      :{w:Number(m?.viewW)||1280,h:Number(m?.viewH)||720};
+    const viewW=Math.max(1,Number(view.w)||1280),viewH=Math.max(1,Number(view.h)||720);
+    return {x:Number(t.position?.[0]||0)*(viewW/1280),y:Number(t.position?.[1]||0)*(viewH/720)};
   }
   function runtimeScreenNodeAtPoint(x,y){const ctx=$('#runtimeCanvas')?.getContext?.('2d'),canvas=$('#runtimeCanvas'),m=canvas?runtimeProjection(canvas):null;for(const node of runtimeInteractiveNodesDesc()){if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)!=='Screen')continue;const t=runtimeEffectiveTransform(node);const pos=runtimeScreenNodePosition(node,t,m);let dx=x-pos.x,dy=y-pos.y;({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));dx/=sx;dy/=sy;const geo=spriteLocalGeometry(node);if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}const colorInput=component(node,'colorinput');if(colorInput){const p=colorInput.position||[0,0],w=Math.max(1,Number(colorInput.width)||72),h=Math.max(1,Number(colorInput.height)||42),isx=Math.abs(Number(colorInput.scale?.[0]??1)||1),isy=Math.abs(Number(colorInput.scale?.[1]??1)||1);if(Math.abs(dx-Number(p[0]||0))<=w*isx/2&&Math.abs(dy-Number(p[1]||0))<=h*isy/2)return node;}const input=component(node,'input');if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}let size={w:90,h:54};const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;}return null;}
   function runtimeInputNodeAtPoint(x,y){
@@ -10202,9 +11298,35 @@ function updateRuntimeAnimations(dt){
     ctx.imageSmoothingEnabled=true;
     ctx.globalAlpha=1;
     ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const runtimeSkies=state.runtime?.scene?sceneSkyBoxes(state.runtime.scene):[],runtimeSkyNow=performance.now(),runtimeTileMap=runtimeCameraMapping(c,cam),runtimeRef=cameraReferenceWorldSize(cam),cameraMap=runtimeTileMap;
+    // Render all Sky Boxes into one reusable transparent surface in Index order.
+    // Tile uses the runtime world transform inside this surface; Fixed and Tiled
+    // Screen use screen coordinates. This keeps Index as one consistent z-order
+    // regardless of each Sky Box's coordinate mode, with world objects drawn above.
+    let skySurface=state.runtime.skyBoxCompositeCanvas;
+    if(!skySurface||skySurface.width!==c.width||skySurface.height!==c.height){skySurface=skyBoxCreateCanvas(c.width,c.height);state.runtime.skyBoxCompositeCanvas=skySurface;state.runtime.skyBoxCompositeCtx=null;}
+    let skyCtx=state.runtime.skyBoxCompositeCtx;
+    if(!skyCtx||state.runtime.skyBoxCompositeCanvas!==skySurface){skyCtx=skySurface.getContext('2d',{alpha:true})||skySurface.getContext('2d');state.runtime.skyBoxCompositeCtx=skyCtx;}
+    if(skyCtx){
+      skyCtx.setTransform(1,0,0,1,0,0);skyCtx.globalAlpha=1;skyCtx.globalCompositeOperation='copy';skyCtx.clearRect(0,0,skySurface.width,skySurface.height);skyCtx.globalCompositeOperation='source-over';
+      skyCtx.setTransform(m.dpr,0,0,m.dpr,0,0);
+      for(const sky of runtimeSkies){
+        if(sky?.enabled===false)continue;
+        if(sky.mode==='Fixed')drawSceneSkyBox(skyCtx,sky,W,H,runtimeSkyNow);
+        else if(sky.mode==='Tiled Screen'){
+          const entries=skyBoxResolveEntries(skyBoxAssets(sky),sky,runtimeSkyNow),first=skyBoxReadyEntry(entries),dims=first?skyBoxTileDimensions(sky,first.raw,runtimeRef.w,runtimeRef.h):null;
+          drawSceneSkyBoxScreenTiles(skyCtx,sky,W,H,runtimeSkyNow,dims?{tileW:dims.w*runtimeTileMap.scaleX,tileH:dims.h*runtimeTileMap.scaleY,resolved:entries,signature:`runtime:${runtimeTileMap.viewW}:${runtimeTileMap.viewH}:${runtimeTileMap.scaleX}:${runtimeTileMap.scaleY}:${W}:${H}`} : null);
+        }else if(sky.mode==='Tile'){
+          const base=cameraReferenceWorldSize(cam);skyCtx.save();skyCtx.translate(W/2,H/2);skyCtx.scale(cameraMap.scaleX,cameraMap.scaleY);skyCtx.rotate(Number(cam.angle||0)*Math.PI/180);skyCtx.translate(-Number(cam.x||0),-Number(cam.y||0));
+          drawSceneSkyBoxWorldTiles(skyCtx,sky,{x:Number(cam.x)||0,y:Number(cam.y)||0,viewW:cameraMap.viewW,viewH:cameraMap.viewH,angle:Number(cam.angle||0)*Math.PI/180,referenceW:base.w,referenceH:base.h},runtimeSkyNow);skyCtx.restore();
+        }
+      }
+      ctx.drawImage(skySurface,0,0,skySurface.width,skySurface.height,0,0,W,H);
+    }else{
+      for(const sky of runtimeSkies){if(sky?.enabled!==false&&sky.mode==='Fixed')drawSceneSkyBox(ctx,sky,W,H,runtimeSkyNow);}
+    }
 
     ctx.save();
-    const cameraMap=runtimeCameraMapping(c,cam);
     ctx.translate(W/2,H/2);
     ctx.scale(cameraMap.scaleX,cameraMap.scaleY);
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
@@ -10260,7 +11382,9 @@ function updateRuntimeAnimations(dt){
       const insideInteractive=path.some(target=>target?.nodeType===1 && target.matches?.('.context-menu,.menu-trigger,.select-wrap,.floating-select-menu'));
       if(insideInteractive)return;
       const openOutsideClosable=$$('.context-menu.open').some(menu=>menu.dataset.closeOutside!=='false');
-      if(openOutsideClosable || activeSelectMenu)closeMenus();
+      // Native select popups are tracked separately from custom select menus.
+      // They must close when the user taps anywhere outside the open selector.
+      if(openOutsideClosable || activeSelectMenu || activeNativeSelect)closeMenus();
     },true);
     document.addEventListener('click',e=>{
       const act=e.target.closest('[data-action]');
@@ -10411,6 +11535,7 @@ function updateRuntimeAnimations(dt){
     $('#expressionInput').addEventListener('select',()=>{if(!$('#expressionReplaceModal')?.hidden)expressionReplaceRefreshFromInputSelection();});
     $('#colorWheel').addEventListener('pointerdown',e=>{e.currentTarget.setPointerCapture(e.pointerId);pickWheel(e);});
     $('#colorWheel').addEventListener('pointermove',e=>{if(e.buttons)pickWheel(e);});
+    $('#colorEyeDropper')?.addEventListener('click',pickScreenColor);
     $('#colorTextInput').addEventListener('change',()=>{try{const rgba=parseColor($('#colorTextInput').value);state.color.rgba=rgba;state.color.hsv=rgbToHsv(rgba);syncColorUI();}catch{status('Invalid color');}});
     $('#assetFileInput').addEventListener('change',e=>{if(e.target.files.length)importAssets(e.target.files);e.target.value='';});
     $('#assetModal')?.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action==='asset-multiselect-toggle')setAssetManagerSelectMode(!state.assetManagerSelectMode);else if(action==='asset-remove-selected')removeSelectedAssets(true);else if(action==='asset-edit-selected')importSelectedAssetManager();else if(action==='asset-import-local-projects')openAssetImportFromLocalProjects();});

@@ -114,6 +114,9 @@
   if(window.UIX_EDITOR_CONTEXT!==false) document.addEventListener('keydown',e=>{
     const target=e.target;
     if(target?.classList?.contains('keybind-input'))return;
+    // The full-screen Pad Editor lives beside (not inside) the MIDI modal.
+    // While it is open, its own handler exclusively owns shortcuts such as Space.
+    if(document.querySelector('.uix-midi-pad-overlay'))return;
     const modal=target?.closest?.('.uix-midi-modal')||document.querySelector('.uix-midi-modal:not([hidden])');
     const script=target?.closest?.('#scriptModal')||document.querySelector('#scriptModal:not([hidden])');
     const sprite=target?.closest?.('.sprite-paint-modal')||document.querySelector('.sprite-paint-modal:not([hidden])');
