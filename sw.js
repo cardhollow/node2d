@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v40-066-texture-grid-input-clip';
+const CACHE_NAME='uix-node2d-v49-shared-midi-notes-zoom-multipad';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[

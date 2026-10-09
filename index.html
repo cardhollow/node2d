@@ -193,6 +193,10 @@
     <div class="game-settings-body">
       <div class="property-row"><span class="property-label">Preferred Scene</span><div class="property-control" id="preferredSceneControl"></div></div>
       <div class="property-row"><span class="property-label">Screen Type</span><div class="property-control" id="screenTypeControl"></div></div>
+      <div class="game-screen-preview" id="gameScreenPreview" aria-live="polite">
+        <div class="game-screen-preview-stage"><div class="game-screen-preview-frame" id="gameScreenPreviewFrame"><span class="game-screen-preview-center"></span></div></div>
+        <div class="game-screen-preview-copy"><strong id="gameScreenPreviewTitle">Windowboxing</strong><span id="gameScreenPreviewDetails">Live screen preview</span></div>
+      </div>
       <div class="game-settings-section"><div class="game-settings-subheading">Required Features</div><div id="gameRequirementsControl" class="game-requirements-control"></div></div>
       <div id="micSettingsSection" class="game-settings-section" hidden><div class="game-settings-subheading">Microphone &amp; Speech</div><div class="property-row"><span class="property-label">Speech Language</span><div class="property-control"><input id="micSpeechLanguage" class="text-input" type="text" placeholder="en-US"></div></div><label class="game-setting-check"><input id="micSpeechContinuous" type="checkbox"><span>Continuous Speech</span></label><label class="game-setting-check"><input id="micSpeechInterim" type="checkbox"><span>Live Interim Results</span></label></div>
       <div class="game-settings-note">Windowboxing preserves the 16:9 landscape ratio and adds black space around the game when needed. Stretch fills the screen.</div>
@@ -244,7 +248,7 @@
   <section id="colorModal" class="modal color-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
     <div class="modal-header"><div><h3>Color</h3><p id="colorTargetLabel">RGBA</p></div><button class="modal-close" data-action="close-modal">×</button></div>
     <div class="color-editor">
-      <div class="color-main"><canvas id="colorWheel" width="260" height="260"></canvas><div class="color-preview-row"><span id="colorPreview"></span><span id="colorHexPreview">#FFFFFFFF</span></div></div>
+      <div class="color-main"><canvas id="colorWheel" width="260" height="260"></canvas><div class="color-preview-row"><span id="colorPreview"></span><span id="colorHexPreview">#FFFFFFFF</span><button class="btn color-eyedrop-btn" id="colorEyeDropper" type="button" title="Pick any visible color from the screen">⌖ Pick Screen Color</button></div></div>
       <div id="colorSliders" class="color-sliders"></div>
       <div class="color-input-row"><label>Color Input</label><input id="colorTextInput" value="#FFFFFFFF" spellcheck="false"></div>
       <div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="apply-color">Apply</button></div>
