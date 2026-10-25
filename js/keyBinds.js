@@ -127,7 +127,7 @@
     if(textEditing)return;
     const hit=findMatch(e,scope);if(!hit)return;
     if(hit.scope==='editor'&&window.UIXApp?.isRuntimeRunning?.())return;
-    e.preventDefault();e.stopPropagation();hit.func({event:e,scope,command:hit.command,keyBind:hit,display:display(hit.keys)});
+    if(hit.command!=='paste')e.preventDefault();e.stopPropagation();hit.func({event:e,scope,command:hit.command,keyBind:hit,display:display(hit.keys)});
   },true);
 
   window.UIXKeyBinds={keyBinds,getAll,registerHandler,runCommand,load,save,reset,findMatch,display,shortcutFor,normalizeToken};

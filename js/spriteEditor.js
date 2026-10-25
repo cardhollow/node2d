@@ -947,8 +947,21 @@
     const f=currentFrame(ed);let i=Number.isInteger(index)?index:f.activeLayer; i=clamp(i,0,f.layers.length-1);
     if(action==='add'){pushUndo(ed,true);const layer={name:`Layer ${f.layers.length+1}`,visible:true,opacity:1,pixels:makePixels(f.width,f.height)};f.layers.splice(i+1,0,layer);f.activeLayer=i+1;}
     else if(action==='duplicate'){pushUndo(ed,true);const l=f.layers[i];f.layers.splice(i+1,0,{name:`${l.name||`Layer ${i+1}`} Copy`,visible:l.visible!==false,opacity:Number(l.opacity??1),pixels:clonePixels(l.pixels)});f.activeLayer=i+1;}
-    else if(action==='copy'){const l=f.layers[i];ed.layerClipboard={name:l.name||`Layer ${i+1}`,visible:l.visible!==false,opacity:Number(l.opacity??1),width:f.width,height:f.height,pixels:clonePixels(l.pixels)};window.UIXApp?.status?.(`Copied ${ed.layerClipboard.name}`);renderLayerList(ed);return;}
-    else if(action==='paste'){if(!ed.layerClipboard){window.UIXApp?.status?.('Copy a layer first');return;}pushUndo(ed,true);const clip=ed.layerClipboard;const layer={name:clip.name||'Pasted Layer',visible:clip.visible!==false,opacity:Number(clip.opacity??1),pixels:fitPixelArray(clip.pixels,f.width,f.height)};f.layers.splice(i+1,0,layer);f.activeLayer=i+1;}
+    else if(action==='copy'){const l=f.layers[i];ed.layerClipboard={name:l.name||`Layer ${i+1}`,visible:l.visible!==false,opacity:Number(l.opacity??1),width:f.width,height:f.height,pixels:clonePixels(l.pixels)};const image=pixelsToDataURL(l.pixels,f.width,f.height);window.UIXClipboard?.set?.('spriteLayer',{...ed.layerClipboard,imageDataUrl:image},{representations:{'image/png':image}});window.UIXApp?.status?.(`Copied ${ed.layerClipboard.name}`);renderLayerList(ed);return;}
+    else if(action==='paste'){
+      const apply=async()=>{
+        const sharedRecord=window.UIXClipboard?.getRecord?.();let clip=null;
+        if(sharedRecord?.type==='spriteLayer')clip=window.UIXClipboard?.get?.('spriteLayer');
+        else if(sharedRecord?.type==='image'){
+          const image=await imageToPixels(sharedRecord.payload?.dataUrl);if(!image?.pixels)return window.UIXApp?.status?.('Could not decode clipboard image');
+          clip={name:'Pasted Image',visible:true,opacity:1,width:image.width,height:image.height,pixels:image.pixels};
+        }else if(sharedRecord)return window.UIXApp?.status?.(`Clipboard contains ${sharedRecord.type}, not a Sprite layer`);
+        else clip=ed.layerClipboard;
+        if(!clip)return window.UIXApp?.status?.('Copy a layer or image first');
+        pushUndo(ed,true);const layer={name:clip.name||'Pasted Layer',visible:clip.visible!==false,opacity:Number(clip.opacity??1),pixels:fitPixelArray(clip.pixels,f.width,f.height)};f.layers.splice(i+1,0,layer);f.activeLayer=i+1;f.layers.forEach(item=>{item.__cache=null;});ed.selection=null;render(ed);
+      };
+      Promise.resolve(window.UIXClipboard?.readExternal?.()).catch(()=>null).then(apply);return;
+    }
     else if(action==='delete'){pushUndo(ed,true);if(f.layers.length===1){f.layers[0].pixels=makePixels(f.width,f.height);f.layers[0].__cache=null;}else{f.layers.splice(i,1);f.activeLayer=clamp(i-1,0,f.layers.length-1);}}
     else if(action==='merge'){if(i<=0){window.UIXApp?.status?.('There is no layer below to merge into');return;}pushUndo(ed,true);const top=f.layers[i],under=f.layers[i-1];if(top.visible!==false){const topOpacity=clamp(Number(top.opacity??1),0,1),underOpacity=clamp(Number(under.opacity??1),0,1);for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){const a=top.pixels[y][x],b=under.pixels[y][x],sa=(a[3]/255)*topOpacity,da=(b[3]/255)*underOpacity,outA=sa+da*(1-sa);if(outA<=0){under.pixels[y][x]=transparent();continue;}under.pixels[y][x]=[Math.round((a[0]*sa+b[0]*da*(1-sa))/outA),Math.round((a[1]*sa+b[1]*da*(1-sa))/outA),Math.round((a[2]*sa+b[2]*da*(1-sa))/outA),Math.round(outA*255)];}under.opacity=1;}under.visible=under.visible!==false||top.visible!==false;under.__cache=null;f.layers.splice(i,1);f.activeLayer=i-1;}
     else if(action==='up'){moveLayer(ed,i,Math.min(f.layers.length-1,i+1));return;}
@@ -1003,6 +1016,20 @@
     while(frameNameExists(ed,candidate,exceptIndex))candidate=`${root} ${n++}`;
     return candidate;
   }
+  function nextNumberedFrameName(ed,baseName){
+    let root=String(baseName||ed.name||'Sprite').trim().replace(/\.(png|webp|jpe?g|svg)$/i,'');
+    root=root.replace(/\s+copy(?:\s+\d+)?$/i,'').trim()||'Sprite';
+    const parsed=frameSuffix(root);if(parsed.number!==null)root=parsed.base;
+    root=root.trim()||'Sprite';
+    const allAssets=window.UIXAssets?.Assets||{};
+    const assets=Object.values(allAssets).flatMap(list=>Array.isArray(list)?list:[]);
+    const names=[...ed.frames.map(f=>String(f?.name||'')),...assets.flatMap(a=>[a?.filename,a?.name,a?.title].filter(Boolean).map(v=>String(v).replace(/\.[^.]+$/,'')))];
+    const rootKey=root.toLocaleLowerCase();
+    const numbers=names.map(name=>frameSuffix(name)).filter(item=>item.number!==null&&item.base.toLocaleLowerCase()===rootKey).map(item=>item.number);
+    let next=Math.max(0,...numbers)+1,candidate=`${root}${next}`;
+    while(frameNameExists(ed,candidate)){candidate=`${root}${++next}`;}
+    return candidate;
+  }
   function renameCurrentFrame(ed,value){
     const f=currentFrame(ed);if(!f)return;
     const name=String(value||'').trim().replace(/\.(png|webp|jpe?g)$/i,'');
@@ -1030,15 +1057,14 @@
     if(a==='duplicate'||a==='copy'){
       const f=currentFrame(ed);if(!f)return;pushUndoAllFrames(ed);
       const copy=cloneFrameModel(f);
-      copy.name=ed.groupBaseName?nextGroupedFrameName(ed):uniqueFrameName(ed,`${f.name||ed.name} Copy`);
+      copy.name=ed.groupBaseName?nextGroupedFrameName(ed):nextNumberedFrameName(ed,f.name||ed.name);
       copy.sourceAsset=null;
       ed.frames.splice(ed.frameIndex+1,0,copy);ed.frameIndex++;ed.selection=null;return render(ed);
     }
     if(a==='add'){
       const f=currentFrame(ed);if(!f)return;
       const w=Math.max(1,Number(f.width)||1),h=Math.max(1,Number(f.height)||1);pushUndoAllFrames(ed);
-      const proposed=ed.groupBaseName?nextGroupedFrameName(ed):`${ed.name||'Sprite'}${ed.frames.length+1}`;
-      const baseName=uniqueFrameName(ed,proposed);
+      const baseName=ed.groupBaseName?nextGroupedFrameName(ed):nextNumberedFrameName(ed,ed.name||'Sprite');
       ed.frames.splice(ed.frameIndex+1,0,bindFrameLayers({name:baseName,width:w,height:h,layers:[{name:'Layer 1',visible:true,opacity:1,pixels:makePixels(w,h)}],sourceAsset:null}));
       ed.frameIndex++;ed.selection=null;fitEditor(ed);return render(ed);
     }
@@ -1117,6 +1143,41 @@
   function selectionRectPixels(ed,rect){const f=currentFrame(ed);const minX=clamp(Math.min(rect.a.x,rect.b.x),0,f.width-1),maxX=clamp(Math.max(rect.a.x,rect.b.x),0,f.width-1),minY=clamp(Math.min(rect.a.y,rect.b.y),0,f.height-1),maxY=clamp(Math.max(rect.a.y,rect.b.y),0,f.height-1);const mask=new Set();for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++)mask.add(`${x},${y}`);return selectionFromMask(ed,mask);}
   function finishBoxSelect(ed,rect){const prev=ed.selectionMode,mode=ed.selectionGestureMode||prev;ed.selectionMode=mode;ed.selection=combineSelection(ed,selectionRectPixels(ed,rect));ed.selectionMode=prev;ed.selectionGestureMode=prev;render(ed);}
   function clearSelectionPath(ed){ed.lassoPoints=[];ed.lassoDrawing=false;}
+  function publishSpriteSelectionClipboard(ed,clipboard){
+    const image=pixelsToDataURL(clipboard.pixels,clipboard.width,clipboard.height);
+    window.UIXClipboard?.set?.('spriteSelection',{...clipboard,imageDataUrl:image},{representations:{'image/png':image}});
+  }
+  async function pasteSystemImageIntoSprite(ed,dataUrl){
+    try{
+      const image=await imageToPixels(dataUrl);
+      ed.clipboard={width:image.width,height:image.height,pixels:clonePixels(image.pixels),mask:Array.from({length:image.height},(_,y)=>Array.from({length:image.width},(_,x)=>[x,y])).flat()};
+      publishSpriteSelectionClipboard(ed,ed.clipboard);
+      selectionAction(ed,'paste');
+    }catch{window.UIXApp?.status?.('Could not paste the clipboard image into the Sprite Editor');}
+  }
+  async function pasteSpriteClipboard(ed){
+    const external=await window.UIXClipboard?.readExternal?.();
+    if(external?.type==='spriteSelection'){
+      ed.clipboard=external.payload;selectionAction(ed,'paste');return;
+    }
+    if(external?.type==='image'){
+      await pasteSystemImageIntoSprite(ed,external.payload?.dataUrl);return;
+    }
+    if(external?.type==='spriteLayer'&&external.payload?.imageDataUrl){
+      await pasteSystemImageIntoSprite(ed,external.payload.imageDataUrl);return;
+    }
+    if(external?.type==='assets'){
+      const sprites=(external.payload?.assets||[]).filter(item=>item?.category==='Sprite'&&item?.asset?.value);
+      if(sprites.length===1){await pasteSystemImageIntoSprite(ed,sprites[0].asset.value);return;}
+      window.UIXApp?.status?.('Paste one Sprite asset at a time into the Sprite Editor');return;
+    }
+    const record=window.UIXClipboard?.getRecord?.();
+    if(record&&record.type!=='spriteSelection'){
+      window.UIXApp?.status?.(`Clipboard contains ${record.type}, not a Sprite selection`);return;
+    }
+    selectionAction(ed,'paste');
+  }
+
   function selectionAction(ed,a){
     if(a==='selectall'){if(ed.selection?.floating)commitFloatingSelection(ed,false);selectAll(ed);render(ed);return;}
     if(a==='delete'){requestDeleteSelection(ed);return;}
@@ -1124,16 +1185,20 @@
     if(a==='cancel'){ed.lassoPoints=[];ed.lassoDrawing=false;ed.selectionRect=null;ed.selection=null;ed.selectionDrag=null;ed.selectionMode='set';ed.selectionGestureMode='set';render(ed);return;}
     if(a==='copy'){
       if(!sel)return;
-      ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels),mask:[...sel.mask].map(key=>{const [x,y]=key.split(',').map(Number);return [x-sel.x,y-sel.y];})};render(ed);return;
+      ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels),mask:[...sel.mask].map(key=>{const [x,y]=key.split(',').map(Number);return [x-sel.x,y-sel.y];})};
+      publishSpriteSelectionClipboard(ed,ed.clipboard);render(ed);return;
     }
     if(a==='cut'){
       if(!sel)return;
       ed.clipboard={width:sel.width,height:sel.height,pixels:clonePixels(sel.pixels),mask:[...sel.mask].map(key=>{const [x,y]=key.split(',').map(Number);return [x-sel.x,y-sel.y];})};
+      publishSpriteSelectionClipboard(ed,ed.clipboard);
       if(sel.floating){ed.selection=null;ed.selectionDrag=null;render(ed);return;}
       pushUndo(ed);for(const key of sel.mask){const [x,y]=key.split(',').map(Number);if(x>=0&&y>=0&&x<f.width&&y<f.height){f.pixels[y][x]=transparent();updateCachePixel(f,x,y,f.pixels[y][x]);}}
       invalidateCache(f);ensureFrameCache(f);ed.selection=null;render(ed);return;
     }
     if(a==='paste'){
+      const sharedRecord=window.UIXClipboard?.getRecord?.();
+      if(sharedRecord){if(sharedRecord.type==='spriteSelection')ed.clipboard=window.UIXClipboard?.get?.('spriteSelection')||ed.clipboard;else if(sharedRecord.type!=='image')return window.UIXApp?.status?.(`Clipboard contains ${sharedRecord.type}, not a Sprite selection`);}
       if(!ed.clipboard)return;
       if(ed.selection?.floating)ed.selection=null;
       const center=ed.lastCell||{x:Math.floor(f.width/2),y:Math.floor(f.height/2)},clip=ed.clipboard;
@@ -1275,7 +1340,7 @@
     switch(command){
       case'copy':selectionAction(ed,'copy');break;
       case'cut':selectionAction(ed,'cut');break;
-      case'paste':selectionAction(ed,'paste');break;
+      case'paste':pasteSpriteClipboard(ed);break;
       case'duplicate':selectionAction(ed,'copy');selectionAction(ed,'paste');break;
       case'undo':spriteAction(ed,'undo');break;
       case'redo':spriteAction(ed,'redo');break;

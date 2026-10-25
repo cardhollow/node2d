@@ -1368,6 +1368,7 @@
     const items=selectedMainItemsForCommand().filter(isNodeItem);
     if(!items.length)return status('Nothing selected to copy');
     state.nodeClipboard={items:items.map(packClipboardItem),sourceIds:items.map(x=>x.id)};
+    window.UIXClipboard?.set?.('nodes',state.nodeClipboard);
     status(items.length===1?`${items[0].name} copied`:`${items.length} items copied`);
   }
   function cutNode(node=null){
@@ -1463,7 +1464,11 @@
     status(created.length===1?`${created[0].name} duplicated`:`${created.length} Nodes duplicated`);
   }
   function pasteNode(){
-    const clips=Array.isArray(state.nodeClipboard?.items)?state.nodeClipboard.items:state.nodeClipboard?.node?[{sourceId:state.nodeClipboard.sourceId,item:state.nodeClipboard.node,scripts:{[state.nodeClipboard.sourceId]:{nodes:clone(state.script.nodesByNode[state.nodeClipboard.sourceId]||[]),connections:clone(state.script.connectionsByNode[state.nodeClipboard.sourceId]||[])}}}]:[];
+    const sharedRecord=window.UIXClipboard?.getRecord?.();
+    const sharedNodes=window.UIXClipboard?.get?.('nodes');
+    const clipboard=sharedRecord?(sharedRecord.type==='nodes'?sharedNodes:null):state.nodeClipboard;
+    if(sharedRecord&&sharedRecord.type!=='nodes')return status(`Clipboard contains ${sharedRecord.type}, not Nodes`);
+    const clips=Array.isArray(clipboard?.items)?clipboard.items:clipboard?.node?[{sourceId:clipboard.sourceId,item:clipboard.node,scripts:{[clipboard.sourceId]:{nodes:clone(state.script.nodesByNode[clipboard.sourceId]||[]),connections:clone(state.script.connectionsByNode[clipboard.sourceId]||[])}}}]:[];
     if(!clips.length)return status('Paste is disabled until something is copied');
     const scene=currentScene();if(!scene)return;
     const selected=currentSelection();
@@ -1475,6 +1480,8 @@
       const anchor=selectedNode();const at=anchor&&targetContainer.findIndex(n=>n.id===anchor.id)>=0?targetContainer.findIndex(n=>n.id===anchor.id)+1+inserted.length:targetContainer.length;
       targetContainer.splice(at,0,data);inserted.push(data);
     });
+    syncEmbeddedAssetsFromValue(inserted);
+    ensureAssetIds();
     state.selectedIds=inserted.map(x=>x.id);state.selectionAnchorId=inserted.at(-1)?.id||null;state.selectedId=inserted.at(-1)?.id||state.selectedId;renderAll();status(inserted.length===1?`${inserted[0].name} pasted`:`${inserted.length} items pasted`);
   }
   function deleteSelectedNodesNow(items=selectedMainItemsForCommand()){
@@ -1759,10 +1766,14 @@
       return rowWrap;
     };
     const worldOpen=state.ui.worldSceneTreeExpanded!==false;
-    const worldRow=addSpecialRow('world-scene','◈','World Scene',0,(e)=>{
-      if(e?.target?.closest?.('.twisty')){state.ui.worldSceneTreeExpanded=!worldOpen;renderSelectionTree();return;}
-      if(state.selectedId==='world-scene')return;clearNodeSelection('world-scene');renderAll();status('Selected World Scene');
+    const worldRow=addSpecialRow('world-scene','◈','World Scene',0,()=>{
+      state.ui.worldSceneTreeExpanded=!worldOpen;
+      if(state.selectedId==='world-scene')state.selectedId='scene-camera';
+      renderSelectionTree();
     });
+    worldRow.classList.remove('selected');
+    worldRow.querySelector('.node-row')?.setAttribute('aria-selected','false');
+    worldRow.querySelector('.node-row')?.setAttribute('aria-expanded',worldOpen?'true':'false');
     worldRow.querySelector('.twisty').textContent=worldOpen?'−':'+';
     host.append(worldRow);
     if(worldOpen){
@@ -1962,7 +1973,7 @@
       if(multiTreeItems.length>1){
         $('#componentTarget').textContent=`${selection?.name ? selection.name : 'Selection'} <${multiTreeItems.length}>`;
       }
-      if(selection.special==='world-scene')return renderWorldSceneInspector(host,currentScene(),false);
+      if(selection.special==='world-scene')return;
       if(selection.special==='sky-box')return renderWorldSceneInspector(host,currentScene(),true);
       if(selection.special==='camera')return renderCameraInspector(host);
       if(selection.special==='variables-root')return host.append(empty('Select Scene, Global, or Server Variables.'));
@@ -2841,11 +2852,14 @@
       payload.localVars=cloneComponentClipboardValue(state.localVarsByNode?.[target.node.id]||[]);
     }
     state.componentClipboard=payload;
+    window.UIXClipboard?.set?.('component',payload);
     status(`${COMPONENT_LABELS[payload.type]||payload.type} copied with all values`);
   }
 
   function pasteComponent(target){
-    const source=state.componentClipboard;
+    const sharedRecord=window.UIXClipboard?.getRecord?.();
+    const source=sharedRecord?(sharedRecord.type==='component'?window.UIXClipboard?.get?.('component'):null):state.componentClipboard;
+    if(sharedRecord&&sharedRecord.type!=='component')return status(`Clipboard contains ${sharedRecord.type}, not a Component`);
     if(!source?.component||!target?.node)return status('Nothing to paste');
     const type=String(source.type||source.component.type||'');
     if(!type)return status('Copied component type is invalid');
@@ -2869,6 +2883,8 @@
       normalizeNode(node);
     };
     targets.forEach(apply);
+    syncEmbeddedAssetsFromValue(targets);
+    ensureAssetIds();
     state.ui.selectedComponentKey=type;renderComponentPanel();renderSelectionTree();drawWorkplace();
     status(`${COMPONENT_LABELS[type]||type} pasted to ${targets.length} selected Node${targets.length===1?'':'s'}`);
   }
@@ -3616,7 +3632,7 @@
     return state.globalVariables ||= [];
   }
   function sanitizeVariableName(name){
-    let value=String(name??'').replace(/[^A-Za-z0-9]/g,'');
+    let value=String(name??'').replace(/[^A-Za-z0-9_$]/g,'');
     value=value.replace(/^[0-9]+/,'');
     return value;
   }
@@ -3624,10 +3640,10 @@
     if(!input)return;
     input.autocomplete='off';
     input.spellcheck=false;
-    input.setAttribute('pattern','[A-Za-z][A-Za-z0-9]*');
+    input.setAttribute('pattern','[A-Za-z_$][A-Za-z0-9_$]*');
     input.setAttribute('inputmode','text');
     input.addEventListener('beforeinput',e=>{
-      if(e.inputType==='insertText' && e.data && /[^A-Za-z0-9]/.test(e.data)){
+      if(e.inputType==='insertText' && e.data && /[^A-Za-z0-9_$]/.test(e.data)){
         e.preventDefault();
         return;
       }
@@ -5576,6 +5592,8 @@
         break;
       }
       case 'export-ndc': exportProjectNDC(); break;
+      case 'copy-entire-project': copyEntireProjectToClipboard(); break;
+      case 'paste-entire-project': pasteEntireProjectFromClipboard(); break;
       case 'game-settings': openGameSettings(); break;
       case 'editor-settings': openEditorSettings(); break;
       case 'reset-keybinds': {
@@ -5613,6 +5631,12 @@
       case 'install-node2d': installNode2DApp(); break;
       case 'open-assets': openAssetManager(); break;
       case 'import-assets': $('#assetFileInput').click(); break;
+      case 'asset-copy-selected': copySelectedAssets(); break;
+      case 'asset-paste': pasteSelectedAssets(); break;
+      case 'asset-multiselect-toggle': setAssetManagerSelectMode(!state.assetManagerSelectMode); break;
+      case 'asset-remove-selected': removeSelectedAssets(true); break;
+      case 'asset-edit-selected': importSelectedAssetManager(); break;
+      case 'asset-import-local-projects': openAssetImportFromLocalProjects(); break;
       case 'create-asset': showModal($('#assetCreateModal')); break;
       case 'new-sprite-editor': closeModal($('#assetCreateModal')); window.UIXSpriteEditor?.openCreate(); break;
       case 'new-midi-editor': closeModal($('#assetCreateModal')); window.UIXMIDIEditor?.openCreate(); break;
@@ -5731,6 +5755,8 @@
     ['Sprite','Audio','MIDI','Font'].forEach(k=>{if(Array.isArray(savedAssets[k])) state.assets[k].push(...clone(savedAssets[k]));});
     (state.assets.Font||[]).forEach(asset=>loadFontAsset(asset));
     normalizeAssetFilenames();
+    syncEmbeddedAssetsFromValue({scenes:state.scenes,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},game:state.game});
+    normalizeAssetFilenames();
     ensureAssetIds();
     state.assetManagerSelection=new Set();
     state.assetManagerSelectMode=false;
@@ -5742,6 +5768,7 @@
       hideAllModals();
       syncSceneCamera(); renderAll();
     }
+    reconcileStoredScriptExpressionVariables();
     rememberCurrentProjectSession(); resetAutoSaveTimer();
   }
 
@@ -5764,7 +5791,7 @@
 
   let projectMutationRevision=0;
   let projectGeneration=0;
-  let ndcSaveWorker=null;let ndcSaveRequestId=0;let ndcSaveBusy=false;let ndcSavePending=false;let ndcSavePendingSilent=true;
+  let ndcSaveWorker=null;let ndcSaveRequestId=0;let ndcSaveBusy=false;let ndcSavePending=false;let ndcSavePendingSilent=true;let ndcSavePromise=Promise.resolve();let nativeClipboardPasteGeneration=0;
   let ndcLoadWorker=null;let ndcLoadRequestId=0;let ndcTransferCancelled=false;
   function openNdcTransferModal(title,subtitle){
     ndcTransferCancelled=false;
@@ -5830,7 +5857,7 @@
         onProgress?.(4,'Preparing project data…');
         const parts=[
           ['project',data.project],['scenes',data.scenes],['currentSceneId',data.currentSceneId],['selectedId',data.selectedId],['mode',data.mode],
-          ['nextNodeId',data.nextNodeId],['nextVariableId',data.nextVariableId],['globalVariables',data.globalVariables],['serverVariables',data.serverVariables],
+          ['nextNodeId',data.nextNodeId],['nextFolderId',data.nextFolderId],['nextVariableId',data.nextVariableId],['globalVariables',data.globalVariables],['serverVariables',data.serverVariables],
           ['sceneVariablesByScene',data.sceneVariablesByScene],['localVarsByNode',data.localVarsByNode],['uiComponentsByScene',data.uiComponentsByScene],
           ['game',data.game],['camera',data.camera]
         ];
@@ -5861,21 +5888,22 @@
       }catch(err){cleanup();reject(err);}
     });
   }
-  async function runQueuedProjectSave(silent){
-    if(ndcSaveBusy)return;ndcSaveBusy=true;
+  async function runProjectSaveSnapshot(silent){
     let capturedRevision=projectMutationRevision;
     let capturedGeneration=projectGeneration;
-    let sourceName='Untitled Node2D',sourceId=null;
     try{
       ensureProject();
       flushPendingValueEditors();
       flushPendingHistory();
+      syncEmbeddedAssetsFromValue({scenes:state.scenes,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},game:state.game});
+      normalizeAssetFilenames();
+      ensureAssetIds();
       capturedRevision=projectMutationRevision;
       capturedGeneration=projectGeneration;
       if(!silent)status('Saving in background…');
       const source=collectProjectData();
-      sourceName=String(source.project?.name||'Untitled Node2D');
-      sourceId=state.project.localNdcId||null;
+      const sourceName=String(source.project?.name||'Untitled Node2D');
+      const sourceId=state.project.localNdcId||null;
       let bytes;
       try{bytes=await encodeProjectInWorkerParts(source);}
       catch{await saveBackgroundYield();bytes=window.UIXNDCCodec.encode(cloneSaveValue(source,true));}
@@ -5891,16 +5919,27 @@
       if(projectMutationRevision!==capturedRevision){ndcSavePending=true;ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;}
       if(!silent&&sameProject)status(`Saved in Project · ${Math.round(bytes.length/1024)} KB`);
     }catch(err){console.error(err);if(!silent)status(`Save failed: ${err.message||err}`);}
-    finally{
-      ndcSaveBusy=false;
-      if(ndcSavePending){const nextSilent=ndcSavePendingSilent;ndcSavePending=false;ndcSavePendingSilent=true;setTimeout(()=>runQueuedProjectSave(nextSilent),32);}
-    }
   }
   function saveProjectToProjectStorage(silent=false){
     flushPendingValueEditors();
     flushPendingHistory();
-    if(ndcSaveBusy){ndcSavePending=true;ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;return;}
-    saveBackgroundYield().then(()=>runQueuedProjectSave(!!silent));
+    ndcSavePending=true;
+    ndcSavePendingSilent=ndcSavePendingSilent&&!!silent;
+    if(!ndcSaveBusy){
+      ndcSaveBusy=true;
+      ndcSavePromise=(async()=>{
+        try{
+          while(ndcSavePending){
+            const nextSilent=ndcSavePendingSilent;
+            ndcSavePending=false;
+            ndcSavePendingSilent=true;
+            await saveBackgroundYield();
+            await runProjectSaveSnapshot(nextSilent);
+          }
+        }finally{ndcSaveBusy=false;}
+      })();
+    }
+    return ndcSavePromise;
   }
 
   function loadProjectBytes(bytes,label,meta={}){
@@ -5914,6 +5953,7 @@
 
   async function loadProjectFromProjectStorage(){
     try{
+      await ndcSavePromise;
       const saved=await window.UIXNDCCodec.loadCurrent();
       if(!saved){status('No saved project in Project storage');return;}
       loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||null});
@@ -5964,6 +6004,7 @@
     const host=$('#localNdcList');if(!host)return;
     host.innerHTML='<div class="local-ndc-empty">Loading local projects…</div>';showModal($('#localNdcModal'));
     try{
+      await ndcSavePromise;
       const list=await window.UIXNDCCodec.listLocal();
       host.innerHTML='';
       if(!hasFlappyBirdSample()){
@@ -6009,15 +6050,44 @@
   }
 
   async function loadLocalNDC(id){
-    try{const saved=await window.UIXNDCCodec.loadLocal(id);if(!saved){status('Local NDC was not found');return;}loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||id});}
+    try{await ndcSavePromise;const saved=await window.UIXNDCCodec.loadLocal(id);if(!saved){status('Local NDC was not found');return;}loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||id});}
     catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}
   }
 
   function openProjectImport(){const input=$('#projectFileInput');if(input)input.click();}
 
+  function chooseNdcImportMode(name){
+    return new Promise(resolve=>{
+      const previous=document.getElementById('ndcImportModeModal');
+      if(previous){closeModal(previous);previous.remove();}
+      const modal=document.createElement('section');
+      modal.id='ndcImportModeModal';
+      modal.className='modal';
+      modal.dataset.closeOutside='false';
+      modal.innerHTML=`<div class="modal-header"><div><h3>Import NDC</h3><p>Choose how to import “${esc(name||'project.ndc')}”.</p></div><button class="modal-close" type="button" aria-label="Cancel">×</button></div><div class="modal-body"><p><strong>Load</strong> replaces the current project.</p><p><strong>Merge</strong> adds the imported scenes and project content to your current project.</p></div><div class="modal-actions"><button class="btn" type="button" data-import-mode="cancel">Cancel</button><button class="btn" type="button" data-import-mode="merge">Merge</button><button class="btn primary" type="button" data-import-mode="load">Load</button></div>`;
+      document.body.append(modal);
+      let finished=false;
+      const finish=value=>{if(finished)return;finished=true;document.removeEventListener('keydown',onKey,true);closeModal(modal);modal.remove();resolve(value);};
+      const onKey=e=>{if(e.key==='Escape'&&!finished){e.preventDefault();e.stopImmediatePropagation();finish(null);}};
+      document.addEventListener('keydown',onKey,true);
+      modal.querySelectorAll('[data-import-mode]').forEach(button=>button.addEventListener('click',()=>finish(button.dataset.importMode==='cancel'?null:button.dataset.importMode)));
+      modal.querySelector('.modal-close').addEventListener('click',()=>finish(null));
+      showModal(modal);
+    });
+  }
+
   async function importProjectFile(file){
-    try{const bytes=new Uint8Array(await file.arrayBuffer());loadProjectBytes(bytes,file.name,{localNdcId:null});}
-    catch(err){console.error(err);status(`Import failed: ${err.message||err}`);}
+    try{
+      const bytes=new Uint8Array(await file.arrayBuffer());
+      const mode=await chooseNdcImportMode(file.name);
+      if(!mode)return;
+      if(mode==='load'){
+        loadProjectBytes(bytes,file.name,{localNdcId:null,force:true});
+        return;
+      }
+      const data=window.UIXNDCCodec?.decode?.(bytes);
+      mergeProjectData(data,file.name);
+    }catch(err){console.error(err);status(`Import failed: ${err.message||err}`);}
   }
 
   async function loadProjectFromURL(urlText){
@@ -6028,6 +6098,214 @@
       const bytes=new Uint8Array(await response.arrayBuffer());
       loadProjectBytes(bytes,url.pathname.split('/').pop()||'URL NDC',{localNdcId:null});
     }catch(err){console.error(err);status(`URL load failed: ${err.message||err}`);}
+  }
+
+  function mergeUniqueId(prefix,used){
+    let id;
+    do{id=`${prefix}-merge-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;}while(used.has(id));
+    used.add(id);
+    return id;
+  }
+
+  function walkProjectTree(items,callback){
+    (Array.isArray(items)?items:[]).forEach(item=>{if(!item||typeof item!=='object')return;callback(item);if(item.type==='folder')walkProjectTree(item.children,callback);});
+  }
+
+  function mergeProjectData(data,label='NDC Project'){
+    if(!data||!Array.isArray(data.scenes)||!data.scenes.length)throw new Error('NDC project contains no scenes');
+    ensureProject();
+    flushPendingValueEditors();
+    flushPendingHistory();
+    const imported=cloneSaveValue(data,false);
+    const importedScenes=Array.isArray(imported.scenes)?imported.scenes:[];
+    const sceneIdMap=new Map(),nodeIdMap=new Map(),assetIdMap=new Map(),scriptIdMap=new Map(),variableIdMap=new Map(),referenceMap=new Map(),displayLabelMap=new Map();
+    const usedSceneIds=new Set(state.scenes.map(scene=>String(scene.id||'')));
+    const usedNodeIds=new Set();
+    const usedAssetIds=new Set(allProjectAssets().map(asset=>String(asset?.id||'')));
+    const usedScriptIds=new Set(Object.values(state.script.nodesByNode||{}).flat().map(sn=>String(sn?.id||'')));
+    state.scenes.forEach(scene=>walkProjectTree(scene?.nodes,node=>{if(node.id!=null)usedNodeIds.add(String(node.id));}));
+    importedScenes.forEach(scene=>{const old=String(scene?.id||'');if(old)sceneIdMap.set(old,mergeUniqueId('scene',usedSceneIds));});
+    importedScenes.forEach(scene=>walkProjectTree(scene?.nodes,node=>{const old=String(node?.id??'');if(old)nodeIdMap.set(old,mergeUniqueId(node.type==='folder'?'folder':'node',usedNodeIds));}));
+    const savedAssets=imported.assets||{};
+    ['Sprite','Audio','MIDI','Font'].forEach(type=>{(Array.isArray(savedAssets[type])?savedAssets[type]:[]).forEach(asset=>{const old=String(asset?.id||'');if(old&&!assetIdMap.has(old))assetIdMap.set(old,mergeUniqueId('asset',usedAssetIds));});});
+
+    const usedFolderIds=new Set();
+    state.scenes.forEach(scene=>walkProjectTree(scene?.nodes,node=>{if(node.type==='folder'&&Number.isInteger(Number(node.folderId)))usedFolderIds.add(Number(node.folderId));}));
+    let nextFolder=Math.max(Number(state.nextFolderId)||1,...[...usedFolderIds].map(value=>value+1),1);
+    const usedNumericIds=new Set();
+    state.scenes.forEach(scene=>walkProjectTree(scene?.nodes,node=>{if(node.type==='node'&&Number.isFinite(Number(node.numericId)))usedNumericIds.add(Number(node.numericId));}));
+    let nextNumeric=Math.max(Number(state.nextNodeId)||1,...[...usedNumericIds].map(value=>value+1),1);
+    importedScenes.forEach(scene=>walkProjectTree(scene?.nodes,node=>{
+      if(node.type==='folder'){
+        const oldFolder=String(node.folderId??'');
+        const oldFolderLabel=oldFolder!==''&&Number.isFinite(Number(oldFolder))?`${node.name||'Folder'} [${Number(oldFolder)}]`:'';
+        while(usedFolderIds.has(nextFolder))nextFolder++;
+        node.folderId=nextFolder;usedFolderIds.add(nextFolder++);
+        if(oldFolderLabel)displayLabelMap.set(oldFolderLabel,`${node.name||'Folder'} [${node.folderId}]`);
+      }else if(node.type==='node'){
+        const oldNumeric=Number(node.numericId);
+        const oldLabel=Number.isFinite(oldNumeric)?`${node.name||'Node'} [${oldNumeric}]`:'';
+        while(usedNumericIds.has(nextNumeric))nextNumeric++;
+        node.numericId=nextNumeric;usedNumericIds.add(nextNumeric++);
+        if(oldLabel){displayLabelMap.set(oldLabel,`${node.name||'Node'} [${node.numericId}]`);const sub=node.components?.find(component=>component?.type==='subcamera');if(sub?.name)displayLabelMap.set(`${sub.name} [${oldNumeric}]`,`${sub.name} [${node.numericId}]`);}
+      }
+      const oldId=String(node.id??'');if(oldId&&nodeIdMap.has(oldId))node.id=nodeIdMap.get(oldId);
+    }));
+    importedScenes.forEach(scene=>{const oldId=String(scene.id||'');if(oldId&&sceneIdMap.has(oldId))scene.id=sceneIdMap.get(oldId);});
+
+    const remapReferences=(value,seen=new WeakMap())=>{
+      if(typeof value==='string')return referenceMap.get(value)||displayLabelMap.get(value)||value;
+      if(value===null||typeof value!=='object')return value;
+      if(seen.has(value))return seen.get(value);
+      if(value instanceof ArrayBuffer)return value.slice(0);
+      if(ArrayBuffer.isView(value)){try{return new value.constructor(value);}catch{return value.slice?.(0)||value;}}
+      const out=Array.isArray(value)?[]:{};seen.set(value,out);
+      Object.keys(value).forEach(key=>{out[key]=remapReferences(value[key],seen);});
+      return out;
+    };
+    sceneIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+    nodeIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+    assetIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+
+    const assetCounts={Sprite:0,Audio:0,MIDI:0,Font:0};
+    ['Sprite','Audio','MIDI','Font'].forEach(type=>{
+      const source=Array.isArray(savedAssets[type])?savedAssets[type]:[];
+      source.forEach((original,index)=>{
+        const asset=cloneSaveValue(original,false);
+        const oldId=String(asset.id||'');
+        if(oldId&&assetIdMap.has(oldId))asset.id=assetIdMap.get(oldId);else asset.id=mergeUniqueId('asset',usedAssetIds);
+        const fallbackExt=type==='MIDI'?'.mid':type==='Audio'?'.uixaudio':type==='Font'?'.ttf':'.png';
+        asset.filename=uniqueAssetFilename(asset.filename||`${asset.name||type}${fallbackExt}`);
+        asset.name=splitAssetFilename(asset.filename).base;
+        asset.type=asset.type|| (type==='Font'?'font/ttf':type==='MIDI'?'audio/midi':type==='Audio'?'application/octet-stream':'image/png');
+        state.assets[type].push(asset);assetCounts[type]++;
+        if(type==='Font')loadFontAsset(asset);
+      });
+    });
+
+    const sourceGlobals=Array.isArray(imported.globalVariables)?imported.globalVariables:[];
+    const sourceServers=Array.isArray(imported.serverVariables)?imported.serverVariables:[];
+    const variableNameMaps={Global:new Map(),Server:new Map()};
+    const addVariables=(source,target,scope)=>{
+      const used=new Set(target.map(variable=>String(variable?.name||'').toLowerCase()));
+      source.forEach(original=>{
+        const variable=cloneSaveValue(original,false);const oldName=String(variable.name||'Variable');let name=oldName,i=2;
+        while(used.has(name.toLowerCase()))name=`${oldName}${i++}`;
+        used.add(name.toLowerCase());if(name!==oldName)variableNameMaps[scope].set(oldName,name);
+        const oldId=String(variable.id||'');variable.id=`var-merge-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;if(oldId)variableIdMap.set(oldId,variable.id);
+        variable.name=name;variable.access=scope;target.push(variable);
+      });
+    };
+    addVariables(sourceGlobals,state.globalVariables,'Global');
+    addVariables(sourceServers,state.serverVariables,'Server');
+    variableIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+
+    const importedNodeVars=imported.localVarsByNode||{};
+    Object.keys(importedNodeVars).forEach(oldNodeId=>{
+      const newNodeId=nodeIdMap.get(String(oldNodeId));if(!newNodeId)return;
+      state.localVarsByNode[newNodeId]=(Array.isArray(importedNodeVars[oldNodeId])?cloneSaveValue(importedNodeVars[oldNodeId],false):[]).map(variable=>{const v=variable;const old=String(v?.id||'');v.id=`var-merge-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;if(old)variableIdMap.set(old,v.id);return v;});
+    });
+    importedScenes.forEach(scene=>{
+      const oldVarsKey=Object.keys(imported.sceneVariablesByScene||{}).find(key=>sceneIdMap.get(String(key))===scene.id);
+      const legacyVars=oldVarsKey?imported.sceneVariablesByScene[oldVarsKey]:null;
+      if(!Array.isArray(scene.variables))scene.variables=Array.isArray(legacyVars)?cloneSaveValue(legacyVars,false):[];
+      scene.variables=scene.variables.map(variable=>{const v=variable;const old=String(v?.id||'');v.id=`var-merge-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;if(old)variableIdMap.set(old,v.id);return v;});
+    });
+    variableIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+
+    const srcScript=imported.script||{};
+    const mappedNodesByNode=Object.create(null),mappedConnectionsByNode=Object.create(null),mappedViewsByNode=Object.create(null);
+    Object.entries(srcScript.nodesByNode||{}).forEach(([oldOwnerId,sourceNodes])=>{
+      const newOwnerId=nodeIdMap.get(String(oldOwnerId));if(!newOwnerId)return;
+      mappedNodesByNode[newOwnerId]=cloneSaveValue(Array.isArray(sourceNodes)?sourceNodes:[],false).map(sn=>{
+        const oldId=String(sn?.id||'');sn.id=mergeUniqueId('snode',usedScriptIds);if(oldId)scriptIdMap.set(oldId,sn.id);return sn;
+      });
+    });
+    scriptIdMap.forEach((newId,oldId)=>referenceMap.set(oldId,newId));
+    const remapScopedVariableValues=sn=>{
+      const values=Array.isArray(sn?.values)?sn.values:[];
+      const readEntryValue=entry=>entry?.type==='selector'?(Object.prototype.hasOwnProperty.call(entry,'selected')?entry.selected:entry.value):entry?.value;
+      const readValue=name=>readEntryValue(values.find(entry=>String(entry?.name||'')===name));
+      const scope=String(readValue('Type')||readValue('Scope')||'');
+      const map=variableNameMaps[scope];
+      if(map){const field=values.find(entry=>String(entry?.name||'')==='Name');if(field){const oldName=String(readEntryValue(field)??'');if(map.has(oldName)){if(field.type==='selector')field.selected=map.get(oldName);else field.value=map.get(oldName);}}}
+      if(sn?.expressions&&typeof sn.expressions==='object')Object.keys(sn.expressions).forEach(path=>{
+        let expression=String(sn.expressions[path]??'');
+        for(const [oldName,newName] of variableNameMaps.Global){
+          const escaped=String(oldName).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+          const pattern=new RegExp('(ctx\\s*\\.\\s*(?:global|globals|globalVariables)\\s*\\.\\s*)'+escaped+'\\b','g');
+          expression=expression.replace(pattern,(match,prefix)=>prefix+newName);
+        }
+        for(const [oldName,newName] of variableNameMaps.Server){
+          const escaped=String(oldName).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+          const pattern=new RegExp('(ctx\\s*\\.\\s*(?:server|servers|serverVariables)\\s*\\.\\s*)'+escaped+'\\b','g');
+          expression=expression.replace(pattern,(match,prefix)=>prefix+newName);
+        }
+        sn.expressions[path]=expression;
+      });
+    };
+    Object.values(mappedNodesByNode).forEach(list=>list.forEach(remapScopedVariableValues));
+    Object.entries(srcScript.connectionsByNode||{}).forEach(([oldOwnerId,connections])=>{
+      const newOwnerId=nodeIdMap.get(String(oldOwnerId));if(!newOwnerId)return;
+      mappedConnectionsByNode[newOwnerId]=cloneSaveValue(Array.isArray(connections)?connections:[],false).map(connection=>({...connection,from:scriptIdMap.get(String(connection.from))||connection.from,to:scriptIdMap.get(String(connection.to))||connection.to}));
+    });
+    Object.entries(srcScript.viewsByNode||{}).forEach(([oldOwnerId,view])=>{const newOwnerId=nodeIdMap.get(String(oldOwnerId));if(newOwnerId)mappedViewsByNode[newOwnerId]=cloneSaveValue(view,false);});
+
+    const importedUiComponents=imported.uiComponentsByScene||{};
+    Object.entries(importedUiComponents).forEach(([oldSceneId,items])=>{const newSceneId=sceneIdMap.get(String(oldSceneId));if(newSceneId)state.uiComponentsByScene[newSceneId]=remapReferences(cloneSaveValue(items,false));});
+    importedScenes.forEach(scene=>{
+      scene.nodes=remapReferences(scene.nodes||[]);
+      scene.worldScene=remapReferences(scene.worldScene||{skyBox:null,skyBoxes:[]});
+      scene.variables=remapReferences(scene.variables||[]);
+      normalizeWorldScene(scene);
+      state.scenes.push(scene);
+      state.sceneVariablesByScene[scene.id]=scene.variables;
+    });
+    Object.entries(mappedNodesByNode).forEach(([owner,nodes])=>{state.script.nodesByNode[owner]=remapReferences(nodes);});
+    Object.entries(mappedConnectionsByNode).forEach(([owner,connections])=>{state.script.connectionsByNode[owner]=remapReferences(connections);});
+    Object.entries(mappedViewsByNode).forEach(([owner,view])=>{state.script.viewsByNode[owner]=remapReferences(view);});
+    Object.keys(imported.sceneVariablesByScene||{}).forEach(oldSceneId=>{
+      const newSceneId=sceneIdMap.get(String(oldSceneId));if(!newSceneId)return;
+      const scene=state.scenes.find(item=>item.id===newSceneId);if(scene&&Array.isArray(scene.variables))state.sceneVariablesByScene[newSceneId]=scene.variables;
+    });
+    state.nextNodeId=Math.max(nextNumeric,Number(imported.nextNodeId)||1);
+    state.nextFolderId=Math.max(nextFolder,Number(imported.nextFolderId)||1);
+    const importedVariableCount=sourceGlobals.length+sourceServers.length+Object.values(importedNodeVars).reduce((sum,list)=>sum+(Array.isArray(list)?list.length:0),0)+importedScenes.reduce((sum,scene)=>sum+(Array.isArray(scene.variables)?scene.variables.length:0),0);
+    state.nextVariableId=Math.max(Number(state.nextVariableId)||1,Number(imported.nextVariableId)||1)+importedVariableCount;
+    enforceVariableUniqueness();
+    syncEmbeddedAssetsFromValue({scenes:state.scenes,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},game:state.game});
+    normalizeAssetFilenames();ensureAssetIds();
+    Object.values(mappedNodesByNode).forEach(list=>list.forEach(sn=>remapScopedVariableValues(sn)));
+    normalizeSelectionState();syncSceneCamera();
+    projectMutationRevision++;
+    renderAll();
+    flushPendingHistory();
+    rememberCurrentProjectSession();resetAutoSaveTimer();
+    const totalAssets=Object.values(assetCounts).reduce((sum,count)=>sum+count,0);
+    status(`Merged ${label}: ${importedScenes.length} scene${importedScenes.length===1?'':'s'} and ${totalAssets} asset${totalAssets===1?'':'s'} added`);
+  }
+
+  async function copyEntireProjectToClipboard(){
+    try{
+      ensureProject();flushPendingValueEditors();flushPendingHistory();
+      syncEmbeddedAssetsFromValue({scenes:state.scenes,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},game:state.game});
+      normalizeAssetFilenames();ensureAssetIds();
+      const source=cloneSaveValue(collectProjectData(),false);
+      const bytesPromise=encodeProjectInWorkerParts(source);
+      window.UIXClipboard?.setProjectNdc?.(source,bytesPromise);
+      const bytes=await bytesPromise;
+      const systemWritten=await (window.UIXClipboard?.lastWrite||Promise.resolve(false));
+      status(systemWritten?`Copied entire project NDC · ${Math.round(bytes.length/1024)} KB`:`Copied entire project internally · ${Math.round(bytes.length/1024)} KB (system clipboard unavailable)`);
+    }catch(err){console.error(err);status(`Copy entire project failed: ${err.message||err}`);}
+  }
+
+  async function pasteEntireProjectFromClipboard(){
+    try{
+      await window.UIXClipboard?.readExternal?.();
+      const record=window.UIXClipboard?.getRecord?.();
+      if(record?.type!=='project'||!record.payload||!Array.isArray(record.payload.scenes))return status(record?`Clipboard contains ${record.type}, not an entire NDC project`:'Clipboard does not contain an NDC project');
+      mergeProjectData(record.payload,'Clipboard NDC');
+    }catch(err){console.error(err);status(`Paste entire project failed: ${err.message||err}`);}
   }
 
   async function exportProjectNDC(){
@@ -6232,6 +6510,48 @@
     updateAssetManagerSelectionUI();
   }
   function toggleAssetManagerSelection(asset){selectAssetManagerAsset(asset,{},false);renderAssetManager();}
+  function copySelectedAssets(){
+    const selected=selectedAssetManagerAssets();
+    if(!selected.length)return status('Select one or more assets first');
+    const type=state.activeAssetTab;
+    const payload={source:'asset-manager',assets:selected.map(asset=>({category:type,asset:clone(asset)}))};
+    const representations={};
+    if(type==='Sprite'&&selected.length===1&&/^data:image\/png;base64,/i.test(String(selected[0]?.value||'')))representations['image/png']=selected[0].value;
+    window.UIXClipboard?.set?.('assets',payload,{representations});
+    status(`${selected.length} ${type.toLowerCase()} asset${selected.length===1?'':'s'} copied`);
+  }
+  async function pasteSelectedAssets(clipboardAlreadyRead=false){
+    if(!clipboardAlreadyRead)await window.UIXClipboard?.readExternal?.();
+    const record=window.UIXClipboard?.getRecord?.();
+    if(!record)return status('Clipboard is empty or unavailable');
+    if(record.type==='image'||record.type==='file'||record.type==='spriteSelection'||record.type==='spriteLayer'){
+      const dataUrl=record.type==='image'||record.type==='file'?record.payload?.dataUrl:record.payload?.imageDataUrl;
+      const result=importClipboardAssetData({dataUrl,mime:record.payload?.mime,filename:record.payload?.filename||''});
+      if(!result.ok)return status(result.message||'The clipboard binary could not be imported');
+      renderAssetManager();drawWorkplace();
+      status(result.duplicate?`${result.category} is already in the Asset Manager`:`Clipboard ${result.category.toLowerCase()} imported as an asset`);return;
+    }
+    if(record.type!=='assets')return status(`Clipboard contains ${record.type}, not project assets`);
+    const entries=Array.isArray(record.payload?.assets)?record.payload.assets:[];
+    if(!entries.length)return status('No assets found in the clipboard');
+    let imported=0;const types=new Set();
+    for(const entry of entries){
+      const category=['Sprite','Audio','MIDI','Font'].includes(entry?.category)?entry.category:state.activeAssetTab;
+      const source=entry?.asset;
+      if(!source||typeof source!=='object'||!Array.isArray(state.assets[category]))continue;
+      const copy=clone(source);copy.id='';
+      const fallbackExt=category==='MIDI'?'.mid':category==='Audio'?'.uixaudio':category==='Font'?'.ttf':'.png';
+      copy.filename=uniqueAssetFilename(copy.filename||`${copy.name||category}${fallbackExt}`);
+      copy.name=splitAssetFilename(copy.filename).base;
+      if(category==='Font'){copy.fontFamily=copy.fontFamily||copy.name;loadFontAsset(copy);}
+      state.assets[category].push(copy);types.add(category);imported++;
+    }
+    if(!imported)return status('No compatible assets found in the clipboard');
+    syncEmbeddedAssetsFromValue(entries);
+    ensureAssetIds();resetAutoSaveTimer();state.assetManagerSelection=new Set();state.assetManagerSelectionAnchorKey='';state.assetManagerSelectMode=false;
+    if(types.size===1)state.activeAssetTab=[...types][0];
+    renderAssetManager();drawWorkplace();status(`${imported} asset${imported===1?'':'s'} pasted into the project`);
+  }
   function selectedAssetManagerAssets(type=state.activeAssetTab){
     const set=state.assetManagerSelection instanceof Set?state.assetManagerSelection:new Set();
     const order=new Map([...set].map((k,i)=>[k,i]));
@@ -6311,6 +6631,9 @@
       const select=document.createElement('button');select.className='btn';select.type='button';select.dataset.action='asset-multiselect-toggle';select.textContent=state.assetManagerSelectMode?'Done':'Select';
       center.append(select);
       const right=document.createElement('div');right.className='asset-toolbar-group asset-toolbar-group-right';
+      const paste=document.createElement('button');paste.className='btn';paste.type='button';paste.dataset.action='asset-paste';paste.textContent='Paste';
+      right.append(paste);
+      if(selected.size){const copy=document.createElement('button');copy.className='btn';copy.type='button';copy.dataset.action='asset-copy-selected';copy.textContent=`Copy (${selected.size})`;right.append(copy);}
       const local=document.createElement('button');local.className='btn';local.type='button';local.dataset.action='asset-import-local-projects';local.textContent='Import Assets from Local Projects';
       right.append(local);
       if(state.assetManagerSelectMode&&selected.size){
@@ -6486,6 +6809,113 @@
       seen.add(candidate.toLowerCase());
     });
   }
+  function clipboardDataUrlBytes(value){
+    const match=String(value||'').match(/^data:([^;,]*)(?:;charset=[^;,]*)?;base64,([\s\S]*)$/i);
+    if(!match)return new Uint8Array();
+    try{
+      const raw=atob(match[2].replace(/\s+/g,'')),bytes=new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+      return bytes;
+    }catch{return new Uint8Array();}
+  }
+  function inferClipboardAsset(mime='',filename='',dataUrl=''){
+    let type=String(mime||'').toLowerCase().split(';')[0].trim();
+    const ext=(String(filename||'').split(/[\\/]/).pop().match(/\.[^.]+$/)?.[0]||'').toLowerCase();
+    const bytes=dataUrl?clipboardDataUrlBytes(dataUrl):new Uint8Array();
+    const ascii=(start,length)=>Array.from(bytes.subarray(start,start+length),b=>String.fromCharCode(b)).join('');
+    const starts=(signature,offset=0)=>ascii(offset,signature.length)===signature;
+    const fontMimeByExt={'.ttf':'font/ttf','.otf':'font/otf','.woff':'font/woff','.woff2':'font/woff2','.eot':'application/vnd.ms-fontobject'};
+    const audioMimeByExt={'.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg','.oga':'audio/ogg','.flac':'audio/flac','.m4a':'audio/mp4','.aac':'audio/aac','.mid':'audio/midi','.midi':'audio/midi'};
+    const imageMimeByExt={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.bmp':'image/bmp','.avif':'image/avif'};
+    if(!type||type==='application/octet-stream'||type==='binary/octet-stream'){
+      if(starts('OTTO'))type='font/otf';
+      else if(bytes.length>=4&&bytes[0]===0&&bytes[1]===1&&bytes[2]===0&&bytes[3]===0)type='font/ttf';
+      else if(starts('true'))type='font/ttf';
+      else if(starts('wOFF'))type='font/woff';
+      else if(starts('wOF2'))type='font/woff2';
+      else if(starts('MThd'))type='audio/midi';
+      else if(starts('RIFF')&&ascii(8,4)==='WAVE')type='audio/wav';
+      else if(starts('OggS'))type='audio/ogg';
+      else if(starts('fLaC'))type='audio/flac';
+      else if(starts('ID3')||(bytes.length>1&&bytes[0]===0xff&&(bytes[1]&0xe0)===0xe0))type='audio/mpeg';
+      else if(starts('RIFF')&&ascii(8,4)==='WEBP')type='image/webp';
+      else if(starts('GIF87a')||starts('GIF89a'))type='image/gif';
+      else if(bytes.length>=8&&bytes[0]===137&&starts('PNG',1))type='image/png';
+      else if(bytes.length>=3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255)type='image/jpeg';
+      else if(ext&&fontMimeByExt[ext])type=fontMimeByExt[ext];
+      else if(ext&&audioMimeByExt[ext])type=audioMimeByExt[ext];
+      else if(ext&&imageMimeByExt[ext])type=imageMimeByExt[ext];
+      else if(ext==='.mp4'||ext==='.m4v'||ext==='.mov')type='video/mp4';
+      else if(ext==='.pdf')type='application/pdf';
+      else if(ext==='.json')type='application/json';
+    }
+    if(type.startsWith('image/'))return {category:'Sprite',mime:type,ext:imageMimeByExt[ext]&&imageMimeByExt[ext]===type?ext:(type.includes('svg')?'.svg':type.includes('webp')?'.webp':type.includes('gif')?'.gif':type.includes('jpeg')?'.jpg':type.includes('bmp')?'.bmp':type.includes('avif')?'.avif':'.png'),kind:/svg/i.test(type)?'SVG':'Raster'};
+    if(type==='audio/midi'||type==='audio/x-midi'||type==='application/x-midi'||type==='application/midi'||/midi/i.test(type)||ext==='.mid'||ext==='.midi'||starts('MThd'))return {category:'MIDI',mime:'audio/midi',ext:'.mid',kind:'MIDI'};
+    if(type.startsWith('audio/'))return {category:'Audio',mime:type,ext:audioMimeByExt[ext]&&audioMimeByExt[ext]===type?ext:(type.includes('wav')?'.wav':type.includes('ogg')?'.ogg':type.includes('flac')?'.flac':type.includes('mp4')?'.m4a':type.includes('aac')?'.aac':'.mp3'),kind:'Audio'};
+    if(type.startsWith('font/')||/font|woff|truetype|opentype|sfnt|ms-fontobject/i.test(type)||!!fontMimeByExt[ext]||starts('OTTO')||starts('wOFF')||starts('wOF2')||(bytes.length>=4&&bytes[0]===0&&bytes[1]===1&&bytes[2]===0&&bytes[3]===0)||starts('true')){
+      const inferred=type.includes('woff2')||starts('wOF2')?'.woff2':type.includes('woff')||starts('wOFF')?'.woff':type.includes('opentype')||type==='font/otf'||starts('OTTO')?'.otf':type.includes('ms-fontobject')||ext==='.eot'?'.eot':'.ttf';
+      return {category:'Font',mime:inferred==='.woff2'?'font/woff2':inferred==='.woff'?'font/woff':inferred==='.otf'?'font/otf':inferred==='.eot'?'application/vnd.ms-fontobject':'font/ttf',ext:inferred,kind:'Font'};
+    }
+    return null;
+  }
+  function normalizeClipboardDataUrl(dataUrl,mime){
+    const value=String(dataUrl||'');
+    const match=value.match(/^data:([^;,]*)(?:;charset=([^;,]*))?(;base64)?,([\s\S]*)$/i);
+    if(!match)return value;
+    if(!mime||match[1]===mime)return value;
+    const charset=match[2]?`;charset=${match[2]}`:'';
+    return `data:${mime}${charset}${match[3]||''},${match[4]}`;
+  }
+  function importClipboardAssetData(payload,options={}){
+    const dataUrl=String(payload?.dataUrl||'');
+    if(!dataUrl.startsWith('data:'))return {ok:false,message:'The clipboard binary could not be read'};
+    const originalMime=String(payload?.mime||dataUrl.match(/^data:([^;,]+)/i)?.[1]||'application/octet-stream');
+    const detected=inferClipboardAsset(originalMime,payload?.filename||'',dataUrl);
+    if(!detected)return {ok:false,message:`Clipboard file type ${originalMime} is not a supported project asset`};
+    const normalizedUrl=normalizeClipboardDataUrl(dataUrl,detected.mime);
+    const existing=(state.assets[detected.category]||[]).find(asset=>asset?.value===normalizedUrl||asset?.value===dataUrl);
+    if(existing){
+      if(options.focus!==false){state.activeAssetTab=detected.category;state.assetManagerSelection=new Set([assetKey(existing)]);state.assetManagerSelectionAnchorKey=assetKey(existing);}
+      return {ok:true,duplicate:true,asset:existing,category:detected.category};
+    }
+    const rawName=String(payload?.filename||'').split(/[\\/]/).pop().trim();
+    const rawParts=splitAssetFilename(rawName),hasMatchingExtension=!!rawName&&rawParts.ext.toLowerCase()===detected.ext;
+    const preferred=hasMatchingExtension?rawName:`${rawParts.base&&rawName?rawParts.base:`Pasted ${detected.category}`}${detected.ext}`;
+    const filename=uniqueAssetFilename(preferred);
+    const asset={id:'',name:splitAssetFilename(filename).base,value:normalizedUrl,type:detected.mime,filename,kind:detected.kind,editable:true};
+    if(detected.category==='Font'){asset.fontFamily=asset.name;loadFontAsset(asset);}
+    state.assets[detected.category].push(asset);
+    ensureAssetIds();
+    if(options.focus!==false){state.activeAssetTab=detected.category;state.assetManagerSelection=new Set([assetKey(asset)]);state.assetManagerSelectionAnchorKey=assetKey(asset);state.assetManagerSelectMode=false;resetAutoSaveTimer();}
+    return {ok:true,duplicate:false,asset,category:detected.category};
+  }
+  function syncEmbeddedAssetsFromValue(value){
+    const seenObjects=new WeakSet(),seenValues=new Set();let added=0;
+    const visit=(v,hint='')=>{
+      if(typeof v==='string'){
+        if(!/^data:/i.test(v)||seenValues.has(v))return;
+        seenValues.add(v);
+        const detected=inferClipboardAsset(v.match(/^data:([^;,]+)/i)?.[1]||'',hint,v);
+        if(!detected)return;
+        const before=(state.assets[detected.category]||[]).length;
+        const result=importClipboardAssetData({dataUrl:v,mime:detected.mime,filename:`Embedded ${detected.category}${detected.ext}`},{focus:false});
+        if(result.ok&&!result.duplicate&&before<(state.assets[detected.category]||[]).length)added++;
+        return;
+      }
+      if(!v||typeof v!=='object'||seenObjects.has(v))return;
+      seenObjects.add(v);
+      if(Array.isArray(v)){v.forEach(item=>visit(item,hint));return;}
+      for(const [key,child] of Object.entries(v))visit(child,key);
+    };
+    visit(value);
+    if(added)ensureAssetIds();
+    return added;
+  }
+  async function dataUrlFromClipboardFile(file){
+    const bytes=new Uint8Array(await file.arrayBuffer());let raw='';
+    for(let i=0;i<bytes.length;i+=0x8000)raw+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+    return `data:${file.type||'application/octet-stream'};base64,${btoa(raw)}`;
+  }
   function addSpriteAsset(asset){
     const next={...asset,type:asset.type||'image/png',kind:asset.kind||((asset.type||'').includes('svg')?'SVG':'Raster'),editable:asset.editable!==false};
     next.id=next.id||`asset-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
@@ -6639,7 +7069,7 @@
       const name=String(file?.name||''),typeName=String(file?.type||'').toLowerCase();
       const isGif=/\.gif$/i.test(name)||typeName==='image/gif';
       const isMIDI=/\.(mid|midi)$/i.test(name)||typeName.includes('midi');
-      const isFont=typeName.includes('font/')||/\.(ttf|otf|woff|woff2)$/i.test(name);
+      const isFont=typeName.includes('font/')||/\.(ttf|otf|woff|woff2|eot)$/i.test(name);
       const isAudio=typeName.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name);
       const isImage=(typeName.startsWith('image/')||/\.svg$/i.test(name))||isGif;
       if(isGif||isImage||isAudio||isMIDI||isFont)accepted.push(file);else rejected.push(name||'Unnamed file');
@@ -6653,7 +7083,7 @@
       for(const result of results){
         const {file,value,gifFrames}=result;
         const isMIDI=/\.(mid|midi)$/i.test(file.name)||/midi/i.test(file.type);
-        const isFont=/\.(ttf|otf|woff|woff2)$/i.test(file.name)||/font\//i.test(file.type);
+        const isFont=/\.(ttf|otf|woff|woff2|eot)$/i.test(file.name)||/font\//i.test(file.type);
         const type=isMIDI?'MIDI':isFont?'Font':(file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(file.name))?'Audio':'Sprite';
         const stem=file.name.replace(/\.[^.]+$/,'');
         if(type==='Sprite' && Array.isArray(gifFrames) && gifFrames.length){
@@ -6675,6 +7105,7 @@
         importedCount++;
       }
       renderAssetManager();
+      resetAutoSaveTimer();
       status(`${importedCount} asset${importedCount===1?'':'s'} imported${gifCount?` · ${gifCount} GIF${gifCount===1?'':'s'} converted to ${gifFrameCount} individual PNG frame${gifFrameCount===1?'':'s'}`:''}`);
     }catch(err){
       console.error(err);
@@ -7012,11 +7443,47 @@
     const decimalPlaces=n=>{const text=String(n??'');const m=text.toLowerCase().match(/(?:\.(\d+))?(?:e([+-]?\d+))?$/);if(!m)return 0;const decimals=(m[1]||'').length,exp=Number(m[2]||0);return Math.max(0,decimals-exp);};
     const calcStep=n=>{const d=decimalPlaces(n);return d>0?Math.pow(10,-d):1;};
     if(effectiveType==='int'&&!isExpression){
-      let suppressClick=false;
-      const begin=e=>{slideStartX=e.clientX;slideLastX=e.clientX;slideAccum=0;slideValue=Number(scriptEditorValue(sn,item));if(!Number.isFinite(slideValue))slideValue=0;slideStep=calcStep(slideValue);sliding=false;suppressClick=false;slideHistoryPushed=false;b.setPointerCapture?.(e.pointerId);};
-      const move=e=>{if(e.pointerId==null)return;const dx=e.clientX-slideLastX;if(!sliding&&Math.abs(e.clientX-slideStartX)<8)return;if(Math.abs(e.clientX-slideStartX)>=8){if(!slideHistoryPushed){pushHistory(`Edit ${item.name||'ScriptNode input'}`);slideHistoryPushed=true;}sliding=true;suppressClick=true;e.preventDefault();e.stopPropagation();b.classList.add('sliding');}if(!sliding)return;slideAccum+=dx;const units=Math.trunc(slideAccum/20);if(units!==0){slideAccum-=units*20;slideValue+=units*slideStep;const places=decimalPlaces(slideStep);slideValue=places?Number(slideValue.toFixed(places)):Math.round(slideValue);entry.value=slideValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);const label=b.querySelector('.script-input-value');if(label)label.textContent=String(slideValue);}slideLastX=e.clientX;};
-      const end=()=>{if(sliding)b.classList.remove('sliding');sliding=false;};
-      b.addEventListener('pointerdown',begin);b.addEventListener('pointermove',move);b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);b.addEventListener('click',e=>{if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;}});
+      let suppressClick=false, pointerPressed=false, activePointerId=null;
+      const begin=e=>{
+        if(e.button!==undefined&&e.button!==0)return;
+        pointerPressed=true;activePointerId=e.pointerId;
+        slideStartX=e.clientX;slideLastX=e.clientX;slideAccum=0;
+        slideValue=Number(scriptEditorValue(sn,item));if(!Number.isFinite(slideValue))slideValue=0;
+        slideStep=calcStep(slideValue);sliding=false;suppressClick=false;slideHistoryPushed=false;
+        try{b.setPointerCapture?.(e.pointerId);}catch{}
+      };
+      const move=e=>{
+        // Pointer-move events also fire while merely hovering. Never treat them as
+        // numeric drags unless this exact pointer started a pressed interaction.
+        if(!pointerPressed||activePointerId!==e.pointerId)return;
+        if(e.pointerType==='mouse'&&!(e.buttons&1)){end(e);return;}
+        const dx=e.clientX-slideLastX;
+        if(!sliding&&Math.abs(e.clientX-slideStartX)<8){slideLastX=e.clientX;return;}
+        if(!sliding){
+          if(!slideHistoryPushed){pushHistory(`Edit ${item.name||'ScriptNode input'}`);slideHistoryPushed=true;}
+          sliding=true;suppressClick=true;b.classList.add('sliding');
+        }
+        e.preventDefault();e.stopPropagation();slideAccum+=dx;
+        const units=Math.trunc(slideAccum/20);
+        if(units!==0){
+          slideAccum-=units*20;slideValue+=units*slideStep;
+          const places=decimalPlaces(slideStep);slideValue=places?Number(slideValue.toFixed(places)):Math.round(slideValue);
+          entry.value=slideValue;delete sn.expressions[item.path];syncSetVariableValueEditor(sn);
+          const label=b.querySelector('.script-input-value');if(label)label.textContent=String(slideValue);
+        }
+        slideLastX=e.clientX;
+      };
+      const end=e=>{
+        if(e&&activePointerId!==null&&e.pointerId!==undefined&&e.pointerId!==activePointerId)return;
+        if(sliding)b.classList.remove('sliding');
+        sliding=false;pointerPressed=false;activePointerId=null;
+        // A drag can suppress its synthetic click, but must not suppress a later click
+        // when the browser does not dispatch one for the completed pointer gesture.
+        if(suppressClick)setTimeout(()=>{suppressClick=false;},0);
+      };
+      b.addEventListener('pointerdown',begin);b.addEventListener('pointermove',move);
+      b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);b.addEventListener('lostpointercapture',end);
+      b.addEventListener('click',e=>{if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;}});
     }
     const addColorPresentation=(target,labelValue)=>{
       if(effectiveType!=='col')return;
@@ -7027,7 +7494,10 @@
     if(isExpression){
       const label=document.createElement('span');label.className='script-input-value';
       let display=String(value??'');
-      if(effectiveType==='col'){const sw=document.createElement('span');sw.className='script-input-color-swatch';sw.style.background=colorCss(value,'#FFFFFF');b.append(sw);try{display=rgbaToHex(parseColor(value));}catch{}}
+      let unrecognized=!display.trim()||expressionVariableMissingReferences(display,state.script.nodeId).length>0;
+      if(!unrecognized){try{validateIIFEExpressionSource(display);new Function('ctx','Math','scriptHere','"use strict";return ('+display+');');}catch{unrecognized=true;}}
+      if(unrecognized)display='<expression>';
+      if(effectiveType==='col'&&!unrecognized){const sw=document.createElement('span');sw.className='script-input-color-swatch';sw.style.background=colorCss(value,'#FFFFFF');b.append(sw);try{display=rgbaToHex(parseColor(value));}catch{}}
       label.textContent=display;
       const type=document.createElement('span');type.className='script-input-type';type.textContent='expr';b.append(label,type);
       b.addEventListener('click',e=>{e.stopPropagation();openExpressionEditor(sn,item.path,entry);});
@@ -7119,9 +7589,9 @@
     state.script.selectedNodeIds=nextIds;state.script.selectionAnchorId=nextAnchor;state.script.selectedNodeId=nextPrimary;
   }
   function selectedScriptNodes(){const set=new Set(state.script.selectedNodeIds||[]);return scriptList().filter(x=>set.has(x.id));}
-  function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
+  function copyScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to copy');const set=new Set(nodes.map(n=>n.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to));state.script.clipboard={nodes:clone(nodes),connections:clone(con)};window.UIXClipboard?.set?.('scriptNodes',state.script.clipboard);status(nodes.length===1?`${nodes[0].defName} copied`:`${nodes.length} ScriptNodes copied`);}
   function cutScriptNodes(){const nodes=selectedScriptNodes();if(!nodes.length)return status('Nothing selected to cut');copyScriptNodes();requestDeleteScriptNodes(nodes.map(n=>n.id),'Cut');}
-  function pasteScriptNodes(){const clip=state.script.clipboard;if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory('Paste ScriptNodes');const pasted=restoreScriptNodeDefinitions({clipboardNodes:clone(clip.nodes)}).clipboardNodes||[];pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
+  function pasteScriptNodes(){const sharedRecord=window.UIXClipboard?.getRecord?.();const clip=sharedRecord?(sharedRecord.type==='scriptNodes'?window.UIXClipboard?.get?.('scriptNodes'):null):state.script.clipboard;if(sharedRecord&&sharedRecord.type!=='scriptNodes')return status(`Clipboard contains ${sharedRecord.type}, not ScriptNodes`);if(!clip?.nodes?.length)return status('Nothing to paste');const list=scriptList(),map=new Map();pushHistory('Paste ScriptNodes');const pasted=restoreScriptNodeDefinitions({clipboardNodes:clone(clip.nodes)}).clipboardNodes||[];pasted.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const con=(clip.connections||[]).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=pasted.map(x=>x.id);state.script.selectedNodeId=pasted.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();status(`${pasted.length} ScriptNodes pasted`);}
   function duplicateScriptNodes(){const source=selectedScriptNodes();if(!source.length)return status('Nothing selected to duplicate');const list=scriptList(),map=new Map();pushHistory(source.length===1?`Duplicate ${source[0].defName}`:`Duplicate ${source.length} ScriptNodes`);const duplicated=restoreScriptNodeDefinitions({duplicateNodes:clone(source)}).duplicateNodes||[];duplicated.forEach(sn=>{const old=sn.id;sn.id=`snode-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;sn.x=Number(sn.x||0)+24;sn.y=Number(sn.y||0)+24;map.set(old,sn.id);list.push(sn);});const set=new Set(source.map(x=>x.id));const con=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>set.has(c.from)&&set.has(c.to)).map(c=>({...c,from:map.get(c.from),to:map.get(c.to)})).filter(c=>c.from&&c.to);state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).concat(con);state.script.selectedNodeIds=duplicated.map(x=>x.id);state.script.selectedNodeId=duplicated.at(-1)?.id||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();renderScriptConnections();status(`${duplicated.length} ScriptNodes duplicated`);}
   function deleteScriptNodesNow(ids){const set=new Set(ids||[]);if(!set.size)return;const list=scriptList();pushHistory('Delete ScriptNodes');state.script.nodesByNode[state.script.nodeId]=list.filter(sn=>!set.has(sn.id));state.script.connectionsByNode[state.script.nodeId]=(state.script.connectionsByNode[state.script.nodeId]||[]).filter(c=>!set.has(c.from)&&!set.has(c.to));state.script.selectedNodeIds=(state.script.selectedNodeIds||[]).filter(id=>!set.has(id));state.script.selectedNodeId=state.script.selectedNodeIds.at(-1)||null;renderScriptCanvas();status(`${set.size} ScriptNode${set.size===1?'':'s'} deleted`);}
   function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
@@ -7378,17 +7848,16 @@
   }
   function closeExpressionReplace(){closeModal($('#expressionReplaceModal'));}
   function openExpressionEditor(sn,path,entry){
-    state.script.editingInput={sn,path,entry};
+    const hadExpression=Object.prototype.hasOwnProperty.call(sn.expressions,path);
+    state.script.editingInput={sn,path,entry,hadExpression,originalExpression:hadExpression?String(sn.expressions[path]??''):null};
     $('#expressionTitle').textContent=entry.name||'Input';
-    let value=Object.prototype.hasOwnProperty.call(sn.expressions,path)?String(sn.expressions[path]??''):String(entry.value??'');
-    // String literal fallback is intentionally applied ONLY when the expression editor opens.
-    // After opening, typing is never rewritten automatically.
-    if(String(entry?.type||'').toLowerCase()==='str' && value.trim()){
+    let value=hadExpression?String(sn.expressions[path]??''):String(entry.value??'');
+    // Preserve existing expressions exactly; only apply the string-literal fallback to plain values.
+    if(!hadExpression&&String(entry?.type||'').toLowerCase()==='str'&&value.trim()){
       try{inferExpressionValue(value);}
-      catch{if(!(value.startsWith('`')&&value.endsWith('`'))) value='`'+value.replace(/`/g,'\\`')+'`';}
+      catch{if(!(value.startsWith('`')&&value.endsWith('`')))value='`'+value.replace(/`/g,'\\`')+'`';}
     }
     $('#expressionInput').value=value;
-    if(Object.prototype.hasOwnProperty.call(sn.expressions,path)) sn.expressions[path]=value;
     renderExpressionLibrary();
     validateExpression();
     showModal($('#expressionModal'));
@@ -7492,6 +7961,95 @@
     return /\basync\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(mask)||/\basync\s+function(?:\s+[$A-Za-z_][$\w]*)?\s*\(/.test(mask);
   }
   function inferExpressionValue(source){validateIIFEExpressionSource(source);const preview=expressionContext();return Function('ctx','Math','scriptHere','"use strict";return ('+source+');')(preview,Math,preview.scriptHere);}
+  function expressionVariableScope(scopeKey){return scopeKey==='local'?'Local':scopeKey==='global'?'Global':scopeKey==='server'?'Server':scopeKey==='sceneVariables'?'Scene':'';}
+  function sceneForScriptOwnerNode(ownerNodeId){
+    const wanted=String(ownerNodeId??'');if(!wanted)return currentScene();
+    for(const scene of state.scenes||[]){
+      const stack=Array.isArray(scene?.nodes)?scene.nodes.slice():[];
+      while(stack.length){const node=stack.pop();if(!node||typeof node!=='object')continue;if(String(node.id??'')===wanted)return scene;if(node.type==='folder'&&Array.isArray(node.children))stack.push(...node.children);}
+    }
+    return currentScene();
+  }
+  function expressionVariableList(scope,ownerNodeId=state.script.nodeId){
+    if(scope==='Local')return (state.localVarsByNode[ownerNodeId] ||= []);
+    if(scope==='Scene')return sceneVariableList(sceneForScriptOwnerNode(ownerNodeId));
+    if(scope==='Server')return state.serverVariables ||= [];
+    return state.globalVariables ||= [];
+  }
+  function expressionVariableReferences(source){
+    const refs=[],seen=new Set(),text=String(source??''),masked=maskExpressionLiterals(text);
+    const add=(scopeKey,name)=>{const scope=expressionVariableScope(scopeKey);if(!scope||!name)return;const key=scope+'\0'+name;if(seen.has(key))return;seen.add(key);refs.push({scope,scopeKey,name});};
+    const dot=/\bctx\.(local|global|server|sceneVariables)\.([A-Za-z_$][\w$]*)/g;let m;
+    while((m=dot.exec(masked)))add(m[1],m[2]);
+    const bracket=/\bctx\.(local|global|server|sceneVariables)\s*\[\s*(['"])([A-Za-z_$][\w$]*)\2\s*\]/g;
+    while((m=bracket.exec(text))){const prefix=`ctx.${m[1]}`;if(masked.slice(m.index,m.index+prefix.length)===prefix)add(m[1],m[3]);}
+    return refs;
+  }
+  function expressionVariableMissingReferences(source,ownerNodeId=state.script.nodeId){
+    return expressionVariableReferences(source).filter(ref=>!expressionVariableList(ref.scope,ownerNodeId).some(v=>String(v?.name)===ref.name));
+  }
+  function expressionVariableWarnings(source,ownerNodeId=state.script.nodeId){
+    return expressionVariableMissingReferences(source,ownerNodeId).map(ref=>{
+      if(!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(ref.name))return `WARNING: ${ref.scope} variable "${ref.name}" does not exist and cannot be auto-created because variable names must start with a letter, underscore, or dollar sign and contain only letters, numbers, underscores, or dollar signs.`;
+      return `WARNING: ${ref.scope} variable "${ref.name}" does not exist yet. It will be created when you save this expression.`;
+    });
+  }
+  function expressionVariableDefault(entry,source,ref){
+    const resultType=String(entry?.type||'str').toLowerCase(),text=String(source??'');
+    let token=ref?`ctx.${ref.scopeKey}.${ref.name}`:'',pos=token?text.indexOf(token):-1;
+    if(pos<0&&ref){
+      const escaped=ref.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const bracket=new RegExp(`ctx\\.${ref.scopeKey}\\s*\\[\\s*(['\"])${escaped}\\1\\s*\\]`).exec(text);
+      if(bracket){token=bracket[0];pos=bracket.index;}
+    }
+    const before=pos>=0?text.slice(Math.max(0,pos-32),pos):'';
+    const after=pos>=0?text.slice(pos+token.length,pos+token.length+32):'';
+    const context=before+' '+after;
+    let type=resultType==='int'||resultType==='number'?'Int':resultType==='bool'?'Bool':resultType==='list'?'List':'String';
+    let value=type==='Int'?0:type==='Bool'?false:type==='List'?[]:resultType==='col'?'#FFFFFFFF':'';
+    if(/\.(?:length|map|filter|reduce|find|findIndex|some|every|includes|join|push|pop|shift|unshift)\b/.test(after)){type='List';value=[];}
+    else if(/\.(?:toLowerCase|toUpperCase|trim|substring|slice|replace|startsWith|endsWith)\s*\(/.test(after)){type='String';value='';}
+    else if(/^\s*(?:\*\*|[+\-*/%]|>=|<=|>|<)\s*(?:-?\d|ctx\.|\()/.test(after)||/(?:\*\*|[+\-*/%]|>=|<=|>|<)\s*$/.test(before)){type='Int';value=0;}
+    else if(/^\s*(?:===|!==|==|!=)/.test(after)||/(?:===|!==|==|!=)\s*$/.test(before)){
+      if(/\b(?:true|false)\b/.test(context)){type='Bool';value=false;}
+      else if(/\b\d+(?:\.\d+)?\b/.test(context)){type='Int';value=0;}
+      else {type='String';value='';}
+    }
+    else if(/(?:&&|\|\|)\s*$/.test(before)||/^\s*(?:&&|\|\|)/.test(after)||/!\s*$/.test(before)){type='Bool';value=false;}
+    return {type,value};
+  }
+  function createMissingExpressionVariables(source,entry,ownerNodeId=state.script.nodeId){
+    const created=[],warnings=[];
+    for(const ref of expressionVariableMissingReferences(source,ownerNodeId)){
+      const list=expressionVariableList(ref.scope,ownerNodeId);
+      if(list.some(v=>String(v?.name)===ref.name))continue;
+      if(!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(ref.name)){warnings.push(`Could not create ${ref.scope} variable "${ref.name}": variable names must start with a letter, underscore, or dollar sign and contain only letters, numbers, underscores, or dollar signs.`);continue;}
+      const caseConflict=list.find(v=>String(v?.name||'').toLowerCase()===ref.name.toLowerCase());
+      if(caseConflict){warnings.push(`Could not create ${ref.scope} variable "${ref.name}": "${caseConflict.name}" already exists with different capitalization.`);continue;}
+      const defaults=expressionVariableDefault(entry,source,ref);
+      list.push(makeVariable(ref.name,defaults.type,clone(defaults.value),ref.scope,true));
+      created.push({scope:ref.scope,name:ref.name});
+    }
+    return {created,warnings};
+  }
+  function reconcileStoredScriptExpressionVariables(sceneId=null){
+    const created=[];
+    for(const [ownerNodeId,scripts] of Object.entries(state.script?.nodesByNode||{})){
+      if(sceneId){const ownerScene=sceneForScriptOwnerNode(ownerNodeId);if(String(ownerScene?.id||'')!==String(sceneId))continue;}
+      for(const sn of Array.isArray(scripts)?scripts:[]){
+        if(!sn?.expressions||typeof sn.expressions!=='object')continue;
+        const inputs=flattenEditor(sn.values||[]);
+        for(const [path,source] of Object.entries(sn.expressions)){
+          if(typeof source!=='string'||!source.trim())continue;
+          const item=inputs.find(x=>x.path===path),entry=item?.entry||{type:'str',name:'Input'};
+          const result=createMissingExpressionVariables(source,entry,ownerNodeId);
+          created.push(...result.created.map(v=>({...v,ownerNodeId,scriptNodeId:sn.id})));
+        }
+      }
+    }
+    if(created.length)resetAutoSaveTimer();
+    return created;
+  }
   function expressionTypeError(entry,value){
     const type=String(entry?.type||'str').toLowerCase();
     if(value&&typeof value.then==='function')return null;
@@ -7507,25 +8065,51 @@
   function coerceExpressionValue(entry,value){const type=String(entry?.type||'str').toLowerCase();if(type==='str')return String(value??'');if(type==='int'||type==='number')return Number(value);if(type==='bool')return !!value;if(type==='col')return String(value);if(type==='selector')return String(value);if(type==='list')return Array.isArray(value)?value:parseListValue(value);return value;}
   function validateExpression(){
     const input=$('#expressionInput'),error=$('#expressionError'),save=$('#expressionModal [data-action="apply-expression"]');
-    if(!input||!error)return true;const source=input.value.trim();let message='No error.';const edit=state.script.editingInput;
+    if(!input||!error)return true;
+    const source=input.value.trim(),edit=state.script.editingInput;
+    const warnings=source?expressionVariableWarnings(source,edit?.sn?.ownerNodeId||state.script.nodeId):[];
+    let fatalMessage='',typeMessage='',literalFallback=false,hasMissing=warnings.length>0;
     if(source){
       try{
+        validateIIFEExpressionSource(source);
+        new Function('ctx','Math','scriptHere','"use strict";return ('+source+');');
         const value=inferExpressionValue(source);
-        const pathRegex=/\bctx\.(local|global|server|sceneVariables)\.([A-Za-z_$][\w$]*)/g;let m;
-        while((m=pathRegex.exec(source))){const list=m[1]==='local'?(state.localVarsByNode[state.script.nodeId]||[]):m[1]==='global'?state.globalVariables:m[1]==='server'?state.serverVariables:sceneVariableList();if(!list.some(v=>v.name===m[2])){message=String(edit?.entry?.type||'').toLowerCase()==='str'?'String literal fallback will be used.':`Undefined variable: ${m[2]}`;break;}}
-        if(message==='No error.'&&edit){const typeError=expressionTypeError(edit.entry,value);if(typeError)message=typeError;}
+        if(edit&&!hasMissing){typeMessage=expressionTypeError(edit.entry,value)||'';}
       }catch(err){
+        const isExistingExpression=!!edit?.hadExpression;
         const isString=String(edit?.entry?.type||'').toLowerCase()==='str';
-        if(isString){message='String literal fallback will be used.';}else message=String(err?.message||'Syntax Error');
+        if(isString&&!isExistingExpression){literalFallback=true;}
+        else fatalMessage=String(err?.message||'Syntax Error');
       }
     }
-    const valid=message==='No error.'||message==='String literal fallback will be used.';error.textContent=message;error.classList.toggle('valid',valid);if(save)save.disabled=!valid;return valid;
+    const messages=[...warnings];
+    if(fatalMessage)messages.push(`ERROR: ${fatalMessage}`);
+    else if(typeMessage)messages.push(`ERROR: ${typeMessage}`);
+    else if(literalFallback)messages.push('The value will be treated as a string literal.');
+    else if(!messages.length)messages.push('No error.');
+    const valid=!fatalMessage&&!typeMessage;
+    error.textContent=messages.join('\n');error.classList.toggle('valid',valid&&!warnings.length);error.classList.toggle('has-warnings',!!warnings.length);if(save)save.disabled=!valid;return valid;
   }
   function applyExpression(){
     if(!validateExpression())return status('Fix the expression error first');
     const edit=state.script.editingInput;if(!edit)return;
-    const value=$('#expressionInput').value.trim();
-    if(value&&value!==String(edit.entry.value??'')){pushHistory(`Edit ${edit.entry.name||'ScriptNode input'}`);edit.sn.expressions[edit.path]=value;}else if(Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path)){pushHistory(`Clear ${edit.entry.name||'ScriptNode input'}`);delete edit.sn.expressions[edit.path];}
+    const value=$('#expressionInput').value.trim(),hasStoredExpression=Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path);
+    const oldExpression=hasStoredExpression?String(edit.sn.expressions[edit.path]??''):'';
+    const missingBefore=value?expressionVariableMissingReferences(value,state.script.nodeId):[];
+    const expressionChanged=value?(hasStoredExpression?value!==oldExpression:value!==String(edit.entry.value??'')):hasStoredExpression;
+    if(expressionChanged||missingBefore.length){
+      pushHistory(`Edit ${edit.entry.name||'ScriptNode input'}`);
+      const result=value?createMissingExpressionVariables(value,edit.entry,state.script.nodeId):{created:[],warnings:[]};
+      if(value){if(expressionChanged||!hasStoredExpression)edit.sn.expressions[edit.path]=value;}
+      else delete edit.sn.expressions[edit.path];
+      if(result.created.length){
+        const summary=result.created.map(v=>`${v.scope}.${v.name}`).join(', ');
+        status(`Created missing variables: ${summary}`);
+      }
+      if(result.warnings.length)status(result.warnings.join('\n'));
+      resetAutoSaveTimer();
+      if(state.script.nodeId){renderLocalVariables();renderScriptScopeVariables();}
+    }
     state.script.editingInput=null;closeModal($('#expressionModal'));renderScriptCanvas();
   }
   function clearExpression(){
@@ -7560,19 +8144,38 @@
     if(state.runtime?.running){
       const map=runtimeCameraMapping(canvas||$('#runtimeCanvas'),cam||state.runtime.camera||state.camera);
       const live=cam||state.runtime.camera||state.camera;
-      return {x:Number(live?.x)||0,y:Number(live?.y)||0,ratio:{x:Number(map.viewW)/Math.max(1,Number(map.baseW)||1280),y:Number(map.viewH)/Math.max(1,Number(map.baseH)||720)},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h:Number(map.viewH)||0,w:Number(map.viewW)||0,col:String(live?.bgColor||'#202020'),angle:Number(live?.angle)||0};
+      const fallback=cameraViewBaseSize(live);
+      const w=Number.isFinite(Number(map.viewW))&&Number(map.viewW)>0?Number(map.viewW):(Number(fallback.w)>0?Number(fallback.w):1280);
+      const h=Number.isFinite(Number(map.viewH))&&Number(map.viewH)>0?Number(map.viewH):(Number(fallback.h)>0?Number(fallback.h):720);
+      return {x:Number(live?.x)||0,y:Number(live?.y)||0,ratio:{x:w/Math.max(1,Number(map.baseW)||1280),y:h/Math.max(1,Number(map.baseH)||720)},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h,w,col:String(live?.bgColor||'#202020'),angle:Number(live?.angle)||0};
     }
     const frame=cameraEditorFrame(),live=state.camera;
-    return {x:Number(frame.x)||0,y:Number(frame.y)||0,ratio:{x:Number(frame.w)/1280,y:Number(frame.h)/720},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h:Number(frame.h)||0,w:Number(frame.w)||0,col:String(live?.bgColor||'#202020'),angle:Number(live?.transform?.angle?.[0])||0};
+    const fallback=cameraViewBaseSize(live);
+    const w=Number.isFinite(Number(frame.w))&&Number(frame.w)>0?Number(frame.w):(Number(fallback.w)>0?Number(fallback.w):1280);
+    const h=Number.isFinite(Number(frame.h))&&Number(frame.h)>0?Number(frame.h):(Number(fallback.h)>0?Number(fallback.h):720);
+    return {x:Number(frame.x)||0,y:Number(frame.y)||0,ratio:{x:w/1280,y:h/720},scale:Number(live?.scale)||1,speed:Number(live?.speed)||0,h,w,col:String(live?.bgColor||'#202020'),angle:Number(live?.transform?.angle?.[0])||0};
+  }
+  function expressionScreenView(canvas,cam){
+    const rect=canvas?.getBoundingClientRect?.()||{};
+    const width=Math.max(1,Number(rect.width)||Number(canvas?.width)||Number(window.visualViewport?.width)||Number(window.innerWidth)||1280);
+    const height=Math.max(1,Number(rect.height)||Number(canvas?.height)||Number(window.visualViewport?.height)||Number(window.innerHeight)||720);
+    const view=cameraVisibleViewForDisplay(cam,normalizeScreenType(state.game?.screenType),width,height);
+    const base=cameraViewBaseSize(cam);
+    const w=Number.isFinite(Number(view?.w))&&Number(view.w)>0?Number(view.w):(Number.isFinite(Number(base.w))&&Number(base.w)>0?Number(base.w):1280);
+    const h=Number.isFinite(Number(view?.h))&&Number(view.h)>0?Number(view.h):(Number.isFinite(Number(base.h))&&Number(base.h)>0?Number(base.h):720);
+    return {W:w,H:h,w,h,width:w,height:h};
+  }
+  function runtimeExpressionScreenSnapshot(canvas=null,cam=null){
+    const liveCanvas=canvas||state.runtime?.renderCanvas||$('#runtimeCanvas');
+    const liveCamera=cam||state.runtime?.camera||state.camera;
+    return expressionScreenView(liveCanvas,liveCamera);
   }
   function expressionContext(){
     const node=selectedNode(),sceneVars=sceneVariableList(),body=runtimeBodyForNode(node);
     const keybinds=keybindOptions();
-    const screenCanvas=state.runtime?.running?$('#runtimeCanvas'):$('#workplaceCanvas');
-    const screenRect=screenCanvas?.getBoundingClientRect?.()||{width:1280,height:720};
+    const screenCanvas=state.runtime?.running?($('#runtimeCanvas')||state.runtime.renderCanvas):$('#workplaceCanvas');
     const screenCamera=state.runtime?.running?state.runtime.camera:state.camera;
-    const screenType=normalizeScreenType(state.game.screenType);
-    const screenView=cameraVisibleViewForDisplay(screenCamera,screenType,screenRect.width,screenRect.height);
+    const screenView=expressionScreenView(screenCanvas,screenCamera);
     const expressionColorHelpers={
       rgb:(r,g,b)=>rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,1]),
       rgba:(r,g,b,a)=>{const alpha=Number(a);return rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,alpha>1?alpha/255:alpha]);}
@@ -7584,7 +8187,7 @@
       server:Object.fromEntries(state.serverVariables.map(v=>[v.name,v.value])),
       serverClient:(window.UIXNetwork?.getClients?.()||[]),
       sceneVariables:Object.fromEntries(sceneVars.map(v=>[v.name,v.value])),
-      screen:{W:Number(screenView.w)||0,H:Number(screenView.h)||0},
+      screen:{W:screenView.W,H:screenView.H},
       camera:expressionCameraSnapshot(screenCanvas,screenCamera),
       variableNames:(state.globalVariables||[]).map(v=>v.name),
       serverVariableNames:(state.serverVariables||[]).map(v=>v.name),
@@ -9365,6 +9968,7 @@
     const live=(name,getter)=>{try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:getter});}catch{}};
     live('transform',()=>runtimeBodyForNode(node)?.t||component(node,'transform')||{});
     live('camera',()=>expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera));
+    live('screen',()=>runtimeExpressionScreenSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera));
     live('text',()=>component(node,'text')||{});
     live('input',()=>{const c=component(node,'input')||{};return {get value(){return String(c.txt??'');},get align(){return c.align||'Center';},get justify(){return c.justify||'Left';}};});
     live('colorInput',()=>component(node,'colorinput')||{});
@@ -10127,6 +10731,7 @@ function updateRuntimeAnimations(dt){
         if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(prop,value);
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
+        else if(rec.dataType==='List')rec.value=Array.isArray(value)?value:parseListValue(value);
         else rec.value=String(value);
         if(scope==='Scene'&&rt.activeSceneVariableOverlayIndexMap){
           const index=rt.activeSceneVariableOverlayIndexMap.get(prop);
@@ -10202,7 +10807,7 @@ function updateRuntimeAnimations(dt){
     const applySetNode=v=>{if(node){if(v?.Name!==null&&v?.Name!==undefined)node.name=String(v.Name);if(v?.Id!==null&&v?.Id!==undefined){const n=Number(v.Id);if(Number.isFinite(n))node.numericId=n;}}};
     const ctx={
       local:locals,global:globals,server:serverVars,serverClient:(window.UIXNetwork?.getClients?.()||[]),network:window.UIXNetwork||null,scene:sceneVars,sceneVariables:sceneVars,
-      transform:body?.t||component(node,'transform')||{},camera:expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
+      transform:body?.t||component(node,'transform')||{},camera:expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),screen:runtimeExpressionScreenSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       PointerUpX:Number(state.runtime.inputs?.PointerUpX)||0,PointerUpY:Number(state.runtime.inputs?.PointerUpY)||0,PointerDownX:Number(state.runtime.inputs?.PointerDownX)||0,PointerDownY:Number(state.runtime.inputs?.PointerDownY)||0,PointerMoveX:Number(state.runtime.inputs?.PointerMoveX)||0,PointerMoveY:Number(state.runtime.inputs?.PointerMoveY)||0,PointerId:Number(state.runtime.inputs?.PointerId)||0,PointerType:String(state.runtime.inputs?.PointerType||'mouse'),
@@ -11081,6 +11686,7 @@ function updateRuntimeAnimations(dt){
         if(!rec)return;
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
+        else if(rec.dataType==='List')rec.value=Array.isArray(value)?value:parseListValue(value);
         else rec.value=String(value);
       },
       onClientJoined:id=>dispatchRuntimeEvent('onClientJoined','joined',{clientID:id}),
@@ -11101,6 +11707,7 @@ function updateRuntimeAnimations(dt){
       ? state.scenes.find(s=>s.id===requestedSceneId)||currentScene()
       : (state.scenes.find(s=>s.id===state.game.preferredSceneId)||currentScene());
     if(!preferred)return;
+    reconcileStoredScriptExpressionVariables(preferred.id);
     let runtimeMic=null;
     try{runtimeMic=await prepareRuntimeMic();}catch(err){status(`Microphone permission failed: ${err.message||err}`);return;}
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);
@@ -11375,6 +11982,14 @@ function updateRuntimeAnimations(dt){
   // ---------------- Events ----------------
   function setupLongPress(el,callback){el.addEventListener('pointerdown',e=>{if(e.button!==0)return;const startX=e.clientX,startY=e.clientY,timer=setTimeout(()=>callback(e),550);const move=ev=>{if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>8){clearTimeout(timer);document.removeEventListener('pointermove',move);}};document.addEventListener('pointermove',move);document.addEventListener('pointerup',()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);},{once:true});});}
   function installEvents(){
+    document.addEventListener('keydown',e=>{
+      if(state.runtime?.running||(!e.ctrlKey&&!e.metaKey)||!e.altKey||e.shiftKey)return;
+      const key=String(e.key||'').toLowerCase();if(key!=='c'&&key!=='v')return;
+      const target=e.target;
+      if(target?.closest?.('input,textarea,select,[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"],[role="textbox"],[role="combobox"],.keybind-input'))return;
+      e.preventDefault();e.stopImmediatePropagation();
+      if(key==='c')copyEntireProjectToClipboard();else pasteEntireProjectFromClipboard();
+    },true);
     document.addEventListener('pointerdown',e=>{
       const nativeSelect=e.target?.closest?.('select');
       if(nativeSelect&&e.button!==2){e.preventDefault();e.stopPropagation();openNativeSelect(nativeSelect);return;}
@@ -11408,6 +12023,33 @@ function updateRuntimeAnimations(dt){
     window.addEventListener('beforeunload',e=>{
       if(state.project?.created&&!window.__UIX_STANDALONE__){e.preventDefault();e.returnValue='';}
     });
+    document.addEventListener('paste',e=>{
+      const target=e.target;
+      const editingText=!!target?.closest?.('input,textarea,select,[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"],[role="textbox"],[role="combobox"]');
+      const files=Array.from(e.clipboardData?.files||[]);
+      for(const item of Array.from(e.clipboardData?.items||[])){
+        if(item?.kind!=='file')continue;
+        const file=item.getAsFile?.();
+        if(file&&!files.some(existing=>existing.name===file.name&&existing.size===file.size&&existing.type===file.type))files.push(file);
+      }
+      if(!files.length){if(!editingText)e.preventDefault();return;}
+      e.preventDefault();e.stopImmediatePropagation();
+      nativeClipboardPasteGeneration++;
+      (async()=>{
+        let imported=0,duplicates=0;const errors=[];
+        for(const file of files){
+          try{
+            const dataUrl=await dataUrlFromClipboardFile(file);
+            const result=importClipboardAssetData({dataUrl,mime:file.type||'application/octet-stream',filename:file.name||''});
+            if(result.ok){if(result.duplicate)duplicates++;else imported++;}
+            else errors.push(result.message);
+          }catch(error){errors.push(error?.message||'Could not read a pasted file');}
+        }
+        if(imported){ensureAssetIds();resetAutoSaveTimer();renderAssetManager();drawWorkplace();status(`${imported} file${imported===1?'':'s'} pasted into the Asset Manager${duplicates?` · ${duplicates} already present`:''}`);}
+        else if(duplicates)status(`${duplicates} pasted asset${duplicates===1?' is':'s are'} already in the Asset Manager`);
+        else if(errors.length)status(errors[0]);
+      })();
+    },true);
     document.addEventListener('keydown',e=>{
       if(!state.runtime?.running&&state.project?.created&&(e.key==='F5'||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))&&!e.shiftKey){e.preventDefault();e.stopPropagation();status('Reload blocked. Use the project controls to reload.');return;}
       editorModifierState.shiftKey=!!e.shiftKey;editorModifierState.ctrlKey=!!e.ctrlKey;editorModifierState.altKey=!!e.altKey;editorModifierState.metaKey=!!e.metaKey;
@@ -11438,9 +12080,27 @@ function updateRuntimeAnimations(dt){
       case 'save': saveProjectToProjectStorage(); return;
       case 'new': action('new-project'); return;
       case 'open': openLoadChoice(); return;
-      case 'copy': { const target=selectedComponentTarget(); if(target){copyComponent(target);return;} copyNode(); return; }
+      case 'copy': { if($('#assetModal:not([hidden])')){copySelectedAssets();return;} const target=selectedComponentTarget(); if(target){copyComponent(target);return;} copyNode(); return; }
       case 'cut': cutNode(); return;
-      case 'paste': { const target=selectedComponentTarget(); if(target && state.componentClipboard){pasteComponent(target);return;} pasteNode(); return; }
+      case 'paste': {
+        const target=selectedComponentTarget();
+        const pasteAfterClipboardRead=async()=>{
+          const pasteGeneration=nativeClipboardPasteGeneration;
+          await window.UIXClipboard?.readExternal?.();
+          if(pasteGeneration!==nativeClipboardPasteGeneration)return;
+          const record=window.UIXClipboard?.getRecord?.();
+          if($('#assetModal:not([hidden])')){pasteSelectedAssets(true);return;}
+          if(record?.type==='component'){state.componentClipboard=window.UIXClipboard.get('component');if(target)pasteComponent(target);else status('Select a node component target first');return;}
+          if(record?.type==='nodes'){state.nodeClipboard=window.UIXClipboard.get('nodes');pasteNode();return;}
+          if(record?.type==='assets'){pasteSelectedAssets(true);return;}
+          if(['image','file','spriteSelection','spriteLayer'].includes(record?.type)){pasteSelectedAssets(true);return;}
+          if(!record){if(target&&state.componentClipboard)pasteComponent(target);else pasteNode();return;}
+          if(record.type==='text'){status('Text clipboard content is not a Node2D object');return;}
+          if(record.type==='project'){status('Clipboard contains an NDC project. Open/import it through the project controls.');return;}
+          if(target&&record.type==='component')pasteComponent(target);else if(record.type==='nodes')pasteNode();else status(`Clipboard contains ${record.type}`);
+        };
+        pasteAfterClipboardRead(); return;
+      }
       case 'duplicate': duplicateNodes(); return;
       case 'group': groupSelectedNodes(); return;
       case 'ungroup': ungroupSelectedNodes(); return;
@@ -11480,15 +12140,21 @@ function updateRuntimeAnimations(dt){
   });
   window.UIXKeyBinds?.registerHandler('script',(command,data)=>{
     switch(command){
-      case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':pasteScriptNodes();break;case 'duplicate':duplicateScriptNodes();break;
+      case 'copy': copyScriptNodes();break;case 'cut':cutScriptNodes();break;case 'paste':(async()=>{const pasteGeneration=nativeClipboardPasteGeneration;await window.UIXClipboard?.readExternal?.();if(pasteGeneration!==nativeClipboardPasteGeneration)return;const record=window.UIXClipboard?.getRecord?.();if(['image','file','assets'].includes(record?.type)){pasteSelectedAssets(true);return;}pasteScriptNodes();})();break;case 'duplicate':duplicateScriptNodes();break;
       case 'delete':requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id));break;case 'selectAll':{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();break;}
       case 'deselectAll':if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();break;case 'contextMenu':{const sn=selectedScriptNodes().at(-1);if(sn){const el=document.querySelector(`.script-node-card[data-script-id="${sn.id}"]`);const r=el?.getBoundingClientRect();scriptContextMenu(sn,r?r.left+r.width/2:20,r?r.top+r.height/2:20);}break;}case 'undo':undo();break;case 'redo':redo();break;case 'snap':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn) snapScriptToNode(sn);}break;
       case 'frame':{const sn=scriptList().find(x=>x.id===state.script.selectedNodeId)||selectedScriptNodes().at(-1);if(sn)snapScriptToNode(sn);}break;case 'next':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)+1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'previous':{const list=scriptList(),i=list.findIndex(x=>x.id===state.script.selectedNodeId),n=list[clamp((i<0?0:i)-1,0,list.length-1)];if(n){selectScriptNode(n,{});renderScriptCanvas();}}break;case 'escape':closeModal($('#scriptModal'));break;
       case 'zoomIn':state.script.zoom=clamp(state.script.zoom*1.1,.25,3);applyScriptTransform();break;case 'zoomOut':state.script.zoom=clamp(state.script.zoom*.9,.25,3);applyScriptTransform();break;case 'resetZoom':state.script.zoom=1;applyScriptTransform();break;
     }
   });
-  window.UIXKeyBinds?.registerHandler('sprite',(command,data)=>window.UIXSpriteEditor?.handleShortcut?.(command,data));
-  window.UIXKeyBinds?.registerHandler('midi',(command,data)=>window.UIXMIDIEditor?.handleShortcut?.(command,data));
+  window.UIXKeyBinds?.registerHandler('sprite',(command,data)=>{
+    if(command!=='paste')return window.UIXSpriteEditor?.handleShortcut?.(command,data);
+    (async()=>{const pasteGeneration=nativeClipboardPasteGeneration;await window.UIXClipboard?.readExternal?.();if(pasteGeneration!==nativeClipboardPasteGeneration)return;const record=window.UIXClipboard?.getRecord?.();if(['image','file','assets'].includes(record?.type)){pasteSelectedAssets(true);return;}window.UIXSpriteEditor?.handleShortcut?.(command,data);})();
+  });
+  window.UIXKeyBinds?.registerHandler('midi',(command,data)=>{
+    if(command!=='paste')return window.UIXMIDIEditor?.handleShortcut?.(command,data);
+    (async()=>{const pasteGeneration=nativeClipboardPasteGeneration;await window.UIXClipboard?.readExternal?.();if(pasteGeneration!==nativeClipboardPasteGeneration)return;const record=window.UIXClipboard?.getRecord?.();if(['image','file','assets'].includes(record?.type)){pasteSelectedAssets(true);return;}window.UIXMIDIEditor?.handleShortcut?.(command,data);})();
+  });
   window.UIXKeyBindsContext=window.UIXKeyBindsContext||{};
   window.UIXKeyBindsContext.mode=state.mode;
   renderKeybindHints();
@@ -11538,7 +12204,6 @@ function updateRuntimeAnimations(dt){
     $('#colorEyeDropper')?.addEventListener('click',pickScreenColor);
     $('#colorTextInput').addEventListener('change',()=>{try{const rgba=parseColor($('#colorTextInput').value);state.color.rgba=rgba;state.color.hsv=rgbToHsv(rgba);syncColorUI();}catch{status('Invalid color');}});
     $('#assetFileInput').addEventListener('change',e=>{if(e.target.files.length)importAssets(e.target.files);e.target.value='';});
-    $('#assetModal')?.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action==='asset-multiselect-toggle')setAssetManagerSelectMode(!state.assetManagerSelectMode);else if(action==='asset-remove-selected')removeSelectedAssets(true);else if(action==='asset-edit-selected')importSelectedAssetManager();else if(action==='asset-import-local-projects')openAssetImportFromLocalProjects();});
     const assetDropZone=$('#assetModal');
     assetDropZone?.addEventListener('dragover',e=>{if(e.dataTransfer?.files?.length){e.preventDefault();e.stopPropagation();assetDropZone.classList.add('asset-drag-over');}});
     assetDropZone?.addEventListener('dragleave',e=>{if(!assetDropZone.contains(e.relatedTarget))assetDropZone.classList.remove('asset-drag-over');});
@@ -11546,15 +12211,7 @@ function updateRuntimeAnimations(dt){
       const files=e.dataTransfer?.files;
       if(!files?.length)return;
       e.preventDefault();e.stopPropagation();assetDropZone.classList.remove('asset-drag-over');
-      const accepted=[],rejected=[];
-      [...files].forEach(file=>{
-        const name=String(file?.name||''),mime=String(file?.type||'').toLowerCase();
-        const isImage=mime.startsWith('image/')||/\.svg$/i.test(name);
-        const isAudio=mime.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|uixaudio)$/i.test(name);
-        if(isImage||isAudio)accepted.push(file);else rejected.push(name||'Unnamed file');
-      });
-      if(rejected.length)status(`Rejected: ${rejected.join(', ')}. Drag & Drop accepts only image or audio files.`);
-      if(accepted.length)importAssets(accepted);
+      importAssets(files);
     });
     $('#projectFileInput')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectFile(file);e.target.value='';});
     $('#ndcTransferCancel')?.addEventListener('click',()=>closeNdcTransferModal());

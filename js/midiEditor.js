@@ -578,12 +578,13 @@
       for(const n of chosen){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}
       mainState.clipboard=chosen.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:n.velocity||100}));
       mainState.pasteTarget={step:minT,p:maxP};
+      window.UIXClipboard?.set?.('midiNotes',{notes:mainState.clipboard,pasteTarget:mainState.pasteTarget});
       const message=`${chosen.length} note${chosen.length===1?'':'s'} copied to clipboard. Use Paste in the MIDI Editor.`;
       modal3.querySelector('[data-rec-message]').textContent=message;
       window.UIXApp?.status?.(message);
     };
     const deleteSelected=()=>{if(!rs.selected.size)return;rs.notes=rs.notes.filter((n,i)=>!rs.selected.has(i));rs.selected.clear();rs.changed=true;draw();};
-    c.addEventListener('contextmenu',e=>{e.preventDefault();const r=c.getBoundingClientRect(),i=hit(e.clientX-r.left,e.clientY-r.top);if(i!=null)rs.selected.has(i)||rs.selected.add(i);window.UIXApp?.showContextMenu?.([{label:'Copy',icon:'⧉',disabled:rs.selected.size===0,action:()=>{const s=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);if(!s.length)return;let minT=Infinity,maxP=-Infinity;for(const n of s){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}mainState.clipboard=s.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:100}));mainState.pasteTarget={step:minT,p:maxP};host.textContent='Note copied.';}},{label:'Paste',icon:'▣',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));const p=validMidiPitch(mainState.pasteTarget?.p??72);rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(p-n.dp),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Paste Origin Note',icon:'↥',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(n.op??n.p),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Delete',icon:'×',disabled:rs.selected.size===0,action:deleteSelected},{label:'Select All',icon:'☑',action:()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();}}],e.clientX,e.clientY);});
+    c.addEventListener('contextmenu',e=>{e.preventDefault();const r=c.getBoundingClientRect(),i=hit(e.clientX-r.left,e.clientY-r.top);if(i!=null)rs.selected.has(i)||rs.selected.add(i);window.UIXApp?.showContextMenu?.([{label:'Copy',icon:'⧉',disabled:rs.selected.size===0,action:()=>{const s=[...rs.selected].map(i=>rs.notes[i]).filter(Boolean);if(!s.length)return;let minT=Infinity,maxP=-Infinity;for(const n of s){minT=Math.min(minT,n.t);maxP=Math.max(maxP,n.p);}mainState.clipboard=s.map(n=>({dt:n.t-minT,dp:maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:100}));mainState.pasteTarget={step:minT,p:maxP};window.UIXClipboard?.set?.('midiNotes',{notes:mainState.clipboard,pasteTarget:mainState.pasteTarget});host.textContent='Note copied.';}},{label:'Paste',icon:'▣',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));const p=validMidiPitch(mainState.pasteTarget?.p??72);rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(p-n.dp),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Paste Origin Note',icon:'↥',disabled:!mainState.clipboard?.length,action:()=>{const t=Math.max(0,Math.round(mainState.pasteTarget?.step||rs.head));rs.notes.push(...mainState.clipboard.map(n=>({t:t+n.dt,l:n.l,p:validMidiPitch(n.op??n.p),tr:mainState.cur||0,velocity:100,selected:false})));rs.changed=true;draw();}},{label:'Delete',icon:'×',disabled:rs.selected.size===0,action:deleteSelected},{label:'Select All',icon:'☑',action:()=>{rs.notes.forEach((n,i)=>rs.selected.add(i));draw();}}],e.clientX,e.clientY);});
     c.addEventListener('pointerdown',e=>{active.set(e.pointerId,{x:e.clientX,y:e.clientY});c.setPointerCapture?.(e.pointerId);if(active.size>=2){drag=null;box=null;const pts=[...active.values()];two={last:{x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length}};return;}const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(y<RULER&&x>=KEYW){rs.head=Math.max(0,Math.round(((x-KEYW+sx)/zoom)));rs.recordStartStep=rs.head;followPosition(rs.head,layout[Math.floor(layout.length/2)]??60);draw();return;}const i=hit(x,y);if(i!=null){if(e.ctrlKey||e.metaKey){rs.selected.has(i)?rs.selected.delete(i):rs.selected.add(i);}else{rs.selected.clear();rs.selected.add(i);}draw();}});
     c.addEventListener('pointermove',e=>{if(!active.has(e.pointerId))return;active.set(e.pointerId,{x:e.clientX,y:e.clientY});if(active.size>=2){const pts=[...active.values()],m={x:pts.reduce((a,p)=>a+p.x,0)/pts.length,y:pts.reduce((a,p)=>a+p.y,0)/pts.length};if(two){sx-=m.x-two.last.x;sy-=m.y-two.last.y;clampRecordView();two.last=m;draw();}return;}if(box){box.x2=e.clientX-c.getBoundingClientRect().left;box.y2=e.clientY-c.getBoundingClientRect().top;draw();}});
     c.addEventListener('pointerup',e=>{active.delete(e.pointerId);if(active.size<2&&two){two=null;draw();}});c.addEventListener('pointercancel',e=>{active.delete(e.pointerId);if(active.size<2)two=null;});c.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const r=c.getBoundingClientRect(),x=e.clientX-r.left-KEYW,anchor=(sx+x)/zoom;zoom=clamp(zoom*(e.deltaY<0?1.1:.9),6,80);sx=Math.max(0,anchor*zoom-x);updateRecordZoomUI();}else{sx+=e.deltaX;sy+=e.deltaY;}clampRecordView();draw();},{passive:false});
@@ -801,6 +802,7 @@
       const b=noteSelectionBounds(s);
       state.clipboard=s.map(n=>({dt:n.t-b.minT,dp:b.maxP-n.p,l:n.l,p:n.p,op:n.p,velocity:n.velocity}));
       state.pasteTarget={step:b.minT,p:b.maxP};
+      window.UIXClipboard?.set?.('midiNotes',{notes:state.clipboard,pasteTarget:state.pasteTarget});
       status(`${s.length} MIDI note${s.length===1?'':'s'} copied`);draw();
     }
     function openNoteSelectorFromNotes(sourceNotes, sourceName='MIDI'){
@@ -842,7 +844,7 @@
       c.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(activePointers.size===0){if(boxPanRaf)cancelAnimationFrame(boxPanRaf);boxPanRaf=0;boxPointer=null;box=null;twoPan=null;drawStage();}});
       c.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const r=c.getBoundingClientRect(),x=e.clientX-r.left-KEYW,anchor=(v.sx+x)/v.zoom;v.zoom=clamp(v.zoom*(e.deltaY<0?1.1:.9),6,80);v.sx=Math.max(0,anchor*v.zoom-x);updateLocalZoomUI();}else{v.sx+=e.deltaX;v.sy+=e.deltaY;}clampView();drawStage();},{passive:false});
       copyModal.addEventListener('pointerdown',e=>{if(e.target===copyModal){close();}});
-      copyModal.querySelector('[data-local-copy]').onclick=()=>{const chosen=notes.filter((n,i)=>selected.has(i));if(!chosen.length){copyModal.querySelector('[data-local-copy-status]').textContent='Select at least one note.';return;}const b=noteSelectionBounds(chosen);state.clipboard=chosen.map(n=>({dt:n.t-b.minT,dp:b.maxP-n.p,l:n.l,p:n.p,velocity:100}));state.pasteTarget={step:b.minT,p:b.maxP};copyModal.querySelector('[data-local-copy-status]').textContent='Note has been copied, paste it at the DAW.';};
+      copyModal.querySelector('[data-local-copy]').onclick=()=>{const chosen=notes.filter((n,i)=>selected.has(i));if(!chosen.length){copyModal.querySelector('[data-local-copy-status]').textContent='Select at least one note.';return;}const b=noteSelectionBounds(chosen);state.clipboard=chosen.map(n=>({dt:n.t-b.minT,dp:b.maxP-n.p,l:n.l,p:n.p,velocity:100}));state.pasteTarget={step:b.minT,p:b.maxP};window.UIXClipboard?.set?.('midiNotes',{notes:state.clipboard,pasteTarget:state.pasteTarget});copyModal.querySelector('[data-local-copy-status]').textContent='Note has been copied, paste it at the DAW.';};
       copyModal.querySelector('[data-local-cancel]').onclick=close;
       window.addEventListener('resize',resize);renderList();resize();
     }
@@ -871,6 +873,8 @@
       state.noteDefs=ensureNoteDefs(state.noteDefs||{},[p]);state.notes.push(nn);growTimelineForNotes(nn.t+nn.l);state.noteAnchor=nn;state.pasteTarget={step:t,p};pushHistory(before);preview(p);draw();
     }
     function pasteOriginMidi(target){
+      const sharedRecord=window.UIXClipboard?.getRecord?.();
+      if(sharedRecord){if(sharedRecord.type!=='midiNotes')return status(`Clipboard contains ${sharedRecord.type}, not MIDI notes`);const shared=window.UIXClipboard.get('midiNotes');state.clipboard=shared?.notes||[];state.pasteTarget=shared?.pasteTarget||state.pasteTarget;}
       if(!state.clipboard.length)return status('Nothing to paste');
       const t=target||state.pasteTarget||{step:state.head||0,p:72};
       const baseT=Math.max(0,Math.floor(Math.max(0,t.step)/snap())*snap());
@@ -879,6 +883,8 @@
       const before=beginHistory();clearMidiSelection();state.notes.push(...pasted);growTimelineForNotes(Math.max(...pasted.map(n=>n.t+n.l)));state.noteAnchor=pasted.at(-1)||null;state.pasteTarget={step:baseT,p:validMidiPitch(pasted.at(-1)?.p??72)};pushHistory(before);draw();status(`${pasted.length} MIDI note${pasted.length===1?'':'s'} pasted at original pitch`);
     }
     function pasteMidi(target){
+      const sharedRecord=window.UIXClipboard?.getRecord?.();
+      if(sharedRecord){if(sharedRecord.type!=='midiNotes')return status(`Clipboard contains ${sharedRecord.type}, not MIDI notes`);const shared=window.UIXClipboard.get('midiNotes');state.clipboard=shared?.notes||[];state.pasteTarget=shared?.pasteTarget||state.pasteTarget;}
       if(!state.clipboard.length)return status('Nothing to paste');
       const t=target||state.pasteTarget||{step:state.head||0,p:72};
       const baseT=Math.max(0,Math.floor(Math.max(0,t.step)/snap())*snap());
@@ -1047,6 +1053,7 @@
         const minT=Math.min(...chosen.map(n=>Number(n.t)||0)),maxP=Math.max(...chosen.map(n=>validMidiPitch(n.p)));
         state.clipboard=chosen.map(n=>({dt:Math.max(0,(Number(n.t)||0)-minT),dp:Math.max(0,maxP-validMidiPitch(n.p)),l:Math.max(1,Number(n.l)||1),p:validMidiPitch(n.p),op:validMidiPitch(n.p),velocity:Math.max(1,Math.min(127,Number(n.velocity)||100))}));
         state.pasteTarget={step:Math.max(0,Math.round(Number(state.head)||0)),p:maxP};
+        window.UIXClipboard?.set?.('midiNotes',{notes:state.clipboard,pasteTarget:state.pasteTarget});
         updatePadMessage(`Copied ${chosen.length} note${chosen.length===1?'':'s'} to the main DAW clipboard. Close Pad Editor, then use Paste in the main DAW.`);
         status(`Copied ${chosen.length} Pad Editor note${chosen.length===1?'':'s'}; close Pad Editor and paste in the DAW.`);
       };
@@ -1377,7 +1384,7 @@
     modal.tabIndex=0;modal.focus();
     activeShortcutHandler=command=>{
       switch(command){
-        case'copy':copyMidi();break;case'cut':cutMidi();break;case'paste':pasteMidi();break;case'pasteOrigin':pasteOriginMidi();break;case'recordNote':openRecordNoteModal(state,null,false);break;
+        case'copy':copyMidi();break;case'cut':cutMidi();break;case'paste':(async()=>{await window.UIXClipboard?.readExternal?.();pasteMidi();})();break;case'pasteOrigin':(async()=>{await window.UIXClipboard?.readExternal?.();pasteOriginMidi();})();break;case'recordNote':openRecordNoteModal(state,null,false);break;
         case'delete':deleteMidi();break;case'duplicate':duplicateMidi();break;case'selectAll':midiSelectAll();break;case'deselectAll':midiDeselectAll();break;
         case'undo':undo();break;case'redo':redo();break;case'saveMIDI':save();break;
         case'exportMIDI':download(bytes(),`${safeName(state.name)}.mid`);break;case'importMIDI':modal.querySelector('[data-midi-import]')?.click();break;
