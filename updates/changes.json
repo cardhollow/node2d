@@ -1,5 +1,50 @@
 [
   {
+    "title": "Version 41.5.0",
+    "items": [
+      {
+        "id": "v41-5-particle-sprite-alpha",
+        "subtitle": "Particle Sprite rendering and transparency",
+        "contents": "Fixed Sprite particles so selected sprite assets resolve reliably and render using their original image proportions and alpha transparency. Sprite modulation is now clipped to the non-transparent pixels, and particle drawing resets canvas compositing locally to prevent rectangular artifacts from leaking into sprite rendering."
+      }
+    ]
+  },
+  {
+    "title": "Version 41.0.0",
+    "items": [
+      {
+        "id": "v41-color-data-type",
+        "subtitle": "Color variable data type",
+        "contents": "Added the Color variable data type. Color values use hexadecimal color strings and are supported by setVariable."
+      },
+      {
+        "id": "v41-physics-expression",
+        "subtitle": "Physics Script Library expressions",
+        "contents": "Added the Physics expression group with Body, Mass, Gravity, Friction, Bounciness, Fixed Rotation, and isCollider values. Set Physics now applies only changed values and avoids rebuilding physics caches on every tick."
+      },
+      {
+        "id": "v41-collision-exit",
+        "subtitle": "OnCollideWith exit output",
+        "contents": "OnCollideWith now has a falsy output. It fires once when a collision ends, and can fire again only after the next collision begins and ends."
+      },
+      {
+        "id": "v41-rerun",
+        "subtitle": "Runtime Rerun",
+        "contents": "Added Rerun between Output and Stop. It restarts the current scene by reusing the existing Play or Debug launch path."
+      },
+      {
+        "id": "v41-set-sprite-strength",
+        "subtitle": "setSprite Strength",
+        "contents": "Added Strength to setSprite. It controls sprite modulation strength from 0% to 100%."
+      },
+      {
+        "id": "v41-script-node-drag",
+        "subtitle": "ScriptNode drag and canvas zoom",
+        "contents": "Dragging a ScriptNode no longer bubbles into the canvas pan or pinch handlers. Canvas zoom is suppressed while a ScriptNode is being dragged."
+      }
+    ]
+  },
+  {
     "title": "Version 0",
     "items": [
       {
