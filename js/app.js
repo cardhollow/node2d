@@ -587,6 +587,7 @@
       rt.pendingOnLoad=[];
       rt.timers=[];
       rt.activeCollisionPairs=new Set();
+      rt.activeCollisionPairMap=new Map();
       rt.frameCollisionPairs=new Map();
       rt.physicsBodies=[];
       rt.renderBodies=[];
@@ -3686,6 +3687,7 @@
     Object.values(state.sceneVariablesByScene||{}).forEach(fixList);
     Object.values(state.localVarsByNode||{}).forEach(fixList);
   }
+  function normalizeVariableColor(value){try{return rgbaToHex(parseColor(value));}catch{return '#FFFFFFFF';}}
   function makeVariable(name,dataType,value,access='Scene',debug=false){return {id:`var-${Date.now()}-${state.nextVariableId++}`,name,dataType,value,access,debug:!!debug};}
   function addVariable(scopeOrGlobal){
     const scope=typeof scopeOrGlobal==='boolean'?(scopeOrGlobal?'Global':'Local'):scopeOrGlobal;
@@ -3841,7 +3843,7 @@
     applyVariableNameInputRules(nameRow.querySelector('input'));
     body.append(nameRow);
     body.append(field('Data Type',v.dataType,'custom-select',x=>{
-      const next=String(x); if(!['String','Bool','Int','List'].includes(next))return;
+      const next=String(x); if(!['String','Bool','Int','List','Color'].includes(next))return;
       const oldType=String(v.dataType||'String'), oldValue=v.value;
       if(next!==oldType){
         if(next==='String') v.value=Array.isArray(oldValue)?formatListValue(oldValue):String(oldValue??'');
@@ -3854,23 +3856,30 @@
           if(typeof source==='boolean') v.value=source;
           else if(typeof source==='number') v.value=source!==0;
           else v.value=['true','1','yes','on'].includes(String(source??'').trim().toLowerCase());
-        }else if(next==='List'){
-          v.value=parseListValue(oldValue);
-        }
+        }else if(next==='List') v.value=parseListValue(oldValue);
+        else if(next==='Color') v.value=normalizeVariableColor(oldValue);
       }
       v.dataType=next;
       if(scope==='Local') renderLocalVariables(); else if(state.script.nodeId) renderScriptScopeVariables(); else renderComponentPanel();
       if(state.script.nodeId) renderScriptCanvas();
       scheduleInspectorRefresh();
-    },['String','Bool','Int','List'],()=>String(v.dataType||'String')));
-    const valueRow=document.createElement('div');valueRow.className='property-row';const label=document.createElement('span');label.className='property-label';label.textContent='Value';const c=document.createElement('div');c.className='property-control';
-    if(v.dataType==='Bool') c.append(customSelect(v.value?'true':'false',['true','false'],x=>{v.value=x==='true';},null,null,'Variable Value',()=>v.value?'true':'false'));
-    else {const input=document.createElement('input');input.type=v.dataType==='Int'?'number':'text';input.value=v.dataType==='List'?listEditorText(v.value):String(v.value??'');
-      const commitList=()=>{if(v.dataType!=='List')return false;pushHistory(`Edit ${v.name} Value`);v.value=parseListValue(input.value);input.value=listEditorText(v.value);scheduleInspectorRefresh(true);renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();return true;};
-      input.addEventListener('change',()=>{if(commitList())return;pushHistory(`Edit ${v.name} Value`);v.value=v.dataType==='Int'?(Number(input.value)||0):input.value;scheduleInspectorRefresh();if(state.script.nodeId)renderScriptCanvas();});
-      input.addEventListener('blur',()=>{if(v.dataType==='List')commitList();});
-      c.append(input);}
-    valueRow.append(label,c);body.append(valueRow);
+    },['String','Bool','Int','List','Color'],()=>String(v.dataType||'String')));
+    if(v.dataType==='Color'){
+      body.append(colorField('Value',normalizeVariableColor(v.value),value=>{
+        v.value=normalizeVariableColor(value);
+        if(scope==='Local')renderLocalVariables();else if(state.script.nodeId)renderScriptScopeVariables();else renderComponentPanel();
+        if(state.script.nodeId)renderScriptCanvas();
+      }));
+    }else{
+      const valueRow=document.createElement('div');valueRow.className='property-row';const label=document.createElement('span');label.className='property-label';label.textContent='Value';const c=document.createElement('div');c.className='property-control';
+      if(v.dataType==='Bool') c.append(customSelect(v.value?'true':'false',['true','false'],x=>{v.value=x==='true';},null,null,'Variable Value',()=>v.value?'true':'false'));
+      else {const input=document.createElement('input');input.type=v.dataType==='Int'?'number':'text';input.value=v.dataType==='List'?listEditorText(v.value):String(v.value??'');
+        const commitList=()=>{if(v.dataType!=='List')return false;pushHistory(`Edit ${v.name} Value`);v.value=parseListValue(input.value);input.value=listEditorText(v.value);scheduleInspectorRefresh(true);renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();return true;};
+        input.addEventListener('change',()=>{if(commitList())return;pushHistory(`Edit ${v.name} Value`);v.value=v.dataType==='Int'?(Number(input.value)||0):input.value;scheduleInspectorRefresh();if(state.script.nodeId)renderScriptCanvas();});
+        input.addEventListener('blur',()=>{if(v.dataType==='List')commitList();});
+        c.append(input);}
+      valueRow.append(label,c);body.append(valueRow);
+    }
     body.append(checkboxField('Debug',!!v.debug,x=>{v.debug=x;}));
     card.append(body);
     card.addEventListener('contextmenu',e=>{
@@ -7215,7 +7224,7 @@
     const e=entry && typeof entry==='object' ? {...entry} : {name:String(entry??''),type:'str',value:''};
     e.name=e.name ?? 'Value';
     e.type=String(e.type??'str').toLowerCase();
-    if(!['str','bool','int','col','selector','list'].includes(e.type)) e.type='str';
+    if(!['str','bool','int','number','col','selector','list'].includes(e.type)) e.type='str';
     if(e.value===undefined){e.value=e.type==='bool'?false:(e.type==='int'||e.type==='number')?0:e.type==='col'?'#FFFFFFFF':e.type==='selector'?(() => []):e.type==='list'?[]:'';}
     return e;
   }
@@ -7312,6 +7321,7 @@
     if(variable?.dataType==='Bool') return 'bool';
     if(variable?.dataType==='Int') return 'int';
     if(variable?.dataType==='String') return 'str';
+    if(variable?.dataType==='Color') return 'col';
     if(variable?.dataType==='List') return 'list';
     return String(item.entry.type||'str').toLowerCase();
   }
@@ -7321,7 +7331,7 @@
     if(!valueItem) return;
     const scope=String(typeItem?scriptEditorValue(sn,typeItem):'Global'),name=String(nameItem?scriptEditorValue(sn,nameItem):'');
     const variable=variableList(scope).find(v=>String(v.name)===name);
-    const next=variable?.dataType==='Bool'?'bool':variable?.dataType==='Int'?'int':variable?.dataType==='List'?'list':variable?.dataType==='String'?'str':'str';
+    const next=variable?.dataType==='Bool'?'bool':variable?.dataType==='Int'?'int':variable?.dataType==='List'?'list':variable?.dataType==='Color'?'col':variable?.dataType==='String'?'str':'str';
     const prev=String(valueItem.entry.type||'str').toLowerCase();
     if(prev!==next){
       const old=valueItem.entry.value;
@@ -7329,6 +7339,7 @@
       else if(next==='bool') valueItem.entry.value=typeof old==='boolean'?old:['true','1','yes','on'].includes(String(old).toLowerCase());
       else if(next==='int'){const source=Array.isArray(old)?old[0]:old;const n=typeof source==='boolean'?(source?1:0):Number(source);valueItem.entry.value=Number.isFinite(n)?n:0;}
       else if(next==='list') valueItem.entry.value=parseListValue(old);
+      else if(next==='col') valueItem.entry.value=normalizeVariableColor(old);
       else valueItem.entry.value=Array.isArray(old)?formatListValue(old):String(old);
       valueItem.entry.type=next;
       delete sn.expressions[valueItem.path];
@@ -8270,6 +8281,7 @@
       Mic:[{label:'decibel',value:'ctx.mic.decibel',title:'Current microphone level in decibels'},{label:'speech',value:'ctx.mic.speech',title:'Live speech-recognition text'},{label:'active',value:'ctx.mic.active',title:'Whether the microphone is active'},{label:'speechActive',value:'ctx.mic.speechActive',title:'Whether speech recognition is running'}],
       transforms:[{label:'Position X',value:'ctx.transform.position[0]'},{label:'Position Y',value:'ctx.transform.position[1]'},{label:'Scale X',value:'ctx.transform.scale[0]'},{label:'Scale Y',value:'ctx.transform.scale[1]'},{label:'Angle',value:'ctx.transform.angle[0]'}],
       Velocity:[{label:'VelocityX',value:'ctx.velocity.velocityX'},{label:'VelocityY',value:'ctx.velocity.velocityY'},{label:'AngularVelocity',value:'ctx.velocity.angularVelocity'}],
+      Physics:[{label:'Body',value:'ctx.physics.body',title:'Physics body type: Static, Kinematic, or Dynamic.'},{label:'Mass',value:'ctx.physics.mass',title:'Physics body mass.'},{label:'Gravity',value:'ctx.physics.gravity',title:'Gravity acceleration applied to Dynamic bodies.'},{label:'Friction',value:'ctx.physics.friction',title:'Surface friction.'},{label:'Bounciness',value:'ctx.physics.bounciness',title:'Collision restitution from 0 to 1.'},{label:'Fixed Rotation',value:'ctx.physics.fixedRotation',title:'Whether the body is prevented from rotating.'},{label:'isCollider',value:'ctx.physics.isCollider',title:'Whether this Physics body participates in physical collision response.'}],
       List:[
         {label:'.some(item => condition)',value:'.some(item => item === 1)',title:'Append .some(...) to the list expression you already wrote.'},
         {label:'.every(item => condition)',value:'.every(item => item !== null)',title:'Append .every(...) to the list expression you already wrote.'},
@@ -8336,7 +8348,32 @@
     if(node&&component(node,'progressbar'))list['Progress Bar']=[{label:'Value',value:'ctx.progressBar.value'},{label:'Min',value:'ctx.progressBar.min'},{label:'Max',value:'ctx.progressBar.max'},{label:'Width',value:'ctx.progressBar.width'},{label:'Height',value:'ctx.progressBar.height'},{label:'Position X',value:'ctx.progressBar.position[0]'},{label:'Position Y',value:'ctx.progressBar.position[1]'}];
     return list;
   }
-  function attachScriptDrag(card,sn){card.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y,historyPushed:false};card.setPointerCapture?.(e.pointerId);function move(ev){if(!start.historyPushed&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)>2){beginHistoryTransaction('Move ScriptNode');start.historyPushed=true;}sn.x=start.sx+(ev.clientX-start.x)/state.script.zoom;sn.y=start.sy+(ev.clientY-start.y)/state.script.zoom;card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();}function end(){if(start.historyPushed)endHistoryTransaction();card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);card.releasePointerCapture?.(e.pointerId);}card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);card.addEventListener('pointercancel',end);});}
+  function attachScriptDrag(card,sn){
+    card.addEventListener('pointerdown',e=>{
+      if(e.target.closest('button,.script-input,.script-input-port,.script-output-port'))return;
+      if(e.button!==undefined&&e.button!==0)return;
+      e.preventDefault();e.stopPropagation();
+      const pointerId=e.pointerId,zoom=Math.max(.25,Number(state.script.zoom)||1);
+      const start={x:e.clientX,y:e.clientY,sx:sn.x,sy:sn.y,historyPushed:false};
+      card.dataset.scriptDragging='true';
+      try{card.setPointerCapture?.(pointerId);}catch{}
+      function move(ev){
+        if(ev.pointerId!==pointerId)return;
+        ev.preventDefault();ev.stopPropagation();
+        if(!start.historyPushed&&Math.hypot(ev.clientX-start.x,ev.clientY-start.y)>2){beginHistoryTransaction('Move ScriptNode');start.historyPushed=true;}
+        sn.x=start.sx+(ev.clientX-start.x)/zoom;sn.y=start.sy+(ev.clientY-start.y)/zoom;
+        card.style.left=`${sn.x}px`;card.style.top=`${sn.y}px`;renderScriptConnections();
+      }
+      function end(ev){
+        if(ev?.pointerId!==undefined&&ev.pointerId!==pointerId)return;
+        if(start.historyPushed)endHistoryTransaction();
+        delete card.dataset.scriptDragging;
+        card.removeEventListener('pointermove',move);card.removeEventListener('pointerup',end);card.removeEventListener('pointercancel',end);card.removeEventListener('lostpointercapture',end);
+        try{if(card.hasPointerCapture?.(pointerId))card.releasePointerCapture(pointerId);}catch{}
+      }
+      card.addEventListener('pointermove',move);card.addEventListener('pointerup',end);card.addEventListener('pointercancel',end);card.addEventListener('lostpointercapture',end);
+    });
+  }
   function attachOutputDrag(port){
     port.addEventListener('pointerdown',e=>{
       e.stopPropagation();e.preventDefault();
@@ -8421,6 +8458,7 @@
     resetScriptCanvasInteraction=()=>{pointers.clear();pan=null;pinch=null;canvas.classList.remove('panning');};
     canvas.addEventListener('pointerdown',e=>{
       if(e.button!==0)return;
+      if(e.target.closest('.script-node-card,.script-input,.script-input-port,.script-output-port'))return;
       pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
       if(pointers.size===2){
         const [a,b]=[...pointers.values()],midX=(a.x+b.x)/2,midY=(a.y+b.y)/2;
@@ -8430,7 +8468,6 @@
         pinch={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:state.script.zoom,lastMidX:midX,lastMidY:midY};
         pan=null;canvas.classList.remove('panning');return;
       }
-      if(e.target.closest('.script-node-card,.script-input,.script-input-port,.script-output-port'))return;
       pan={x:e.clientX,y:e.clientY,px:state.script.pan.x,py:state.script.pan.y};
       canvas.setPointerCapture?.(e.pointerId);canvas.classList.add('panning');
     });
@@ -8460,7 +8497,7 @@
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);canvas.addEventListener('pointerleave',()=>{});
     canvas.addEventListener('lostpointercapture',()=>resetScriptCanvasInteraction?.());
     canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
-    canvas.addEventListener('wheel',e=>{e.preventDefault();const rect=canvas.getBoundingClientRect(),before=scriptClientToWorld(e.clientX,e.clientY),next=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);state.script.zoom=next;state.script.pan.x=e.clientX-rect.left-rect.width/2-before.x*next;state.script.pan.y=e.clientY-rect.top-rect.height/2-before.y*next;applyScriptTransform();},{passive:false});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();if(canvas.querySelector('.script-node-card[data-script-dragging="true"]'))return;const rect=canvas.getBoundingClientRect(),before=scriptClientToWorld(e.clientX,e.clientY),next=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);state.script.zoom=next;state.script.pan.x=e.clientX-rect.left-rect.width/2-before.x*next;state.script.pan.y=e.clientY-rect.top-rect.height/2-before.y*next;applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
     canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return;}addScriptNodeAt(def,e.clientX,e.clientY);});
     new ResizeObserver(renderScriptConnections).observe(canvas);
@@ -8982,7 +9019,7 @@
       const cam=component(other,'camera');if(cam&&String(cam.followId||'')===id)cam.followId='';
     }
 
-    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));
+    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.activeCollisionPairMap=new Map([...((rt.activeCollisionPairMap||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));
     rt.joints=(rt.joints||[]).filter(j=>String(j?.bodyA?.node?.id??'')!==id&&String(j?.bodyB?.node?.id??'')!==id&&String(j?.targetId??'')!==id);
     rt.timers=(rt.timers||[]).filter(t=>!deadScripts.has(String(t?.key||''))&&String(t?.nodeId||'')!==id);
     rt.intervalStates=Object.fromEntries(Object.entries(rt.intervalStates||{}).filter(([sid,st])=>!deadScripts.has(String(sid))&&String(st?.nodeId||'')!==id));
@@ -9330,6 +9367,7 @@
     rt.aiTargets=Object.create(null);
     rt.savedStates=savedStates;
     rt.activeCollisionPairs=new Set();
+    rt.activeCollisionPairMap=new Map();
     rt.frameCollisionPairs=new Map();
     rt.joysticks=sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));
     rt.joystickDefs=sceneJoysticks(sceneClone);
@@ -10464,6 +10502,7 @@
     if(v.dataType==='Bool')v.value=!!value;
     else if(v.dataType==='Int')v.value=Number(value);
     else if(v.dataType==='List')v.value=parseListValue(value);
+    else if(v.dataType==='Color')v.value=normalizeVariableColor(value);
     else v.value=String(value);
     if(scope==='Scene'&&state.runtime?.activeSceneVariableOverlayIndexMap){
       const rt=state.runtime,index=rt.activeSceneVariableOverlayIndexMap.get(String(name));
@@ -10553,14 +10592,61 @@ function updateRuntimeAnimations(dt){
     const anim=component(node,'animationsprite');
     return (anim?.animations||[]).find(a=>String(a?.name||'')===wanted)||null;
   }
+  function runtimeParticleSpriteSource(value){
+    if(value&&typeof value==='object')value=value.value??value.src??value.url??value.name??value.id??'';
+    const key=String(value??'').trim();
+    if(!key)return '';
+    if(/^(?:data:image\/|blob:|https?:\/\/)/i.test(key))return key;
+    const assets=state.runtime?.shared?.spriteAssets||state.assets.Sprite||[];
+    const exact=assets.find(a=>String(a?.name??'')===key||String(a?.id??'')===key||String(a?.filename??'')===key);
+    const insensitive=exact||assets.find(a=>String(a?.name??'').trim().toLocaleLowerCase()===key.toLocaleLowerCase()||String(a?.filename??'').trim().toLocaleLowerCase()===key.toLocaleLowerCase());
+    const src=insensitive?.value??insensitive?.src??'';
+    return typeof src==='string'?src:'';
+  }
   function runtimeParticleColorAlpha(value){try{return clamp(Number(parseColor(value)[3]),0,1);}catch{return 1;}}
+  function runtimeDrawParticleSprite(ctx,particle){
+    const src=runtimeParticleSpriteSource(particle?.src);
+    if(!src)return false;
+    const img=getAssetImage(src);
+    if(!img?.complete||!img.naturalWidth||!img.naturalHeight)return false;
+    const size=constrainImageSize(img);
+    if(!size)return false;
+    const sx=Number(particle.sx??1),sy=Number(particle.sy??1);
+    const width=size.w*Math.abs(Number.isFinite(sx)?sx:1),height=size.h*Math.abs(Number.isFinite(sy)?sy:1);
+    if(!(width>0&&height>0))return false;
+    ctx.save();
+    try{
+      // Particle rendering can follow other canvas effects. Reset compositing locally so
+      // the sprite is drawn as its actual image, including its source alpha channel.
+      ctx.globalCompositeOperation='source-over';
+      ctx.globalAlpha=clamp(Number(particle.colorAlpha??runtimeParticleColorAlpha(particle.color)),0,1);
+      ctx.imageSmoothingEnabled=false;
+      ctx.imageSmoothingQuality='nearest';
+      ctx.scale(sx<0?-1:1,sy<0?-1:1);
+      ctx.drawImage(img,-width/2,-height/2,width,height);
+      const strength=clamp(Number(particle.modulateStrength??1),0,1);
+      if(strength>0){
+        let tint=particle.color;
+        try{const rgba=parseColor(particle.color);tint=rgbaToHex([rgba[0],rgba[1],rgba[2],1]);}catch{tint='#FFFFFFFF';}
+        // source-atop clips modulation to non-transparent sprite pixels; do not paint
+        // the rectangular image bounds, which would erase transparent edges.
+        ctx.globalCompositeOperation='source-atop';
+        ctx.globalAlpha=strength;
+        ctx.fillStyle=colorCss(tint,'#fff');
+        ctx.fillRect(-width/2,-height/2,width,height);
+      }
+    }finally{
+      ctx.restore();
+    }
+    return true;
+  }
   function runtimeCreateParticles(values,node){
     const rt=state.runtime;if(!rt)return null;
     const type=['Circle','Trail','Box','Sprite'].includes(String(values?.Type))?String(values.Type):'Circle';
     const tc=component(node,'transform')||{position:[0,0]};const baseX=Number(tc.position?.[0])||0,baseY=Number(tc.position?.[1])||0;
     const count=clamp(Math.floor(Number(values?.Count)||1),1,10000),lifetime=Math.max(1,Number(values?.Lifetime)||1000),particleArray=rt.particles||(rt.particles=[]);
     const source=String(values?.Source||'Sprite')==='Animation'?'Animation':'Sprite';
-    const src=type==='Sprite'&&source==='Sprite'?((rt.shared?.spriteAssets||[]).find(a=>a.name===values?.Sprite)?.value||''):'';
+    const src=type==='Sprite'&&source==='Sprite'?runtimeParticleSpriteSource(values?.Sprite):'';
     const animation=type==='Sprite'&&source==='Animation'?runtimeParticleAnimation(node,values?.Animation):null;
     const animationFrames=Array.isArray(animation?.sprites)?animation.sprites.filter(f=>f?.src):[];
     const color=String(values?.Color||'#FFFFFFFF'),colorAlpha=runtimeParticleColorAlpha(color),strength=clamp(Number(values?.Strength??100)/100,0,1);
@@ -10582,7 +10668,7 @@ function updateRuntimeAnimations(dt){
     const spriteName=String(values?.Sprite??'');
     const animation=type==='Sprite'&&source==='Animation'?runtimeParticleAnimation(emitter,values?.Animation??group.animationName):null;
     const animationFrames=Array.isArray(animation?.sprites)?animation.sprites.filter(f=>f?.src):group.animationFrames||[];
-    const src=type==='Sprite'&&source==='Sprite'?((state.runtime?.shared?.spriteAssets||[]).find(a=>a.name===spriteName)?.value||''):'';
+    const src=type==='Sprite'&&source==='Sprite'?runtimeParticleSpriteSource(spriteName):'';
     if(values?.Index!==null&&values?.Index!==undefined&&Number.isFinite(Number(values.Index)))group.renderIndex=Number(values.Index);
     group.source=source;group.animationName=animation?.name||String(values?.Animation ?? group.animationName ?? '');group.animationFrames=animationFrames;group.animationFps=Number(animation?.fps)||group.animationFps||8;
     if(values?.Strength!==null&&values?.Strength!==undefined)group.modulateStrength=clamp(Number(values.Strength)/100,0,1);
@@ -10620,12 +10706,12 @@ function updateRuntimeAnimations(dt){
       if(p?.emitterNodeId){const emitter=state.runtime?.nodeById?.get?.(p.emitterNodeId);if(emitter&&!runtimeNodeVisible(emitter))continue;}
       const points=p.type==='Trail'?p.trailPoints:null,anchorX=Number(p.x)||0,anchorY=Number(p.y)||0;
       if(Math.abs(anchorX-(Number(cam?.x)||0))>halfWorldX+64||Math.abs(anchorY-(Number(cam?.y)||0))>halfWorldY+64)continue;
-      ctx.save();ctx.globalAlpha=1;
+      ctx.save();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
       if(p.type==='Trail'&&Array.isArray(points)&&points.length>1){ctx.strokeStyle=colorCss(p.color,'#fff');ctx.lineWidth=Math.max(.5,4*Math.max(Math.abs(Number(p.sx)||0),Math.abs(Number(p.sy)||0)));ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();points.forEach((pt,i)=>{if(i===0)ctx.moveTo(pt.x,pt.y);else ctx.lineTo(pt.x,pt.y);});ctx.stroke();}
       else{ctx.translate(anchorX,anchorY);ctx.rotate((Number(p.angle)||0)*Math.PI/180);
         if(p.type==='Circle'){ctx.fillStyle=colorCss(p.color,'#fff');ctx.beginPath();ctx.ellipse(0,0,4*Math.abs(Number(p.sx)||0),4*Math.abs(Number(p.sy)||0),0,0,Math.PI*2);ctx.fill();}
         else if(p.type==='Box'){ctx.fillStyle=colorCss(p.color,'#fff');ctx.fillRect(-4*(Number(p.sx)||0),-4*(Number(p.sy)||0),8*(Number(p.sx)||0),8*(Number(p.sy)||0));}
-        else if(p.type==='Sprite'&&p.src){const img=getAssetImage(p.src);if(img?.complete&&img.naturalWidth){const size=constrainImageSize(img),sx=Number(p.sx)||0,sy=Number(p.sy)||0;ctx.imageSmoothingEnabled=false;ctx.imageSmoothingQuality='nearest';ctx.globalAlpha=clamp(Number(p.colorAlpha??runtimeParticleColorAlpha(p.color)),0,1);ctx.drawImage(img,-size.w*sx/2,-size.h*sy/2,size.w*sx,size.h*sy);const strength=clamp(Number(p.modulateStrength??1),0,1);if(strength>0){ctx.globalCompositeOperation='source-atop';ctx.globalAlpha=strength;let tint=p.color;try{const rgba=parseColor(p.color);tint=rgbaToHex([rgba[0],rgba[1],rgba[2],1]);}catch{}ctx.fillStyle=colorCss(tint,'#fff');ctx.fillRect(-size.w*sx/2,-size.h*sy/2,size.w*sx,size.h*sy);ctx.globalCompositeOperation='source-over';}}}
+        else if(p.type==='Sprite')runtimeDrawParticleSprite(ctx,p);
       }
       ctx.restore();
     }
@@ -10732,6 +10818,7 @@ function updateRuntimeAnimations(dt){
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
         else if(rec.dataType==='List')rec.value=Array.isArray(value)?value:parseListValue(value);
+        else if(rec.dataType==='Color')rec.value=normalizeVariableColor(value);
         else rec.value=String(value);
         if(scope==='Scene'&&rt.activeSceneVariableOverlayIndexMap){
           const index=rt.activeSceneVariableOverlayIndexMap.get(prop);
@@ -10793,9 +10880,45 @@ function updateRuntimeAnimations(dt){
       if(v?.AngularVelocity!==null&&v?.AngularVelocity!==undefined)b.omega=num(v.AngularVelocity,Number(b.omega||0)*180/Math.PI)*Math.PI/180;
     };
     const applySetText=v=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});});
-    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{if(v?.Type!==null&&v?.Type!==undefined&&v.Type!=='Keep'){if(v.Type==='Sprite'||v.Type==='Animation')c.sourceType=v.Type;else c.renderType=v.Type==='Texture'?'Texture':'Image';}if(v?.Source!==null&&v?.Source!==undefined)c.sourceType=v.Source==='Animation'?'Animation':'Sprite';if(v?.Sprite!==null&&v?.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v?.Animation!==null&&v?.Animation!==undefined)c.animation=v.Animation;if(v?.['Scale Type']!==null&&v?.['Scale Type']!==undefined&&v['Scale Type']!=='Keep')c.scaleType=v['Scale Type']==='Crop'?'Crop':'Stretch';if(v?.Modulate!==null&&v?.Modulate!==undefined)c.modulate=v.Modulate;{const cur=Array.isArray(c.textureSize)?c.textureSize:[0,0],tw=Number(v?.['Texture Width']),th=Number(v?.['Texture Height']);if(tw>0||th>0)c.textureSize=[tw>0?tw:(Number(cur[0])||0),th>0?th:(Number(cur[1])||0)];}if(v?.TextureSize!==null&&v?.TextureSize!==undefined){const ts=Array.isArray(v.TextureSize)?v.TextureSize:[v.TextureSize,v.TextureSize];c.textureSize=[Math.max(0,Number(ts[0])||0),Math.max(0,Number(ts[1])||0)];}if(v?.Pixelated!==null&&v?.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v?.Opacity!==null&&v?.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);});
+    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{if(v?.Type!==null&&v?.Type!==undefined&&v.Type!=='Keep'){if(v.Type==='Sprite'||v.Type==='Animation')c.sourceType=v.Type;else c.renderType=v.Type==='Texture'?'Texture':'Image';}if(v?.Source!==null&&v?.Source!==undefined)c.sourceType=v.Source==='Animation'?'Animation':'Sprite';if(v?.Sprite!==null&&v?.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v?.Animation!==null&&v?.Animation!==undefined)c.animation=v.Animation;if(v?.['Scale Type']!==null&&v?.['Scale Type']!==undefined&&v['Scale Type']!=='Keep')c.scaleType=v['Scale Type']==='Crop'?'Crop':'Stretch';if(v?.Modulate!==null&&v?.Modulate!==undefined)c.modulate=v.Modulate;if(v?.Strength!==null&&v?.Strength!==undefined)c.strength=clamp(Number(v.Strength)/100,0,1);{const cur=Array.isArray(c.textureSize)?c.textureSize:[0,0],tw=Number(v?.['Texture Width']),th=Number(v?.['Texture Height']);if(tw>0||th>0)c.textureSize=[tw>0?tw:(Number(cur[0])||0),th>0?th:(Number(cur[1])||0)];}if(v?.TextureSize!==null&&v?.TextureSize!==undefined){const ts=Array.isArray(v.TextureSize)?v.TextureSize:[v.TextureSize,v.TextureSize];c.textureSize=[Math.max(0,Number(ts[0])||0),Math.max(0,Number(ts[1])||0)];}if(v?.Pixelated!==null&&v?.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v?.Opacity!==null&&v?.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);});
     const applySetInputComponent=v=>runtimeSetComponent(node,'input',c=>{const map={'Text':'txt','Placeholder':'placeholder','Width':'width','Height':'height','Multiline':'multiline','FG Color':'fgCol','BG Color':'bgCol','Outline Color':'outlineCol','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','Padding':'padding','Outline Width':'outlineWidth','Border Radius':'borderRadius','Max Length':'maxLength','PosX':'positionX','PosY':'positionY','ScaleX':'scaleX','ScaleY':'scaleY'};Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d==='scaleX')c.scale[0]=Number(v[k]);else if(d==='scaleY')c.scale[1]=Number(v[k]);else if(d)c[d]=d==='multiline'?!!v[k]:d==='width'||d==='height'||d==='fontSize'||d==='padding'||d==='outlineWidth'||d==='borderRadius'||d==='maxLength'?Number(v[k]):v[k];});});
-    const applySetPhysics=v=>runtimeSetComponent(node,'physics',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};const d=map[k];if(d)c[d]=v[k];}));
+    const applySetPhysics=v=>{
+      if(!node)return;
+      const map={'Fixed Rotation':'fixedRotation','isCollider':'isCollider','Body':'body','Mass':'mass','Gravity':'gravity','Friction':'friction','Bounciness':'bounciness'};
+      const entries=Object.entries(v||{}).filter(([key,value])=>map[key]&&value!==null&&value!==undefined);
+      if(!entries.length)return;
+      let c=component(node,'physics'),created=false;
+      if(!c){
+        try{c=createComponent('physics');node.components.push(c);normalizeNode(node);c=component(node,'physics');created=true;}catch{return;}
+      }
+      if(!c)return;
+      let changed=created,massChanged=created;
+      for(const [key,value] of entries){
+        const dest=map[key];let next=value;
+        if(dest==='body'){
+          next=String(value);
+          if(!['Static','Kinematic','Dynamic'].includes(next))continue;
+        }else if(dest==='fixedRotation'||dest==='isCollider')next=!!value;
+        else{
+          next=Number(value);if(!Number.isFinite(next))continue;
+          if(dest==='mass'||dest==='friction')next=Math.max(0,next);
+          if(dest==='bounciness')next=clamp(next,0,1);
+        }
+        if(Object.is(c[dest],next))continue;
+        c[dest]=next;changed=true;
+        if(dest==='mass'||dest==='fixedRotation'||dest==='body')massChanged=true;
+      }
+      if(!changed)return;
+      const body=state.runtime.bodyById?.get(node.id);
+      if(!body)return;
+      body.physics=clone(c);
+      if(massChanged){body._massCache=null;body._massKey='';body._massDirty=true;}
+      const list=state.runtime.physicsBodies||(state.runtime.physicsBodies=[]);
+      const inList=list.includes(body),jointed=Array.isArray(state.runtime.joints)&&state.runtime.joints.some(j=>j.bodyA===body||j.bodyB===body);
+      const should=!!body.physics||!!body.collider||jointed;
+      if(should&&!inList)list.push(body);
+      if(!should&&inList)list.splice(list.indexOf(body),1);
+    };
     const applySetCollider=v=>runtimeSetComponent(node,'collider',c=>{if(v?.Collider!==null&&v?.Collider!==undefined)c.collidable=!!v.Collider;if(v?.Type!==null&&v?.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v?.PosX!==null&&v?.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v?.PosY!==null&&v?.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v?.ScaleX!==null&&v?.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v?.ScaleY!==null&&v?.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v?.Angle!==null&&v?.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);});
     const applySetProgressBar=v=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);}));
     const applySetCamera=v=>{const c=state.runtime.camera||{};if(v?.Enabled!==null&&v?.Enabled!==undefined)c.enabled=!!v.Enabled;if(v?.PosX!==null&&v?.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v?.PosY!==null&&v?.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v?.Angle!==null&&v?.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v?.Horizontal!==null&&v?.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v?.Vertical!==null&&v?.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v?.Animation!==null&&v?.Animation!==undefined)c.followAnimation=v.Animation;if(v?.Speed!==null&&v?.Speed!==undefined)c.speed=Number(v.Speed);if(v?.Scale!==null&&v?.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v?.['BG Color']!==null&&v?.['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v?.Follow!==null&&v?.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}};
@@ -11090,9 +11213,9 @@ function updateRuntimeAnimations(dt){
     return false;
   }
   function flushRuntimeCollisionEvents(){
-    const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),next=new Set();
+    const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),previousPairs=rt.activeCollisionPairMap||new Map(),next=new Set(),nextPairs=new Map();
     current.forEach((pair,key)=>{
-      next.add(key);if(previous.has(key))return;const [a,b]=pair;
+      next.add(key);nextPairs.set(key,pair);if(previous.has(key))return;const [a,b]=pair;
       [[a,b],[b,a]].forEach(([body,other])=>{
         const node=body?.node,target=other?.node;if(!node||!target)return;
         const label=`${target.name} [${target.numericId}]`;
@@ -11105,7 +11228,21 @@ function updateRuntimeAnimations(dt){
         }
       });
     });
-    rt.activeCollisionPairs=next;rt.frameCollisionPairs=new Map();
+    previousPairs.forEach((pair,key)=>{
+      if(next.has(key))return;
+      const [a,b]=pair;
+      [[a,b],[b,a]].forEach(([body,other])=>{
+        const node=body?.node,target=other?.node;if(!node||!target)return;
+        for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){
+          const entries=flattenEditor(sn.values);
+          const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
+          const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
+          if(targetEntry?.type==='selector'&&!runtimeTargetMatches(target,targetEntry.selected,!!byNameEntry?.value))continue;
+          routeRuntimeOutput(sn,'falsy');
+        }
+      });
+    });
+    rt.activeCollisionPairs=next;rt.activeCollisionPairMap=nextPairs;rt.frameCollisionPairs=new Map();
   }
   function processRuntimeTimers(now){
     const rt=state.runtime,due=rt.timers||[];rt.timers=[];
@@ -11687,6 +11824,7 @@ function updateRuntimeAnimations(dt){
         if(rec.dataType==='Bool')rec.value=!!value;
         else if(rec.dataType==='Int')rec.value=Number(value);
         else if(rec.dataType==='List')rec.value=Array.isArray(value)?value:parseListValue(value);
+        else if(rec.dataType==='Color')rec.value=normalizeVariableColor(value);
         else rec.value=String(value);
       },
       onClientJoined:id=>dispatchRuntimeEvent('onClientJoined','joined',{clientID:id}),
@@ -11713,7 +11851,7 @@ function updateRuntimeAnimations(dt){
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);
     const hydrated=hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),frameCollisionPairs:new Map(),scriptStartById:new Map(),valueTickPool:[],valueTickCompactCounter:0,nextValueTickSessionId:1,fixedTickCounter:0,inOnTickDispatch:false,liveChangedScripts:new Set(),activeValueTickRegistration:null,activeValueTickSlot:null,reactiveBindings:new Set(),reactiveBindingSerial:0,textInputEditors:new Map(),textInputEditor:null,joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],particleGroups:[],nextParticleRenderSerial:1,animationStates:Object.create(null)};
+    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),activeCollisionPairMap:new Map(),frameCollisionPairs:new Map(),scriptStartById:new Map(),valueTickPool:[],valueTickCompactCounter:0,nextValueTickSessionId:1,fixedTickCounter:0,inOnTickDispatch:false,liveChangedScripts:new Set(),activeValueTickRegistration:null,activeValueTickSlot:null,reactiveBindings:new Set(),reactiveBindingSerial:0,textInputEditors:new Map(),textInputEditor:null,joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],particleGroups:[],nextParticleRenderSerial:1,animationStates:Object.create(null)};
     configureRuntimeNetwork();
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
@@ -11733,9 +11871,9 @@ function updateRuntimeAnimations(dt){
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button">↻ Rerun</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.frameCollisionPairs=new Map();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.activeCollisionPairMap=new Map();rt.frameCollisionPairs=new Map();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running||state.runtime.runtimeFailed)return;
     try{

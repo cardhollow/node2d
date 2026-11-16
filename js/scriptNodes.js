@@ -16,7 +16,7 @@
     { name:'onColorChange', label:'OnColorChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputBlur', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
-    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
+    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'},{id:'falsy'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onClientJoined', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onClientLeft', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
@@ -114,7 +114,7 @@
     },
     {
       name:'setSprite', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Type',type:'selector',value:()=>['Keep','Image','Texture'],selected:'Keep'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Keep','Stretch','Crop'],selected:'Keep'},{name:'Texture Width',type:'int',value:0},{name:'Texture Height',type:'int',value:0},{name:'Modulate',type:'col',value:null},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
+      editor:[{name:'Type',type:'selector',value:()=>['Keep','Image','Texture'],selected:'Keep'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Keep','Stretch','Crop'],selected:'Keep'},{name:'Texture Width',type:'int',value:0},{name:'Texture Height',type:'int',value:0},{name:'Modulate',type:'col',value:null},{name:'Strength',type:'int',value:100},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
       func:(ctx,v)=>{ctx.setSprite?.(v);return {out:true};}
     },
     {name:'stopAnimation',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:(ctx)=>{ctx.stopAnimation?.();return {out:true};}},
@@ -127,7 +127,7 @@
     },
     {
       name:'setPhysics', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Body',type:'selector',value:()=>['Static','Kinematic','Dynamic'],selected:null},{name:'Mass',type:'number',value:null},{name:'Gravity',type:'int',value:null},{name:'Friction',type:'int',value:null},{name:'Bounciness',type:'int',value:null},{name:'Fixed Rotation',type:'bool',value:null},{name:'isCollider',type:'bool',value:null}],
+      editor:[{name:'Body',type:'selector',value:()=>['Static','Kinematic','Dynamic'],selected:null},{name:'Mass',type:'number',value:null},{name:'Gravity',type:'number',value:null},{name:'Friction',type:'number',value:null},{name:'Bounciness',type:'number',value:null},{name:'Fixed Rotation',type:'bool',value:null},{name:'isCollider',type:'bool',value:null}],
       func:(ctx,v)=>{ctx.setPhysics?.(v);return {out:true};}
     },
     {

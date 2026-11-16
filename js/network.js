@@ -56,6 +56,26 @@
     return Array.isArray(list) ? list : [];
   }
 
+  function normalizeServerColor(value) {
+    const source=String(value??'').trim();
+    if(/^#/.test(source)){
+      let hex=source.slice(1);
+      if(hex.length===3)hex=hex.split('').map(c=>c+c).join('');
+      if(hex.length===6)hex+='FF';
+      if(hex.length===8&&/^[0-9a-f]{8}$/i.test(hex))return `#${hex.toUpperCase()}`;
+    }
+    const match=source.match(/^rgba?\(([^)]+)\)$/i);
+    if(match){
+      const parts=match[1].split(',').map(Number);
+      if(parts.length>=3&&parts.slice(0,3).every(Number.isFinite)){
+        const alpha=parts[3]===undefined?1:(parts[3]>1?parts[3]/255:parts[3]);
+        const channels=[parts[0]/255,parts[1]/255,parts[2]/255,alpha].map(v=>Math.max(0,Math.min(1,v)));
+        return '#'+channels.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('').toUpperCase();
+      }
+    }
+    return '#FFFFFFFF';
+  }
+
   function coerceServerValue(name, value) {
     const variable = variableDefinitions().find(v => String(v?.name) === String(name));
     if (!variable) return { ok: false, value: undefined };
@@ -64,6 +84,7 @@
       const number = Number(value);
       return { ok: true, value: Number.isFinite(number) ? number : 0 };
     }
+    if (variable.dataType === 'Color') return { ok: true, value: normalizeServerColor(value) };
     return { ok: true, value: String(value) };
   }
 
