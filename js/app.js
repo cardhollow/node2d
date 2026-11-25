@@ -105,7 +105,7 @@
   const FLAPPY_BIRD_SAMPLE_FLAG='flappybirdsample';
   const FLAPPY_BIRD_SAMPLE_RELATIVE='./samples/flappybird.ndc';
   const FLAPPY_BIRD_SAMPLE_ROOT='/samples/flappybird.ndc';
-  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,scaleGizmo:'Arrow',multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30,createNewMissingComponent:false,showCollider:true,showJoints:true};
+  const DEFAULT_EDITOR_SETTINGS={moveScaleSnap:1,rotateSnap:0,scaleGizmo:'Arrow',multiSelectionUnifiedEditing:true,autoSave:false,autoSaveIntervalSec:30,createNewMissingComponent:false,showCollider:true,showJoints:true,debugVariableRecentFirst:true,debugOverlayOpacity:25};
   let editorSettingsCache=null;
   function openUpdates(){
     const frame=$('#updatesFrame');
@@ -137,6 +137,8 @@
     out.createNewMissingComponent=!!out.createNewMissingComponent;
     out.showCollider=out.showCollider!==false;
     out.showJoints=out.showJoints!==false;
+    out.debugVariableRecentFirst=out.debugVariableRecentFirst!==false;
+    out.debugOverlayOpacity=Number.isFinite(Number(out.debugOverlayOpacity))?clamp(Number(out.debugOverlayOpacity),0,100):DEFAULT_EDITOR_SETTINGS.debugOverlayOpacity;
     return out;
   }
   function getEditorSettings(){
@@ -589,6 +591,7 @@
       rt.activeCollisionPairs=new Set();
       rt.activeCollisionPairMap=new Map();
       rt.frameCollisionPairs=new Map();
+      rt.activeInputPointers?.clear?.();
       rt.physicsBodies=[];
       rt.renderBodies=[];
       rt.bodies=[];
@@ -5484,6 +5487,14 @@
     const debugToggle=(label,key)=>{const row=document.createElement('div');row.className='editor-snap-row';const lab=document.createElement('label');lab.className='game-setting-check';const chk=document.createElement('input');chk.type='checkbox';chk.checked=settings[key]!==false;const txt=document.createElement('span');txt.textContent=label;lab.append(chk,txt);row.append(lab);settingsWrap.append(row);chk.addEventListener('change',()=>{const next=getEditorSettings();next[key]=chk.checked;saveEditorSettings(next);drawWorkplace();});};
     debugToggle('Show Collider','showCollider');
     debugToggle('Show Joints','showJoints');
+    debugToggle('Move Recently Updated Variable to Top','debugVariableRecentFirst');
+    const opacityRow=document.createElement('div');opacityRow.className='editor-snap-row';
+    const opacityName=document.createElement('div');opacityName.className='keybind-name';opacityName.textContent='Debug Overlay Opacity';
+    const opacityControl=document.createElement('div');opacityControl.className='editor-snap-control';
+    const opacityInput=document.createElement('input');opacityInput.className='editor-snap-input';opacityInput.type='range';opacityInput.min='0';opacityInput.max='100';opacityInput.step='1';opacityInput.value=String(settings.debugOverlayOpacity);
+    const opacityValue=document.createElement('span');opacityValue.className='editor-snap-unit';opacityValue.textContent=`${settings.debugOverlayOpacity}%`;
+    opacityControl.append(opacityInput,opacityValue);opacityRow.append(opacityName,opacityControl);settingsWrap.append(opacityRow);
+    opacityInput.addEventListener('input',()=>{const value=clamp(Number(opacityInput.value)||0,0,100),next=getEditorSettings();next.debugOverlayOpacity=value;saveEditorSettings(next);opacityValue.textContent=`${value}%`;const debugHost=$('#runtimeDebug');if(debugHost)debugHost.style.opacity=String(value/100);});
     const saveHeading=document.createElement('div');saveHeading.className='editor-snap-heading';saveHeading.textContent='Saving';settingsWrap.append(saveHeading);
     const autoRow=document.createElement('div');autoRow.className='editor-snap-row';const autoLabel=document.createElement('label');autoLabel.className='game-setting-check';const autoCheck=document.createElement('input');autoCheck.type='checkbox';autoCheck.checked=!!settings.autoSave;const autoText=document.createElement('span');autoText.textContent='Auto Save';autoLabel.append(autoCheck,autoText);autoRow.append(autoLabel);settingsWrap.append(autoRow);
     const intervalRow=document.createElement('div');intervalRow.className='editor-snap-row';const intervalName=document.createElement('div');intervalName.className='keybind-name';intervalName.textContent='Auto Save Interval';const intervalControl=document.createElement('div');intervalControl.className='editor-snap-control';const intervalInput=document.createElement('input');intervalInput.className='editor-snap-input';intervalInput.type='number';intervalInput.min='1';intervalInput.step='1';intervalInput.value=String(settings.autoSaveIntervalSec);const intervalUnit=document.createElement('span');intervalUnit.className='editor-snap-unit';intervalUnit.textContent='Seconds';intervalControl.append(intervalInput,intervalUnit);intervalRow.append(intervalName,intervalControl);settingsWrap.append(intervalRow);
@@ -8192,6 +8203,13 @@
       rgba:(r,g,b,a)=>{const alpha=Number(a);return rgbaToHex([Number(r)/255,Number(g)/255,Number(b)/255,alpha>1?alpha/255:alpha]);}
     };
     const velocity={velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,x:Number(body?.vx)||0,y:Number(body?.vy)||0,vx:Number(body?.vx)||0,vy:Number(body?.vy)||0,omega:Number(body?.omega)||0,angularX:Number(body?.omega||0)*180/Math.PI};
+    const inputState=state.runtime?.inputs||{};
+    const eventNumericNames=['TouchX','TouchY','MouseX','MouseY','PointerX','PointerY','ScreenX','ScreenY','TouchUpX','TouchUpY','TouchDownX','TouchDownY','TouchMoveX','TouchMoveY','TouchPressedX','TouchPressedY','TouchDblClickX','TouchDblClickY','MouseUpX','MouseUpY','MouseDownX','MouseDownY','MouseMoveX','MouseMoveY','MousePressedX','MousePressedY','MouseDblClickX','MouseDblClickY','PointerUpX','PointerUpY','PointerDownX','PointerDownY','PointerMoveX','PointerMoveY','PointerPressedX','PointerPressedY','PointerDblClickX','PointerDblClickY','ScreenUpX','ScreenUpY','ScreenDownX','ScreenDownY','ScreenMoveX','ScreenMoveY','ScreenDblClickX','ScreenDblClickY','DblClickX','DblClickY','PointerId','ScreenPointerCount'];
+    const eventBooleanNames=['Pressed','Unpressed','DblClick','MousePressed','MouseUnpressed','MouseDblClick','TouchPressed','TouchUnpressed','TouchDblClick','PointerPressed','PointerUnpressed','PointerDblClick','ScreenPressed','ScreenUnpressed','ScreenDblClick'];
+    const eventInputContext=Object.create(null);
+    for(const name of eventNumericNames){const value=Number(inputState[name]);eventInputContext[name]=Number.isFinite(value)?value:0;}
+    for(const name of eventBooleanNames){const value=inputState[name];eventInputContext[name]=value===undefined?name.endsWith('Unpressed'):!!value;}
+    eventInputContext.PointerType=String(inputState.PointerType||'mouse');
     return {
       local:Object.fromEntries((state.localVarsByNode[state.script.nodeId]||[]).map(v=>[v.name,v.value])),
       global:Object.fromEntries(state.globalVariables.map(v=>[v.name,v.value])),
@@ -8232,7 +8250,8 @@
       ScreenMoveX:Number(state.runtime?.inputs?.ScreenMoveX)||0,ScreenMoveY:Number(state.runtime?.inputs?.ScreenMoveY)||0,
       joystick:Object.fromEntries((state.runtime?.joysticks||sceneJoysticks()).map(st=>[st.variable,{distance:Number(st.distance)||0,angle:Number(st.angle)||0,value_x:Number(st.value_x)||0,value_y:Number(st.value_y)||0}])),
       joysticksList: sceneJoysticks().map(j=>({variable:j.variable})),
-      ...Object.fromEntries(sceneJoysticks().flatMap(j=>{const base=j.variable||'joystick';const r=(state.runtime?.joysticks||[]).find(x=>x.variable===base)||{};return [[`${base}_distance`,Number(r.distance)||0],[`${base}_angle`,Number(r.angle)||0],[`${base}_value_x`,Number(r.value_x)||0],[`${base}_value_y`,Number(r.value_y)||0]];}))
+      ...Object.fromEntries(sceneJoysticks().flatMap(j=>{const base=j.variable||'joystick';const r=(state.runtime?.joysticks||[]).find(x=>x.variable===base)||{};return [[`${base}_distance`,Number(r.distance)||0],[`${base}_angle`,Number(r.angle)||0],[`${base}_value_x`,Number(r.value_x)||0],[`${base}_value_y`,Number(r.value_y)||0]];})),
+      ...eventInputContext
     };
   }
   function expressionGroups(){
@@ -8273,10 +8292,10 @@
       'Color Input':[{label:'Value',value:'ctx.color_value',title:'Current Color Input component color as a hex string.'}],
       Screen:[{label:'W',value:'ctx.screen.W',title:'Current visible screen/camera width in scene coordinates.'},{label:'H',value:'ctx.screen.H',title:'Current visible screen/camera height in scene coordinates.'}],
       Events:keybindOptions().map(k=>({label:k,value:/^\d$/.test(k)?`ctx.events.key[\"${k}\"]`:`ctx.events.key.${k}`})),
-      Touch:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Touch${k}`,value:`ctx.Touch${k}`})),
-      Mouse:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
-      Pointer:['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Pointer${k}`,value:`ctx.Pointer${k}`})).concat([{label:'PointerType',value:'ctx.PointerType'},{label:'PointerId',value:'ctx.PointerId'}]),
-      'Screen Input':['UpX','UpY','DownX','DownY','MoveX','MoveY'].map(k=>({label:`Screen${k}`,value:`ctx.Screen${k}`})),
+      Touch:['X','Y','UpX','UpY','DownX','DownY','MoveX','MoveY','PressedX','PressedY','DblClickX','DblClickY','Pressed','Unpressed','DblClick'].map(k=>({label:`Touch${k}`,value:`ctx.Touch${k}`})),
+      Mouse:['X','Y','UpX','UpY','DownX','DownY','MoveX','MoveY','PressedX','PressedY','DblClickX','DblClickY','Pressed','Unpressed','DblClick'].map(k=>({label:`Mouse${k}`,value:`ctx.Mouse${k}`})),
+      Pointer:['X','Y','UpX','UpY','DownX','DownY','MoveX','MoveY','PressedX','PressedY','DblClickX','DblClickY','Pressed','Unpressed','DblClick'].map(k=>({label:`Pointer${k}`,value:`ctx.Pointer${k}`})).concat([{label:'PointerType',value:'ctx.PointerType'},{label:'PointerId',value:'ctx.PointerId'}]),
+      'Screen Input':['X','Y','UpX','UpY','DownX','DownY','MoveX','MoveY','DblClickX','DblClickY','Pressed','Unpressed','DblClick'].map(k=>({label:`Screen${k}`,value:`ctx.Screen${k}`})),
       Joystick:sceneJoysticks().flatMap(st=>{const base=st.variable||'joystick';return [{label:`${base}_distance`,value:`ctx.${base}_distance`},{label:`${base}_angle`,value:`ctx.${base}_angle`},{label:`${base}_value_x`,value:`ctx.${base}_value_x`},{label:`${base}_value_y`,value:`ctx.${base}_value_y`}];}),
       Mic:[{label:'decibel',value:'ctx.mic.decibel',title:'Current microphone level in decibels'},{label:'speech',value:'ctx.mic.speech',title:'Live speech-recognition text'},{label:'active',value:'ctx.mic.active',title:'Whether the microphone is active'},{label:'speechActive',value:'ctx.mic.speechActive',title:'Whether speech recognition is running'}],
       transforms:[{label:'Position X',value:'ctx.transform.position[0]'},{label:'Position Y',value:'ctx.transform.position[1]'},{label:'Scale X',value:'ctx.transform.scale[0]'},{label:'Scale Y',value:'ctx.transform.scale[1]'},{label:'Angle',value:'ctx.transform.angle[0]'}],
@@ -9019,7 +9038,14 @@
       const cam=component(other,'camera');if(cam&&String(cam.followId||'')===id)cam.followId='';
     }
 
-    rt.activeCollisionPairs=new Set([...((rt.activeCollisionPairs||new Set()))].filter(k=>!String(k).includes(id)));rt.activeCollisionPairMap=new Map([...((rt.activeCollisionPairMap||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));rt.frameCollisionPairs=new Map([...((rt.frameCollisionPairs||new Map())).entries()].filter(([,pair])=>String(pair?.[0]?.node?.id??'')!==id&&String(pair?.[1]?.node?.id??'')!==id));
+    const pairContainsDestroyedNode=pair=>[pair?.[0]?.node?.id,pair?.[1]?.node?.id].some(value=>String(value??'')===id);
+    const previousCollisionMap=new Map(rt.activeCollisionPairMap||[]);
+    rt.activeCollisionPairMap=new Map([...previousCollisionMap].filter(([,pair])=>!pairContainsDestroyedNode(pair)));
+    rt.activeCollisionPairs=new Set(rt.activeCollisionPairMap.keys());
+    rt.frameCollisionPairs=new Map(Array.from((rt.frameCollisionPairs||new Map()).entries()).filter(([,pair])=>!pairContainsDestroyedNode(pair)));
+    // The removed body ends contact for the surviving side. Evaluate the
+    // selected target as a whole so another matching contact keeps it truthy.
+    runtimeDispatchCollisionTransitions(previousCollisionMap,rt.activeCollisionPairMap,rawId);
     rt.joints=(rt.joints||[]).filter(j=>String(j?.bodyA?.node?.id??'')!==id&&String(j?.bodyB?.node?.id??'')!==id&&String(j?.targetId??'')!==id);
     rt.timers=(rt.timers||[]).filter(t=>!deadScripts.has(String(t?.key||''))&&String(t?.nodeId||'')!==id);
     rt.intervalStates=Object.fromEntries(Object.entries(rt.intervalStates||{}).filter(([sid,st])=>!deadScripts.has(String(sid))&&String(st?.nodeId||'')!==id));
@@ -9369,6 +9395,7 @@
     rt.activeCollisionPairs=new Set();
     rt.activeCollisionPairMap=new Map();
     rt.frameCollisionPairs=new Map();
+    rt.activeInputPointers?.clear?.();
     rt.joysticks=sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));
     rt.joystickDefs=sceneJoysticks(sceneClone);
     rt.activeJoystickPointers={};
@@ -9390,6 +9417,8 @@
   function stepRuntime(dt){const now=performance.now();if(state.runtime.pendingSceneId){const pending=state.runtime.pendingSceneId;state.runtime.pendingSceneId='';state.runtime.pendingSceneRequest=null;const next=state.scenes.find(s=>s.id===pending);if(next)resetRuntimeScene(next,true);}
     updateRuntimeMic();
     state.runtime.fixedTickCounter=(Number(state.runtime.fixedTickCounter)||0)+1;
+    // Refresh held input state before value evaluators and onTick read ctx.inputs.
+    if(state.runtime.running)dispatchRuntimeInputStateEvents();
     // Persistent ctx.ontick values run in the same fixed-step clock as onTick.
     // They are value evaluators, not ScriptNode dispatches.
     if(state.runtime.running)runtimeRunValueTickPool();
@@ -9404,12 +9433,18 @@
     const lowPower=Number(navigator.hardwareConcurrency||8)<=4;
     const substeps=touchDevice?(lowPower?1:Math.min(2,physicsCount>40?1:2)):(physicsCount>40?1:2);
     const subDt=dt/substeps;
+    // Collect contacts across every physics substep, then compare once per
+    // rendered frame. Contact solvers can separate/re-touch bodies by tiny
+    // amounts between substeps; treating each substep as a full frame caused
+    // repeated Falsy exits while objects were still visibly colliding.
+    state.runtime.frameCollisionPairs=new Map();
     for(let sub=0;sub<substeps;sub++){
       updateRuntimeMovementControllers(subDt);
       if(window.UIXRuntimeEngine?.stepPhysics) window.UIXRuntimeEngine.stepPhysics(activePhysics,subDt,pairs=>queueRuntimeCollisionPairs(pairs),activeJoints);
       else queueRuntimeCollisionPairs(updateRuntimeCollisions(subDt));
     }
-    flushRuntimeCollisionEvents();processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
+    flushRuntimeCollisionEvents();
+    processRuntimeTimers(now);updateRuntimeCamera(dt);clearRuntimeKeyEvents();}
   function runtimeCameraFromScene(scene){const cam=clone(ensureSceneCamera(scene));const baseX=Number(cam.transform.position?.[0]||0),baseY=Number(cam.transform.position?.[1]||0),baseAngle=Number(cam.transform.angle?.[0]||0);return {x:baseX,y:baseY,baseX,baseY,baseAngle,angle:baseAngle,enabled:!!cam.enabled,followId:cam.followId,followAnimation:cam.animation,speed:Number(cam.speed)||0,scale:Number(cam.scale)||1,aspectRatio:normalizeCameraAspect(cam.aspectRatio),bgColor:cam.bgColor,horizontal:Number(cam.horizontal)||0,vertical:Number(cam.vertical)||0};}
   function runtimeFollowTarget(){const id=state.runtime.camera?.followId;if(!id||id==='this'||id==='This')return null;const body=state.runtime.bodyById?.get(id);return body?body.t:null;}
   function updateRuntimeCamera(dt){
@@ -9977,9 +10012,13 @@
     try{Object.defineProperty(ctx,'scriptHere',{configurable:true,enumerable:false,get:getScriptHere});}catch{}
     try{Object.defineProperty(ctx,'ontick',{configurable:true,enumerable:false,value:ontick,writable:false});}catch{}
     if(!ctx.list||typeof ctx.list!=='object')ctx.list={};ctx.list.pickRandom=arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;};
-    const inputNames=['TouchUpX','TouchUpY','TouchDownX','TouchDownY','TouchMoveX','TouchMoveY','MouseUpX','MouseDownX','MouseMoveX','MouseMoveY','PointerUpX','PointerUpY','PointerDownX','PointerDownY','PointerMoveX','PointerMoveY','ScreenUpX','ScreenUpY','ScreenDownX','ScreenDownY','ScreenMoveX','ScreenMoveY','PointerId'];
+    const inputNames=['TouchX','TouchY','MouseX','MouseY','PointerX','PointerY','ScreenX','ScreenY','TouchUpX','TouchUpY','TouchDownX','TouchDownY','TouchMoveX','TouchMoveY','TouchPressedX','TouchPressedY','TouchDblClickX','TouchDblClickY','MouseUpX','MouseUpY','MouseDownX','MouseDownY','MouseMoveX','MouseMoveY','MousePressedX','MousePressedY','MouseDblClickX','MouseDblClickY','PointerUpX','PointerUpY','PointerDownX','PointerDownY','PointerMoveX','PointerMoveY','PointerPressedX','PointerPressedY','PointerDblClickX','PointerDblClickY','ScreenUpX','ScreenUpY','ScreenDownX','ScreenDownY','ScreenMoveX','ScreenMoveY','ScreenDblClickX','ScreenDblClickY','DblClickX','DblClickY','PointerId','ScreenPointerCount'];
     for(const name of inputNames){
       try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:()=>Number(rt.inputs?.[name])||0});}catch{}
+    }
+    const inputBoolNames=['Pressed','Unpressed','DblClick','MousePressed','MouseUnpressed','MouseDblClick','TouchPressed','TouchUnpressed','TouchDblClick','PointerPressed','PointerUnpressed','PointerDblClick','ScreenPressed','ScreenUnpressed','ScreenDblClick'];
+    for(const name of inputBoolNames){
+      try{Object.defineProperty(ctx,name,{configurable:true,enumerable:true,get:()=>{const value=rt.inputs?.[name];return value===undefined?name.endsWith('Unpressed'):!!value;}});}catch{}
     }
     const numeric={
       velocityX:()=>Number(body?.vx)||0,
@@ -11212,37 +11251,47 @@ function updateRuntimeAnimations(dt){
     }
     return false;
   }
+  function runtimeScriptHasTargetCollision(item,pairs){
+    const node=item?.node,sn=item?.sn;if(!node?.id||!sn)return false;
+    const values=runtimeValuesForScript(sn,node)||{},entries=flattenEditor(sn.values);
+    const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
+    const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
+    const targetLabel=String(values.Target??targetEntry?.selected??'').trim(),applyByName=!!(values.applyByName??values['Apply By Name']??byNameEntry?.value);
+    if(!targetLabel)return false;
+    for(const pair of (pairs instanceof Map?pairs.values():[])){
+      const [a,b]=pair||[];let other=null;
+      if(String(a?.node?.id??'')===String(node.id))other=b;
+      else if(String(b?.node?.id??'')===String(node.id))other=a;
+      if(other?.node&&runtimeTargetMatches(other.node,targetLabel,applyByName))return true;
+    }
+    return false;
+  }
+  function runtimeDispatchCollisionTransitions(previousPairs,currentPairs,skipNodeId=null){
+    const rt=state.runtime,items=rt.eventScriptsByName?.get('onCollideWith')||[];
+    for(const item of items){
+      const node=item?.node,sn=item?.sn;if(!node?.id||!sn?.id)continue;
+      if(skipNodeId!==null&&String(node.id)===String(skipNodeId))continue;
+      const was=runtimeScriptHasTargetCollision(item,previousPairs),is=runtimeScriptHasTargetCollision(item,currentPairs);
+      if(!was&&is){
+        // onCollideWith returns truth/next; it is invoked only on the inactive
+        // -> active edge, never once per contact pair or physics iteration.
+        if(rt.nodeById?.has(node.id)||rt.nodeById?.has(String(node.id)))executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);
+      }else if(was&&!is){
+        // Falsy represents the selected target becoming completely uncollided.
+        routeRuntimeOutput(sn,'falsy');
+      }
+    }
+  }
   function flushRuntimeCollisionEvents(){
-    const rt=state.runtime,current=rt.frameCollisionPairs||new Map(),previous=rt.activeCollisionPairs||new Set(),previousPairs=rt.activeCollisionPairMap||new Map(),next=new Set(),nextPairs=new Map();
-    current.forEach((pair,key)=>{
-      next.add(key);nextPairs.set(key,pair);if(previous.has(key))return;const [a,b]=pair;
-      [[a,b],[b,a]].forEach(([body,other])=>{
-        const node=body?.node,target=other?.node;if(!node||!target)return;
-        const label=`${target.name} [${target.numericId}]`;
-        for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){
-          const entries=flattenEditor(sn.values);
-          const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
-          const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
-          if(targetEntry?.type==='selector'&&!runtimeTargetMatches(target,targetEntry.selected,!!byNameEntry?.value))continue;
-          executeRuntimeScriptNode(sn,scriptNodeDefinition(sn.defName),node,true);
-        }
-      });
-    });
-    previousPairs.forEach((pair,key)=>{
-      if(next.has(key))return;
-      const [a,b]=pair;
-      [[a,b],[b,a]].forEach(([body,other])=>{
-        const node=body?.node,target=other?.node;if(!node||!target)return;
-        for(const sn of rt.eventScriptsByNode.get(node.id)?.onCollideWith||[]){
-          const entries=flattenEditor(sn.values);
-          const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
-          const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
-          if(targetEntry?.type==='selector'&&!runtimeTargetMatches(target,targetEntry.selected,!!byNameEntry?.value))continue;
-          routeRuntimeOutput(sn,'falsy');
-        }
-      });
-    });
-    rt.activeCollisionPairs=next;rt.activeCollisionPairMap=nextPairs;rt.frameCollisionPairs=new Map();
+    const rt=state.runtime;
+    const previousPairs=new Map(rt.activeCollisionPairMap instanceof Map?rt.activeCollisionPairMap:[]);
+    const currentPairs=new Map(rt.frameCollisionPairs instanceof Map?rt.frameCollisionPairs:[]);
+    // Publish the new complete contact set before running scripts. Reentrant
+    // Destroy Object / teleport actions therefore cannot emit duplicate exits.
+    rt.frameCollisionPairs=new Map();
+    rt.activeCollisionPairMap=new Map(currentPairs);
+    rt.activeCollisionPairs=new Set(currentPairs.keys());
+    runtimeDispatchCollisionTransitions(previousPairs,rt.activeCollisionPairMap);
   }
   function processRuntimeTimers(now){
     const rt=state.runtime,due=rt.timers||[];rt.timers=[];
@@ -11283,6 +11332,51 @@ function updateRuntimeAnimations(dt){
     const keys=state.runtime.events?.key;if(!keys)return;
     Object.keys(keys).forEach(k=>{keys[k]=false;});
     if(state.runtime.events)state.runtime.events.lastKey='';
+  }
+
+  function dispatchRuntimeInputStateEvents(){
+    const rt=state.runtime;
+    if(!rt?.running)return;
+    const pointers=Array.from(rt.activeInputPointers instanceof Map?rt.activeInputPointers.values():[]);
+    const mousePressed=pointers.some(pointer=>pointer.pointerType==='mouse');
+    const touchPressed=pointers.some(pointer=>pointer.pointerType==='touch');
+    const pointerPressed=pointers.length>0,screenPressed=pointerPressed;
+    const aggregateState={
+      Pressed:screenPressed,Unpressed:!screenPressed,DblClick:false,
+      MousePressed:mousePressed,MouseUnpressed:!mousePressed,MouseDblClick:false,
+      TouchPressed:touchPressed,TouchUnpressed:!touchPressed,TouchDblClick:false,
+      PointerPressed:pointerPressed,PointerUnpressed:!pointerPressed,PointerDblClick:false,
+      ScreenPressed:screenPressed,ScreenUnpressed:!screenPressed,ScreenDblClick:false
+    };
+    const channels=[
+      {name:'onMouse',prefix:'Mouse',matches:p=>p.pointerType==='mouse'},
+      {name:'onTouch',prefix:'Touch',matches:p=>p.pointerType==='touch'},
+      {name:'onPointer',prefix:'Pointer',matches:()=>true}
+    ];
+    for(const channel of channels){
+      const nodeIds=new Set((rt.eventScriptsByName?.get(channel.name)||[]).map(item=>item?.node?.id).filter(id=>id!==null&&id!==undefined).map(String));
+      for(const nodeId of nodeIds){
+        const node=rt.nodeById?.get(nodeId)||rt.nodeById?.get(Number(nodeId));
+        if(!node)continue;
+        const held=pointers.find(pointer=>String(pointer.nodeId??'')===nodeId&&channel.matches(pointer));
+        const pressed=!!held,prefix=channel.prefix;
+        const values={Pressed:pressed,Unpressed:!pressed,DblClick:false,[`${prefix}Pressed`]:pressed,[`${prefix}Unpressed`]:!pressed,[`${prefix}DblClick`]:false};
+        if(held){
+          values.PointerType=held.pointerType||'mouse';
+          values.PointerId=Number(held.pointerId)||0;
+          if(Number.isFinite(held.worldX)&&Number.isFinite(held.worldY))Object.assign(values,nodeInputValues(node,held.worldX,held.worldY,`${prefix}Pressed`));
+        }
+        dispatchRuntimeEvent(channel.name,pressed?'pressed':'unpressed',values,node.id);
+      }
+    }
+    // Restore aggregate channel state after per-node dispatches so onTick and
+    // other scripts outside an input event see whether each device is held at all.
+    Object.assign(rt.inputs|| (rt.inputs={}),aggregateState);
+    dispatchRuntimeEvent('onScreenInput',screenPressed?'pressed':'unpressed',{
+      Pressed:screenPressed,Unpressed:!screenPressed,DblClick:false,
+      ScreenPressed:screenPressed,ScreenUnpressed:!screenPressed,ScreenDblClick:false,
+      ScreenPointerCount:pointers.length
+    });
   }
 
   function dispatchRuntimeEvent(defName,eventType,values={},targetNodeId=null){
@@ -11522,10 +11616,15 @@ function updateRuntimeAnimations(dt){
     const angle=Number(t.angle?.[0]||0)*Math.PI/180;
     ({x:dx,y:dy}=rotatePoint(dx,dy,-angle));
     const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-    return {
-      [`${type}X`]:dx/sx,
-      [`${type}Y`]:dy/sy
+    const localX=dx/sx,localY=dy/sy,values={
+      [`${type}X`]:localX,
+      [`${type}Y`]:localY
     };
+    const device=String(type||'').replace(/(Up|Down|Move|Pressed|DblClick)$/,'');
+    if(['Touch','Mouse','Pointer'].includes(device)){
+      values[`${device}X`]=localX;values[`${device}Y`]=localY;
+    }
+    return values;
   }
   function runtimeColorInputScreenGeometry(node,input,canvas){
     const m=runtimeProjection(canvas),cam=state.runtime.camera||{x:0,y:0,angle:0,scale:1};
@@ -11715,12 +11814,32 @@ function updateRuntimeAnimations(dt){
       return {x:q.x+Number(cam.x||0),y:q.y+Number(cam.y||0)};
     };
     const activeTouchNodes=Object.create(null),activeMouseNodes=Object.create(null),activePointerNodes=Object.create(null);
+    const activeInputPointers=state.runtime.activeInputPointers instanceof Map?state.runtime.activeInputPointers:(state.runtime.activeInputPointers=new Map());
+    const lastTapByTarget=new Map();
     const sendScreen=(type,e)=>{const p=screenPoint(e),prev=state.runtime.inputs||{},values={
+      ScreenX:p.x,ScreenY:p.y,
       ScreenUpX:type==='up'?p.x:prev.ScreenUpX??p.x,ScreenUpY:type==='up'?p.y:prev.ScreenUpY??p.y,
       ScreenDownX:type==='down'?p.x:prev.ScreenDownX??p.x,ScreenDownY:type==='down'?p.y:prev.ScreenDownY??p.y,
       ScreenMoveX:type==='move'?p.x:prev.ScreenMoveX??p.x,ScreenMoveY:type==='move'?p.y:prev.ScreenMoveY??p.y
     };
+    if(type==='dblclick'){values.ScreenDblClickX=p.x;values.ScreenDblClickY=p.y;values.DblClickX=p.x;values.DblClickY=p.y;values.DblClick=true;values.ScreenDblClick=true;}
     dispatchRuntimeEvent('onScreenInput',type,values);};
+    const registerTap=(defName,node,prefix,record,e,world,screen)=>{
+      const targetId=node?.id??'screen',pointerType=record.pointerType||'mouse';
+      const key=`${defName}:${pointerType}:${String(targetId)}`,now=performance.now();
+      const previous=lastTapByTarget.get(key);
+      const close=previous&&now-previous.time<=450&&Math.hypot(Number(e.clientX)-previous.x,Number(e.clientY)-previous.y)<=32;
+      if(close){
+        lastTapByTarget.delete(key);
+        const pointValues=node?nodeInputValues(node,world.x,world.y,`${prefix}DblClick`):{};
+        const meta={DblClick:true,DblClickX:Number(pointValues[`${prefix}DblClickX`])||0,DblClickY:Number(pointValues[`${prefix}DblClickY`])||0,[`${prefix}DblClick`]:true,PointerType:pointerType,PointerId:Number(record.pointerId)||0};
+        if(defName==='onScreenInput')sendScreen('dblclick',e);
+        else if(node)dispatchRuntimeEvent(defName,'dblclick',Object.assign(pointValues,meta),node.id);
+      }else{
+        lastTapByTarget.set(key,{time:now,x:Number(e.clientX)||0,y:Number(e.clientY)||0});
+        if(lastTapByTarget.size>128)lastTapByTarget.delete(lastTapByTarget.keys().next().value);
+      }
+    };
     const handlePointerDown=e=>{
       e.preventDefault();
       canvas.setPointerCapture?.(e.pointerId);
@@ -11750,6 +11869,8 @@ function updateRuntimeAnimations(dt){
         else{const ed=state.runtime.textInputEditor;if(ed?.el)try{ed.el.blur();}catch{}}
       }
       const hitNode=runtimeNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
+      const pointerType=e.pointerType||'mouse';
+      activeInputPointers.set(e.pointerId,{pointerId:e.pointerId,pointerType,nodeId:hitNode?.id??null,worldX:world.x,worldY:world.y,screenX:screen.x,screenY:screen.y,clientX:e.clientX,clientY:e.clientY,startClientX:e.clientX,startClientY:e.clientY,startedAt:performance.now()});
       if(e.pointerType==='touch'){
         if(hitNode){
           activeTouchNodes[e.pointerId]=hitNode.id;
@@ -11763,18 +11884,20 @@ function updateRuntimeAnimations(dt){
       }
       state.runtime.inputs.PointerType=e.pointerType||'mouse';
       state.runtime.inputs.PointerId=Number(e.pointerId)||0;
-      if(hitNode){activePointerNodes[e.pointerId]=hitNode.id;dispatchRuntimeEvent('onPointer','down',Object.assign(nodeInputValues(hitNode,world.x,world.y,'Pointer'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),hitNode.id);}
+      if(hitNode){activePointerNodes[e.pointerId]=hitNode.id;dispatchRuntimeEvent('onPointer','down',Object.assign(nodeInputValues(hitNode,world.x,world.y,'PointerDown'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),hitNode.id);}
       sendScreen('down',e);
     };
     const handlePointerMove=e=>{
       e.preventDefault();
       updateRuntimeJoystick(e,'move');
-      const world=worldPoint(e);
+      const world=worldPoint(e),screen=screenPoint(e);
+      const active=activeInputPointers.get(e.pointerId);
+      if(active){active.worldX=world.x;active.worldY=world.y;active.screenX=screen.x;active.screenY=screen.y;active.clientX=e.clientX;active.clientY=e.clientY;}
       const touchId=activeTouchNodes[e.pointerId],mouseId=activeMouseNodes[e.pointerId],pointerId=activePointerNodes[e.pointerId];
       if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','move',nodeInputValues(node,world.x,world.y,'TouchMove'),node.id);}
       if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','move',nodeInputValues(node,world.x,world.y,'MouseMove'),node.id);}
       state.runtime.inputs.PointerType=e.pointerType||'mouse';state.runtime.inputs.PointerId=Number(e.pointerId)||0;
-      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','move',Object.assign(nodeInputValues(node,world.x,world.y,'Pointer'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);}
+      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','move',Object.assign(nodeInputValues(node,world.x,world.y,'PointerMove'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);}
       sendScreen('move',e);
     };
     const handlePointerUp=e=>{
@@ -11785,8 +11908,20 @@ function updateRuntimeAnimations(dt){
       if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
       if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
       state.runtime.inputs.PointerType=e.pointerType||'mouse';state.runtime.inputs.PointerId=Number(e.pointerId)||0;
-      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','up',Object.assign(nodeInputValues(node,world.x,world.y,'Pointer'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);delete activePointerNodes[e.pointerId];}
+      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','up',Object.assign(nodeInputValues(node,world.x,world.y,'PointerUp'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);delete activePointerNodes[e.pointerId];}
       sendScreen('up',e);
+      const record=activeInputPointers.get(e.pointerId);
+      if(record){
+        const duration=performance.now()-Number(record.startedAt||0),distance=Math.hypot(Number(e.clientX)-Number(record.startClientX),Number(e.clientY)-Number(record.startClientY));
+        if(duration<=500&&distance<=24){
+          const screen=screenPoint(e),node=record.nodeId!==null?runtimeFindNode(record.nodeId):null;
+          if(record.pointerType==='touch'&&node)registerTap('onTouch',node,'Touch',record,e,world,screen);
+          if(record.pointerType==='mouse'&&node)registerTap('onMouse',node,'Mouse',record,e,world,screen);
+          if(node)registerTap('onPointer',node,'Pointer',record,e,world,screen);
+          registerTap('onScreenInput',null,'Screen',record,e,world,screen);
+        }
+        activeInputPointers.delete(e.pointerId);
+      }
     };
     const handlePointerCancel=e=>{
       e.preventDefault();
@@ -11795,7 +11930,8 @@ function updateRuntimeAnimations(dt){
       if(e.pointerType==='touch'&&touchId){const node=runtimeFindNode(touchId);if(node)dispatchRuntimeEvent('onTouch','up',nodeInputValues(node,world.x,world.y,'TouchUp'),node.id);delete activeTouchNodes[e.pointerId];}
       if(e.pointerType==='mouse'&&mouseId){const node=runtimeFindNode(mouseId);if(node)dispatchRuntimeEvent('onMouse','up',nodeInputValues(node,world.x,world.y,'MouseUp'),node.id);delete activeMouseNodes[e.pointerId];}
       state.runtime.inputs.PointerType=e.pointerType||'mouse';state.runtime.inputs.PointerId=Number(e.pointerId)||0;
-      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','up',Object.assign(nodeInputValues(node,world.x,world.y,'Pointer'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);delete activePointerNodes[e.pointerId];}
+      if(pointerId){const node=runtimeFindNode(pointerId);if(node)dispatchRuntimeEvent('onPointer','up',Object.assign(nodeInputValues(node,world.x,world.y,'PointerUp'),{PointerType:e.pointerType||'mouse',PointerId:Number(e.pointerId)||0}),node.id);delete activePointerNodes[e.pointerId];}
+      activeInputPointers.delete(e.pointerId);
       sendScreen('up',e);
     };
     canvas.addEventListener('pointerdown',handlePointerDown,{passive:false});
@@ -11851,7 +11987,7 @@ function updateRuntimeAnimations(dt){
     const sceneClone=runtimeClone(preferred);ensureSceneCamera(sceneClone);
     const hydrated=hydrateRuntimeVariables(preferred.id);
     const dynamicScriptsByNode=Object.create(null),dynamicConnectionsByNode=Object.create(null);runtimeAllNodes(sceneClone).filter(({node})=>node.type==='node').forEach(({node})=>{dynamicScriptsByNode[node.id]=clone(state.script.nodesByNode[node.id]||[]);dynamicConnectionsByNode[node.id]=clone(state.script.connectionsByNode[node.id]||[]);});
-    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),activeCollisionPairMap:new Map(),frameCollisionPairs:new Map(),scriptStartById:new Map(),valueTickPool:[],valueTickCompactCounter:0,nextValueTickSessionId:1,fixedTickCounter:0,inOnTickDispatch:false,liveChangedScripts:new Set(),activeValueTickRegistration:null,activeValueTickSlot:null,reactiveBindings:new Set(),reactiveBindingSerial:0,textInputEditors:new Map(),textInputEditor:null,joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],particleGroups:[],nextParticleRenderSerial:1,animationStates:Object.create(null)};
+    state.runtime={running:true,runtimeFailed:false,debug:!!debug,scene:sceneClone,sceneId:preferred.id,pendingSceneId:'',pendingSceneRequest:null,bodies:[],physicsBodies:[],renderBodies:[],renderOrderDirty:false,nodeEntries:[],nodeList:[],nodeById:new Map(),bodyById:new Map(),parentById:new Map(),numericIds:new Set(),nextNumericId:1,scriptById:new Map(),scriptOwnerById:new Map(),eventScriptsByName:new Map(),eventScriptsByNode:new Map(),routesByScriptOutput:new Map(),defByName:new Map(),shared:null,pendingOnLoad:[],renderCtx:null,renderCanvas:null,renderSurface:null,camera:runtimeCameraFromScene(sceneClone),timers:[],intervalStates:Object.create(null),signalQueue:[],audio:[],output:[],outputOpen:false,fps:0,fpsFrames:0,fpsWindowStart:performance.now(),debugLastDraw:0,lastError:'',globalVariables:hydrated.globalVariables,serverVariables:hydrated.serverVariables,sceneVariablesByScene:hydrated.sceneVariablesByScene,localVarsByNode:hydrated.localVarsByNode,inputs:{},events:{key:createRuntimeKeyEventState(),lastKey:''},mic:runtimeMic||{enabled:false,decibel:-100,speech:'',stream:null,audioContext:null,source:null,analyser:null,buffer:null,speechRecognition:null,speechActive:false,pickupActive:false},dynamicScriptsByNode,dynamicConnectionsByNode,followTargets:Object.create(null),aiTargets:Object.create(null),savedStates:Object.create(null),sceneStatesByScene:Object.create(null),activeCollisionPairs:new Set(),activeCollisionPairMap:new Map(),frameCollisionPairs:new Map(),activeInputPointers:new Map(),scriptStartById:new Map(),valueTickPool:[],valueTickCompactCounter:0,nextValueTickSessionId:1,fixedTickCounter:0,inOnTickDispatch:false,liveChangedScripts:new Set(),activeValueTickRegistration:null,activeValueTickSlot:null,reactiveBindings:new Set(),reactiveBindingSerial:0,textInputEditors:new Map(),textInputEditor:null,joysticks:sceneJoysticks(sceneClone).map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0})),joystickDefs:sceneJoysticks(sceneClone),activeJoystickPointers:{},particles:[],particleGroups:[],nextParticleRenderSerial:1,animationStates:Object.create(null)};
     configureRuntimeNetwork();
     state.runtime.bodies=buildRuntimeState(sceneClone);runtimeRebuildCaches(); updateRuntimeCamera(0);
     runtimeEnsureAudioContext();
@@ -11873,7 +12009,7 @@ function updateRuntimeAnimations(dt){
     $('#runtimeOverlay')?.remove();
     const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button">↻ Rerun</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
-  function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.activeCollisionPairMap=new Map();rt.frameCollisionPairs=new Map();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
+  function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.activeCollisionPairMap=new Map();rt.frameCollisionPairs=new Map();rt.activeInputPointers?.clear?.();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
     if(!state.runtime.running||state.runtime.runtimeFailed)return;
     try{
@@ -11886,7 +12022,62 @@ function updateRuntimeAnimations(dt){
       if(state.runtime.running&&!state.runtime.runtimeFailed)runtimeFrame=requestAnimationFrame(runtimeTick);
     }catch(error){runtimeFail(error,'Runtime frame');}
   }
-  function renderRuntimeDebug(){if(!state.runtime.debug)return;const host=$('#runtimeDebug');if(!host)return;const rt=state.runtime;if(performance.now()-(rt.debugLastDraw||0)<100)return;rt.debugLastDraw=performance.now();host.innerHTML='';const rows=[];(state.runtime.serverVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`server.${v.name}: ${v.value}`));(state.runtime.globalVariables||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));runtimeSceneVariables().filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`));(state.runtime.bodies||[]).forEach(b=>(state.runtime.localVarsByNode?.[b.node?.id]||[]).filter(v=>v.debug).forEach(v=>rows.push(`${v.name}: ${v.value}`)));(state.runtime.joystickDefs||[]).filter(j=>j.debug===true).forEach(j=>{const st=(state.runtime.joysticks||[]).find(v=>v.variable===j.variable)||{};const base=String(j.variable||'joystick');rows.push(`${base}_distance: ${Number(st.distance)||0}`);rows.push(`${base}_angle: ${Number(st.angle)||0}`);rows.push(`${base}_value_x: ${Number(st.value_x)||0}`);rows.push(`${base}_value_y: ${Number(st.value_y)||0}`);});rows.forEach(txt=>{const div=document.createElement('div');div.textContent=txt;host.append(div);});}
+  function renderRuntimeDebug(){
+    if(!state.runtime.debug)return;
+    const host=$('#runtimeDebug');if(!host)return;
+    const rt=state.runtime,now=performance.now();
+    if(now-(rt.debugLastDraw||0)<100)return;
+    rt.debugLastDraw=now;
+    const settings=getEditorSettings();
+    host.style.pointerEvents='none';host.style.userSelect='none';host.style.opacity=String(clamp(Number(settings.debugOverlayOpacity??25)/100,0,1));
+    host.setAttribute('aria-hidden','true');host.tabIndex=-1;
+    host.replaceChildren();
+    rt.debugVariableSnapshots ||= new Map();rt.debugVariableUpdateOrder ||= new Map();rt.debugVariableUpdateCounter=Number(rt.debugVariableUpdateCounter)||0;
+    const rows=[];let sourceOrder=0;
+    const serialize=value=>{
+      if(typeof value==='string')return value;
+      if(value===undefined)return 'undefined';
+      if(value===null)return 'null';
+      if(typeof value==='object'){try{return JSON.stringify(value);}catch{return '[object]';}}
+      return String(value);
+    };
+    const addVariable=(scope,v,key,label)=>{
+      if(!v?.debug)return;
+      const value=v.value,display=serialize(value),snapshot=(()=>{try{return JSON.stringify(value);}catch{return String(value);}})();
+      const previous=rt.debugVariableSnapshots.get(key);
+      if(previous!==undefined&&previous!==snapshot)rt.debugVariableUpdateOrder.set(key,++rt.debugVariableUpdateCounter);
+      else if(previous===undefined&&rt.debugVariableSnapshotsInitialized)rt.debugVariableUpdateOrder.set(key,++rt.debugVariableUpdateCounter);
+      rt.debugVariableSnapshots.set(key,snapshot);
+      rows.push({key,label:`${label??v.name}`,display,scope,type:String(v.dataType||typeof value),order:sourceOrder++,updated:Number(rt.debugVariableUpdateOrder.get(key)||0)});
+    };
+    (rt.serverVariables||[]).forEach(v=>addVariable('Server',v,`server:${v.name}`,`server.${v.name}`));
+    (rt.globalVariables||[]).forEach(v=>addVariable('Global',v,`global:${v.name}`,v.name));
+    runtimeSceneVariables().forEach(v=>addVariable('Scene',v,`scene:${rt.sceneId||''}:${v.name}`,v.name));
+    (rt.bodies||[]).forEach(body=>{
+      const node=body?.node,nodeId=String(node?.id??'');if(!nodeId)return;
+      const ownerLabel=String(node.name||nodeId);
+      (rt.localVarsByNode?.[node.id]||[]).forEach(v=>addVariable('Local',v,`local:${nodeId}:${v.name}`,`${ownerLabel}.${v.name}`));
+    });
+    if(settings.debugVariableRecentFirst!==false)rows.sort((a,b)=>b.updated-a.updated||a.order-b.order);
+    const colorPattern=/(?:^|[^0-9a-z])(#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3}))(?![0-9a-f])/ig;
+    const appendRow=(label,value,key='')=>{
+      const row=document.createElement('div');row.className='runtime-debug-row';
+      const name=document.createElement('span');name.className='runtime-debug-key';name.textContent=`${label}:`;
+      const text=document.createElement('span');text.className='runtime-debug-value';text.textContent=value;
+      row.append(name,text);
+      const colors=new Set();let match;colorPattern.lastIndex=0;
+      while((match=colorPattern.exec(value))&&colors.size<5)colors.add(match[1]);
+      if(colors.size){const swatches=document.createElement('span');swatches.className='runtime-debug-swatches';for(const hex of colors){const swatch=document.createElement('span');swatch.className='runtime-debug-color-swatch';swatch.style.backgroundColor=hex;swatch.title=hex;swatch.setAttribute('aria-hidden','true');swatches.append(swatch);}row.append(swatches);}
+      host.append(row);
+    };
+    rt.debugVariableSnapshotsInitialized=true;
+    rows.forEach(row=>appendRow(row.label,row.display,row.key));
+    (rt.joystickDefs||[]).filter(j=>j.debug===true).forEach(j=>{
+      const st=(rt.joysticks||[]).find(v=>v.variable===j.variable)||{},base=String(j.variable||'joystick');
+      appendRow(`${base}_distance`,String(Number(st.distance)||0));appendRow(`${base}_angle`,String(Number(st.angle)||0));
+      appendRow(`${base}_value_x`,String(Number(st.value_x)||0));appendRow(`${base}_value_y`,String(Number(st.value_y)||0));
+    });
+  }
   const RUNTIME_BASE_WIDTH=1280,RUNTIME_BASE_HEIGHT=720;
   function runtimeRenderContext(canvas){const rt=state.runtime;if(rt.renderCtx&&rt.renderCanvas===canvas)return rt.renderCtx;let ctx=null;try{ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:false});}catch{}if(!ctx)ctx=canvas.getContext('2d');rt.renderCanvas=canvas;rt.renderCtx=ctx||null;return ctx;}
   function runtimeViewportMetrics(canvas){

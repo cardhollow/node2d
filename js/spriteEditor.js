@@ -15,7 +15,7 @@
   const EXT = /\.[^.]+$/;
 
   const glyphs = {
-    pencil:'✎', eraser:'⌫', line:'／', point:'•', rect:'□', circle:'○', triangle:'△',
+    pencil:'✎', specialpen:'✥', smudge:'≋', eraser:'⌫', line:'／', point:'•', rect:'□', circle:'○', triangle:'△',
     undo:'↶', redo:'↷', grid:'⊞', center:'⊙', flipx:'↔', flipy:'↕', rotate:'↻', texture:'▧',
     copy:'⧉', add:'＋', save:'⇩', play:'▶', pause:'Ⅱ', prev:'‹', next:'›', delete:'×', lasso:'⌁', cut:'✂', paste:'▣', bucket:'▰', eyedropper:'⌕'
   };
@@ -220,11 +220,20 @@
             <input data-sprite-size type="range" min="1" max="32" value="1">
             <div class="sprite-inline-value"><span data-sprite-size-label>1</span> px</div>
             <label class="sprite-strength-row"><span>Strength</span><input data-sprite-brush-strength type="range" min="0" max="100" value="100"><b data-sprite-brush-strength-label>100%</b></label>
-            <div class="sprite-mini-hint">Strength controls paint opacity and erasing amount.</div>
+            <div class="sprite-mini-hint">Strength controls paint opacity, erasing, and effect intensity.</div>
           </section>
           <section class="sprite-tool-section" data-pencil-settings hidden>
-            <div class="sprite-section-title">Pencil</div>
+            <div class="sprite-section-title">Brush Shape</div>
             <label class="sprite-texture-setting-row"><span>Shape</span><select data-pencil-shape><option>Box</option><option>Circle</option></select></label>
+          </section>
+          <section class="sprite-tool-section" data-special-pen-settings hidden>
+            <div class="sprite-section-title">Special Pen</div>
+            <label class="sprite-texture-setting-row"><span>Mode</span><select data-special-pen-mode><option>Drag</option><option>Expand</option><option>Shrink</option><option>Smoothen</option><option>Revert</option></select></label>
+            <div class="sprite-mini-hint">Brush Size sets the affected area. Strength controls how strongly pixels are reshaped. Revert restores pixels to how they looked when Special Pen was selected.</div>
+          </section>
+          <section class="sprite-tool-section" data-smudge-settings hidden>
+            <div class="sprite-section-title">Smudge</div>
+            <div class="sprite-mini-hint">Drag through the image to smear nearby colors. Brush Size controls thickness and Strength controls the smear amount.</div>
           </section>
           <section class="sprite-tool-section sprite-texture-controls" data-texture-brush-controls hidden>
             <div class="sprite-section-title">Texture Brush</div>
@@ -348,7 +357,7 @@
     const frames=(config.frames||[]).map(cloneFrameModel);
     const ed={
       modal,name:config.name||'Sprite',groupBaseName:config.groupBaseName||null,sourceAssets:config.sourceAssets||[],multiSource:!!config.multiSource,frames:frames.length?frames:[bindFrameLayers({name:config.name||'Sprite',width:config.width||32,height:config.height||32,pixels:makePixels(config.width||32,config.height||32),sourceAsset:null})],
-      frameIndex:clamp(Number(config.initialFrameIndex)||0,0,Math.max(0,frames.length-1)),fps:config.fps||8,playing:false,playTimer:null,tool:'pencil',brushSize:1,brushStrength:100,brushShape:'Box',showPreview:true,color:[255,255,255,255],textureBrush:null,textureSettings:{overrideBrushSize:false,blendColor:false,blendBy:'Both',mixColor:false,mixBy:'Multiply',randomizeBrush:false,randomize:'Pixel',overlap:false,randRotation:false,randPosition:false},showGrid:true,
+      frameIndex:clamp(Number(config.initialFrameIndex)||0,0,Math.max(0,frames.length-1)),fps:config.fps||8,playing:false,playTimer:null,tool:'pencil',brushSize:1,brushStrength:100,brushShape:'Box',specialPenMode:'Drag',specialPenBaseline:null,smudgeCarry:null,showPreview:true,color:[255,255,255,255],textureBrush:null,textureSettings:{overrideBrushSize:false,blendColor:false,blendBy:'Both',mixColor:false,mixBy:'Multiply',randomizeBrush:false,randomize:'Pixel',overlap:false,randRotation:false,randPosition:false},showGrid:true,
       zoom:4,pan:{x:0,y:0},mirrorX:false,mirrorY:false,undo:[],redo:[],drawing:false,drawStart:null,lastCell:null,lastPaintCell:null,
       panelWidths:{left:190,right:235},leftCollapsed:false,rightCollapsed:false,
       pointers:new Map(),pinch:null,panDrag:null,spacePan:false,ruler:null,pointerDrawingId:null,lastPointerCellKey:'',perfectShape:false,points:[],pointDragIndex:-1,
@@ -367,7 +376,7 @@
   function renderTools(ed){
     const basic=ed.modal.querySelector('[data-basic-tools]'), shapes=ed.modal.querySelector('[data-shape-tools]');
     basic.innerHTML='';shapes.innerHTML='';
-    [['pencil','pencil','Pencil'],['eyedropper','eyedropper','Eyedropper'],['texture','texture','Texture Brush'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso'],['box','rect','Box Select']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
+    [['pencil','pencil','Pencil'],['specialpen','specialpen','Special Pen'],['smudge','smudge','Smudge'],['eyedropper','eyedropper','Eyedropper'],['texture','texture','Texture Brush'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso'],['box','rect','Box Select']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
     [['rect','rect','Rect'],['ellipse','circle','Circle'],['triangle','triangle','Triangle']].forEach(([name,g,label])=>shapes.append(toolButton(ed,name,g,label)));
   }
   function toolButton(ed,name,g,label){
@@ -377,7 +386,10 @@
       if(name==='texture'){chooseTextureBrush(ed);return;}
       if(ed.tool==='point' && name!=='point') commitPointPath(ed);
       if(ed.tool==='lasso' && name!=='lasso') clearSelectionPath(ed);if(ed.tool==='box' && name!=='box') ed.selectionRect=null;
-      ed.tool=name;ed.ruler=null;render(ed);
+      ed.tool=name;ed.ruler=null;ed.smudgeCarry=null;
+      if(name==='specialpen')ed.specialPenBaseline=captureSpecialPenBaseline(ed);
+      else ed.specialPenBaseline=null;
+      render(ed);
     });
     return b;
   }
@@ -440,6 +452,7 @@
     q('[data-sprite-size]').addEventListener('input',e=>{ed.brushSize=clamp(Number(e.target.value)||1,1,32);render(ed);});
     q('[data-sprite-brush-strength]').addEventListener('input',e=>{ed.brushStrength=clamp(Number(e.target.value)||0,0,100);q('[data-sprite-brush-strength-label]').textContent=`${ed.brushStrength}%`;});
     q('[data-pencil-shape]').addEventListener('change',e=>{ed.brushShape=e.target.value==='Circle'?'Circle':'Box';render(ed);});
+    q('[data-special-pen-mode]').addEventListener('change',e=>{ed.specialPenMode=['Drag','Expand','Shrink','Smoothen','Revert'].includes(e.target.value)?e.target.value:'Drag';});
     q('[data-reposition-position]').value='Center';
     q('[data-texture-brush-select]')?.addEventListener('click',()=>chooseTextureBrush(ed));
     ed.modal.addEventListener('change',e=>{
@@ -496,7 +509,16 @@
       if(!cell || !ed.drawing)return;
       const key=`${cell.x},${cell.y}`;
       if(key===ed.lastPointerCellKey)return;
-      const paintCell=(x,y)=>ed.tool==='texture'&&!erase?paintTexture(ed,{x,y}):paint(ed,{x,y},erase);
+      let previous=ed.lastPaintCell?{...ed.lastPaintCell}:null;
+      const paintCell=(x,y)=>{
+        const next={x,y};
+        if(previous&&next.x===previous.x&&next.y===previous.y)return;
+        if(ed.tool==='texture'&&!erase)paintTexture(ed,next);
+        else if(ed.tool==='specialpen')applySpecialPen(ed,next,previous);
+        else if(ed.tool==='smudge')applySmudge(ed,next,previous);
+        else paint(ed,next,erase);
+        previous=next;
+      };
       if(ed.lastPaintCell)lineCells(ed.lastPaintCell,cell,paintCell);
       else paintCell(cell.x,cell.y);
       ed.lastPaintCell=cell;ed.lastPointerCellKey=key;
@@ -533,7 +555,12 @@
       if(ed.tool==='point'){handlePointDown(e,cell);return;}
       if(ed.tool==='fill'){pushUndo(ed);fill(ed,cell);ed.lastCell=cell;renderStatus(ed,cell);render(ed);return;}
       ed.pointerDrawingId=e.pointerId;ed.drawing=true;ed.drawStart=cell;ed.lastCell=cell;ed.lastPaintCell=null;ed.lastPointerCellKey='';
-      if(['pencil','eraser','texture'].includes(ed.tool)){pushUndo(ed);strokeFromCell(cell,ed.tool==='eraser');}
+      if(['pencil','eraser','texture','specialpen','smudge'].includes(ed.tool)){
+        pushUndo(ed);
+        if(ed.tool==='specialpen'&&!ed.specialPenBaseline)ed.specialPenBaseline=captureSpecialPenBaseline(ed);
+        if(ed.tool==='smudge')ed.smudgeCarry=null;
+        strokeFromCell(cell,ed.tool==='eraser');
+      }
       else if(['line','rect','ellipse','triangle'].includes(ed.tool)){render(ed);}
     };
 
@@ -565,7 +592,7 @@
       if(ed.tool==='box'&&ed.selectionRect){const c=clientToCell(ed,e.clientX,e.clientY);if(c){ed.selectionRect.b={...c};ed.lastCell=c;scheduleCanvasRender(ed);}return;}
       if(ed.pointerDrawingId!==e.pointerId || !ed.drawing)return;
       const events=e.getCoalescedEvents?.() || [e];
-      for(const ev of events){const cell=clientToCell(ed,ev.clientX,ev.clientY);if(!cell)continue;ed.lastCell=cell;if(ed.tool==='pencil'||ed.tool==='texture')strokeFromCell(cell,false);else if(ed.tool==='eraser')strokeFromCell(cell,true);else if(['line','rect','ellipse','triangle'].includes(ed.tool))scheduleCanvasRender(ed);}
+      for(const ev of events){const cell=clientToCell(ed,ev.clientX,ev.clientY);if(!cell)continue;ed.lastCell=cell;if(['pencil','texture','specialpen','smudge'].includes(ed.tool))strokeFromCell(cell,false);else if(ed.tool==='eraser')strokeFromCell(cell,true);else if(['line','rect','ellipse','triangle'].includes(ed.tool))scheduleCanvasRender(ed);}
     };
 
     const onPointerMove=e=>{e.preventDefault();processPointerMove(e);};
@@ -588,7 +615,7 @@
         if(ed.tool==='ellipse')ellipseCells(ed.drawStart,end,(x,y)=>paint(ed,{x,y},false));
         if(ed.tool==='triangle')triangleCells(ed.drawStart,end,(x,y)=>paint(ed,{x,y},false));
       }
-      ed.drawing=false;ed.pointerDrawingId=null;ed.drawStart=null;ed.lastCell=cell;ed.lastPaintCell=null;ed.lastPointerCellKey='';render(ed);
+      ed.drawing=false;ed.pointerDrawingId=null;ed.drawStart=null;ed.lastCell=cell;ed.lastPaintCell=null;ed.lastPointerCellKey='';if(ed.tool==='smudge')ed.smudgeCarry=null;render(ed);
     };
 
     canvas.addEventListener('pointerdown',onPointerDown,{passive:false});
@@ -669,6 +696,130 @@
   function sourceOverPixel(destination,source,opacity=1){const dst=destination||transparent(),src=source||transparent(),sa=clamp((Number(src[3])||0)/255*opacity,0,1),da=clamp((Number(dst[3])||0)/255,0,1);if(sa<=0)return [...dst];const outA=sa+da*(1-sa);if(outA<=0)return transparent();return [Math.round((src[0]*sa+dst[0]*da*(1-sa))/outA),Math.round((src[1]*sa+dst[1]*da*(1-sa))/outA),Math.round((src[2]*sa+dst[2]*da*(1-sa))/outA),Math.round(outA*255)];}
   function applyBrushPixel(ed,x,y,erase){const f=currentFrame(ed);if(x<0||y<0||x>=f.width||y>=f.height)return;const strength=clamp(Number(ed.brushStrength??100)/100,0,1);if(strength<=0)return;const dst=f.pixels[y][x]||transparent();let pixel;if(erase){pixel=[...dst];pixel[3]=Math.round(pixel[3]*(1-strength));if(pixel[3]===0)pixel=transparent();}else pixel=sourceOverPixel(dst,ed.color,strength);f.pixels[y][x]=pixel;updateCachePixel(f,x,y,pixel);}
   function paint(ed,cell,erase){const f=currentFrame(ed),rad=Math.max(1,Math.floor(ed.brushSize)),off=Math.floor(rad/2),shape=ed.tool==='pencil'?ed.brushShape:'Box',cx=(rad-1)/2,cy=(rad-1)/2,radius=Math.max(.5,rad/2-.25);for(let yy=0;yy<rad;yy++)for(let xx=0;xx<rad;xx++){if(shape==='Circle'&&((xx-cx)**2+(yy-cy)**2)>radius*radius)continue;const x=cell.x+xx-off,y=cell.y+yy-off;const xs=[x],ys=[y];if(ed.mirrorX)xs.push(f.width-1-x);if(ed.mirrorY)ys.push(f.height-1-y);for(const a of xs)for(const b of ys)applyBrushPixel(ed,a,b,erase);}}
+  function captureSpecialPenBaseline(ed){
+    const f=currentFrame(ed);
+    return{frameIndex:ed.frameIndex,layerIndex:f.activeLayer,width:f.width,height:f.height,pixels:clonePixels(f.pixels)};
+  }
+  function ensureSpecialPenBaseline(ed){
+    const f=currentFrame(ed),base=ed.specialPenBaseline;
+    if(!base||base.frameIndex!==ed.frameIndex||base.layerIndex!==f.activeLayer||base.width!==f.width||base.height!==f.height)ed.specialPenBaseline=captureSpecialPenBaseline(ed);
+    return ed.specialPenBaseline;
+  }
+  function brushOffsets(ed){
+    const size=Math.max(1,Math.floor(Number(ed.brushSize)||1)),off=Math.floor(size/2),centerShift=size%2===0?.5:0,radius=Math.max(.5,size/2),out=[];
+    for(let oy=0;oy<size;oy++)for(let ox=0;ox<size;ox++){
+      const x=ox-off,y=oy-off,dx=x+centerShift,dy=y+centerShift,dist=ed.brushShape==='Circle'?Math.hypot(dx,dy):Math.max(Math.abs(dx),Math.abs(dy));
+      if(ed.brushShape==='Circle'&&dist>radius)continue;
+      const inner=radius*.55,t=clamp((radius-dist)/Math.max(.001,radius-inner),0,1),weight=t*t*(3-2*t);
+      out.push({x,y,dx,dy,weight:Math.max(.035,weight)});
+    }
+    return out;
+  }
+  function mirroredBrushTargets(ed,cell,previous){
+    const dx=previous?cell.x-previous.x:0,dy=previous?cell.y-previous.y:0,targets=[],f=currentFrame(ed);
+    for(const mx of (ed.mirrorX?[false,true]:[false]))for(const my of (ed.mirrorY?[false,true]:[false])){
+      const x=mx?f.width-1-cell.x:cell.x,y=my?f.height-1-cell.y:cell.y;
+      const tx={x,y,dx:mx?-dx:dx,dy:my?-dy:dy,key:`${mx?1:0}:${my?1:0}`};
+      if(!targets.some(t=>t.x===tx.x&&t.y===tx.y))targets.push(tx);
+    }
+    return targets;
+  }
+  function mixPixels(a,b,amount){
+    const t=clamp(Number(amount)||0,0,1),aa=a||transparent(),bb=b||transparent();
+    const aA=clamp((Number(aa[3])||0)/255,0,1),bA=clamp((Number(bb[3])||0)/255,0,1),outA=aA+(bA-aA)*t;
+    if(outA<=.000001)return transparent();
+    const out=[];
+    for(let i=0;i<3;i++){const premul=(Number(aa[i]||0)*aA)*(1-t)+(Number(bb[i]||0)*bA)*t;out[i]=clamp(Math.round(premul/outA),0,255);}
+    out[3]=clamp(Math.round(outA*255),0,255);return out;
+  }
+  function samplePixelBilinear(pixels,x,y){
+    const x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0,w=pixels[0]?.length||0,h=pixels.length;
+    const at=(px,py)=>px<0||py<0||px>=w||py>=h?transparent():(pixels[py]?.[px]||transparent());
+    const points=[[at(x0,y0),(1-fx)*(1-fy)],[at(x0+1,y0),fx*(1-fy)],[at(x0,y0+1),(1-fx)*fy],[at(x0+1,y0+1),fx*fy]];
+    let alpha=0,channels=[0,0,0];
+    for(const [pixel,weight] of points){const a=clamp((Number(pixel[3])||0)/255,0,1)*weight;alpha+=a;for(let c=0;c<3;c++)channels[c]+=(Number(pixel[c])||0)*a;}
+    if(alpha<=.000001)return transparent();
+    return[...channels.map(v=>clamp(Math.round(v/alpha),0,255)),clamp(Math.round(alpha*255),0,255)];
+  }
+  function smoothPixelAt(pixels,x,y){
+    const h=pixels.length,w=pixels[0]?.length||0;let alpha=0,total=0,channels=[0,0,0];
+    for(let oy=-2;oy<=2;oy++)for(let ox=-2;ox<=2;ox++){
+      const px=x+ox,py=y+oy;if(px<0||py<0||px>=w||py>=h)continue;
+      const weight=(ox===0?3:Math.abs(ox)===1?2:1)*(oy===0?3:Math.abs(oy)===1?2:1),pixel=pixels[py]?.[px]||transparent(),a=clamp((Number(pixel[3])||0)/255,0,1);
+      total+=weight;alpha+=a*weight;for(let c=0;c<3;c++)channels[c]+=(Number(pixel[c])||0)*a*weight;
+    }
+    if(alpha<=.000001)return transparent();
+    return[...channels.map(v=>clamp(Math.round(v/alpha),0,255)),clamp(Math.round(alpha/Math.max(1,total)*255),0,255)];
+  }
+  function applySpecialPenAt(ed,center,previous,sourceSnapshot=null){
+    const f=currentFrame(ed),mode=ed.specialPenMode||'Drag',strength=clamp(Number(ed.brushStrength??100)/100,0,1);
+    if(strength<=0)return;
+    const offsets=brushOffsets(ed),size=Math.max(1,Math.floor(Number(ed.brushSize)||1)),snapshot=sourceSnapshot||f.pixels.map(row=>row.slice()),base=mode==='Revert'?ensureSpecialPenBaseline(ed):null,updates=[];
+    const maxMove=Math.max(.75,size*.22);
+    for(const offset of offsets){
+      const x=center.x+offset.x,y=center.y+offset.y;if(x<0||y<0||x>=f.width||y>=f.height)continue;
+      const weight=clamp(offset.weight,0,1),amount=strength*weight;if(amount<=.001)continue;
+      const current=snapshot[y]?.[x]||transparent();let result=current;
+      if(mode==='Revert'){
+        const original=base?.pixels?.[y]?.[x]||transparent();result=mixPixels(current,original,amount);
+      }else if(mode==='Smoothen'){
+        result=mixPixels(current,smoothPixelAt(snapshot,x,y),amount);
+      }else if(mode==='Drag'||mode==='Expand'||mode==='Shrink'){
+        let sx=x,sy=y;
+        if(mode==='Drag'){
+          // Pull image data from behind the cursor. The immutable stamp snapshot
+          // prevents pixels written earlier in the same stamp contaminating later samples.
+          sx=x-(Number(center.dx)||0)*amount;sy=y-(Number(center.dy)||0)*amount;
+        }else{
+          const dx=offset.dx,dy=offset.dy,dist=Math.hypot(dx,dy);
+          if(dist>.0001){const sign=mode==='Expand'?-1:1,move=maxMove*amount;sx=x+(dx/dist)*move*sign;sy=y+(dy/dist)*move*sign;}
+        }
+        result=samplePixelBilinear(snapshot,sx,sy);
+      }
+      updates.push([x,y,result]);
+    }
+    if(!updates.length)return;
+    for(const [x,y,pixel] of updates)f.pixels[y][x]=pixel;
+    invalidateCache(f);
+  }
+  function applySpecialPen(ed,cell,previous){
+    const f=currentFrame(ed);ensureSpecialPenBaseline(ed);const sourceSnapshot=f.pixels.map(row=>row.slice());
+    for(const target of mirroredBrushTargets(ed,cell,previous))applySpecialPenAt(ed,target,previous,sourceSnapshot);
+    invalidateCache(f);
+  }
+  function captureSmudgeCarry(ed,cell,offsets,targets,f){
+    const centers=new Map();
+    for(const target of targets){
+      const carry=new Map();
+      for(const offset of offsets){const px=target.x+offset.x,py=target.y+offset.y;if(px>=0&&py>=0&&px<f.width&&py<f.height)carry.set(`${offset.x},${offset.y}`,[...(f.pixels[py]?.[px]||transparent())]);}
+      centers.set(target.key,{pixels:carry,x:target.x,y:target.y});
+    }
+    ed.smudgeCarry={frameIndex:ed.frameIndex,layerIndex:f.activeLayer,width:f.width,height:f.height,size:ed.brushSize,shape:ed.brushShape,centers};
+  }
+  function applySmudge(ed,cell,previous){
+    const f=currentFrame(ed),strength=clamp(Number(ed.brushStrength??100)/100,0,1),offsets=brushOffsets(ed),targets=mirroredBrushTargets(ed,cell,previous),carryState=ed.smudgeCarry;
+    const invalid=!carryState||carryState.frameIndex!==ed.frameIndex||carryState.layerIndex!==f.activeLayer||carryState.width!==f.width||carryState.height!==f.height||carryState.size!==ed.brushSize||carryState.shape!==ed.brushShape;
+    if(invalid||!previous){captureSmudgeCarry(ed,cell,offsets,targets,f);return;}
+    if(strength<=0)return;
+    const updates=[],nextCenters=new Map(),pickup=clamp(.28+strength*.48,.28,.78);
+    for(const target of targets){
+      const previousCenter=carryState.centers?.get(target.key),oldPixels=previousCenter?.pixels||new Map(),nextPixels=new Map();
+      for(const offset of offsets){
+        const x=target.x+offset.x,y=target.y+offset.y,key=`${offset.x},${offset.y}`;
+        if(x<0||y<0||x>=f.width||y>=f.height)continue;
+        const destination=[...(f.pixels[y]?.[x]||transparent())],source=oldPixels.get(key)||destination,amount=clamp(strength*offset.weight,0,1);
+        const result=mixPixels(destination,source,amount);
+        updates.push([x,y,result]);
+        // The brush picks up some of the paint it travels over, creating a
+        // continuous smear instead of a one-time transparent/color blend.
+        nextPixels.set(key,mixPixels(source,destination,pickup*offset.weight));
+      }
+      nextCenters.set(target.key,{pixels:nextPixels,x:target.x,y:target.y});
+    }
+    for(const [x,y,pixel] of updates)f.pixels[y][x]=pixel;
+    carryState.centers=nextCenters;
+    if(updates.length)invalidateCache(f);
+  }
   function mixTextureChannel(source,tint,mode){
     const a=clamp(Number(source)||0,0,255),b=clamp(Number(tint)||0,0,255);
     switch(mode){
@@ -978,7 +1129,7 @@
     ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.strokeRect(.5,.5,w-1,h-1);
   }
   function renderLayerList(ed){
-    const host=ed.modal.querySelector('[data-layer-list]');if(!host)return;const f=currentFrame(ed);host.innerHTML='';
+    const host=ed.modal.querySelector('[data-layer-list]');if(!host)return;const savedScrollTop=host.scrollTop;const f=currentFrame(ed);host.innerHTML='';
     const label=ed.modal.querySelector('[data-layer-frame-label]');if(label)label.textContent=`· Frame ${ed.frameIndex+1}`;const count=ed.modal.querySelector('[data-layer-count]');if(count)count.textContent=String(f.layers.length);
     f.layers.map((_,i)=>i).reverse().forEach(i=>{
       const layer=f.layers[i];const row=document.createElement('div');row.className=`sprite-layer-row${i===f.activeLayer?' selected':''}${layer.visible===false?' layer-hidden':''}`;row.draggable=true;row.dataset.layerIndex=String(i);
@@ -997,6 +1148,7 @@
     const paste=ed.modal.querySelector('[data-layer-action="paste"]');if(paste)paste.disabled=!ed.layerClipboard;
     const merge=ed.modal.querySelector('[data-layer-action="merge"]');if(merge)merge.disabled=f.activeLayer===0;
     const del=ed.modal.querySelector('[data-layer-action="delete"]');if(del)del.textContent=f.layers.length===1?'Clear Layer':'Delete Layer';
+    host.scrollTop=savedScrollTop;
   }
   function applyModulationToLayer(ed,layer){if(!layer)return;const c=ed.modulateColor,s=clamp(Number(ed.modulateStrength)/100,0,1);if(s<=0)return;for(let y=0;y<layer.pixels.length;y++)for(let x=0;x<(layer.pixels[y]?.length||0);x++){const p=layer.pixels[y][x];if(!p||p[3]===0)continue;p[0]=Math.round(p[0]*(1-s+(c[0]/255)*s));p[1]=Math.round(p[1]*(1-s+(c[1]/255)*s));p[2]=Math.round(p[2]*(1-s+(c[2]/255)*s));p[3]=Math.round(p[3]*(1-s+(c[3]/255)*s));}layer.__cache=null;}
   function applyModulationToAll(ed){for(const f of ed.frames){for(const layer of f.layers)applyModulationToLayer(ed,layer);}}
@@ -1093,7 +1245,31 @@
     const activeLayer=belowLayers.length+clamp(Number(selected.activeLayer)||0,0,Math.max(0,selectedLayers.length-1));
     return bindFrameLayers({name:selected.name||`${ed.name}${selectedIndex+1}`,width:w,height:h,sourceAsset:selected.sourceAsset||null,layers:[...belowLayers,...selectedLayers],activeLayer});
   }
-  function selectFrame(ed,i){if(ed.selection?.floating)commitFloatingSelection(ed,false);ed.frameIndex=clamp(i,0,ed.frames.length-1);fitEditor(ed);render(ed);}
+  function selectFrame(ed,i){
+    if(ed.selection?.floating)commitFloatingSelection(ed,false);
+    const layout=ed.modal.querySelector('.sprite-editor-layout');
+    const leftPanel=ed.modal.querySelector('[data-sprite-panel="left"]');
+    const inspector=ed.modal.querySelector('[data-sprite-panel="right"]');
+    const layerList=ed.modal.querySelector('[data-layer-list]');
+    const frameList=ed.modal.querySelector('[data-frame-list]');
+    const view={
+      zoom:ed.zoom,pan:{x:ed.pan.x,y:ed.pan.y},layoutScrollLeft:layout?.scrollLeft||0,
+      leftScroll:leftPanel?.scrollTop||0,inspectorScroll:inspector?.scrollTop||0,
+      layerScroll:layerList?.scrollTop||0,frameScroll:frameList?.scrollTop||0
+    };
+    ed.frameIndex=clamp(i,0,ed.frames.length-1);
+    if(ed.tool==='specialpen')ed.specialPenBaseline=captureSpecialPenBaseline(ed);
+    ed.smudgeCarry=null;
+    render(ed);
+    // Changing frames swaps only the artwork. Keep the canvas camera and both
+    // side drawers at their current zoom, pan, and scroll positions.
+    ed.zoom=view.zoom;ed.pan=view.pan;renderCanvasOnly(ed);
+    if(layout)layout.scrollLeft=view.layoutScrollLeft;
+    if(leftPanel)leftPanel.scrollTop=view.leftScroll;
+    if(inspector)inspector.scrollTop=view.inspectorScroll;
+    if(layerList)layerList.scrollTop=view.layerScroll;
+    if(frameList)frameList.scrollTop=view.frameScroll;
+  }
   function deleteFrame(ed,index){
     if(ed.frames.length<=1||!Number.isInteger(index)||index<0||index>=ed.frames.length)return;
     pushUndoAllFrames(ed);ed.frames.splice(index,1);
@@ -1261,7 +1437,7 @@
     const q=s=>ed.modal.querySelector(s); if(!q('[data-sprite-paint]'))return;
     const f=currentFrame(ed);
     q('[data-editor-subtitle]').textContent=`${ed.name} · ${f.width}×${f.height}`;
-    q('[data-sprite-zoom]').textContent=`${Math.round(ed.zoom*100)}%`;q('[data-sprite-coord]').textContent=ed.lastCell?`${ed.lastCell.x}, ${ed.lastCell.y}`:'—, —';q('[data-sprite-size-label]').textContent=String(ed.brushSize);q('[data-sprite-brush-strength]').value=String(ed.brushStrength);q('[data-sprite-brush-strength-label]').textContent=`${ed.brushStrength}%`;q('[data-pencil-shape]').value=ed.brushShape;const pencilSettings=q('[data-pencil-settings]');if(pencilSettings)pencilSettings.hidden=ed.tool!=='pencil';
+    q('[data-sprite-zoom]').textContent=`${Math.round(ed.zoom*100)}%`;q('[data-sprite-coord]').textContent=ed.lastCell?`${ed.lastCell.x}, ${ed.lastCell.y}`:'—, —';q('[data-sprite-size-label]').textContent=String(ed.brushSize);q('[data-sprite-brush-strength]').value=String(ed.brushStrength);q('[data-sprite-brush-strength-label]').textContent=`${ed.brushStrength}%`;q('[data-pencil-shape]').value=ed.brushShape;const pencilSettings=q('[data-pencil-settings]');if(pencilSettings)pencilSettings.hidden=!['pencil','specialpen','smudge'].includes(ed.tool);const specialSettings=q('[data-special-pen-settings]'),smudgeSettings=q('[data-smudge-settings]'),specialMode=q('[data-special-pen-mode]');if(specialSettings)specialSettings.hidden=ed.tool!=='specialpen';if(smudgeSettings)smudgeSettings.hidden=ed.tool!=='smudge';if(specialMode)specialMode.value=ed.specialPenMode||'Drag';
     const colorLabel=q('[data-sprite-color-label]');if(colorLabel)colorLabel.textContent=rgbaToHex(ed.color);q('[data-sprite-color-swatch]').style.background=cssRgba(ed.color);
     q('[data-mirror="x"]').textContent=`Mirror X: ${ed.mirrorX?'On':'Off'}`;q('[data-mirror="y"]').textContent=`Mirror Y: ${ed.mirrorY?'On':'Off'}`;q('[data-mirror="x"]').classList.toggle('active',ed.mirrorX);q('[data-mirror="y"]').classList.toggle('active',ed.mirrorY);q('[data-perfect-shape]').checked=!!ed.perfectShape;
     q('[data-sprite-name]').value=ed.name;q('[data-frame-name]').value=currentFrame(ed)?.name||ed.name;syncFrameFields(ed);ed.modal.querySelectorAll('.sprite-tool').forEach(b=>b.classList.toggle('active',b.dataset.tool===ed.tool));
@@ -1275,10 +1451,11 @@
   }
   function syncFrameFields(ed){const f=currentFrame(ed),q=s=>ed.modal.querySelector(s);q('[data-sprite-width]').value=f.width;q('[data-sprite-height]').value=f.height;q('[data-sprite-fps]').value=ed.fps;q('[data-frame-count]').textContent=String(visibleFrameIndices(ed).length);}
   function renderFrameList(ed){
-    const host=ed.modal.querySelector('[data-frame-list]');if(!host)return;host.innerHTML='';
+    const host=ed.modal.querySelector('[data-frame-list]');if(!host)return;const savedScrollTop=host.scrollTop;host.innerHTML='';
     const indices=visibleFrameIndices(ed);
-    if(!indices.length){const note=document.createElement('div');note.className='sprite-frame-hint';note.textContent=`No frames match “${ed.groupBaseName}”. Rename this frame back to the sequence name or Undo to restore it; it remains available to save as its own asset.`;host.append(note);return;}
+    if(!indices.length){const note=document.createElement('div');note.className='sprite-frame-hint';note.textContent=`No frames match “${ed.groupBaseName}”. Rename this frame back to the sequence name or Undo to restore it; it remains available to save as its own asset.`;host.append(note);host.scrollTop=savedScrollTop;return;}
     indices.forEach((i,visiblePosition)=>{const f=ed.frames[i];const row=document.createElement('div');row.className=`sprite-frame-row${i===ed.frameIndex?' selected':''}`;row.draggable=true;row.dataset.frameIndex=i;const thumb=document.createElement('canvas');thumb.width=56;thumb.height=56;thumb.className='sprite-frame-thumb';drawPreview(thumb,f);const info=document.createElement('div');info.className='sprite-frame-info';info.innerHTML=`<strong>Frame ${visiblePosition+1}</strong><span>${esc(f.name||ed.name)}</span>`;const del=document.createElement('button');del.type='button';del.className='mini-action danger sprite-frame-delete';del.title='Delete frame';del.textContent='×';del.disabled=ed.frames.length===1;del.addEventListener('click',e=>{e.stopPropagation();deleteFrame(ed,i);});row.append(thumb,info,del);row.addEventListener('click',()=>selectFrame(ed,i));row.addEventListener('dragstart',e=>e.dataTransfer.setData('text/plain',String(i)));row.addEventListener('dragover',e=>e.preventDefault());row.addEventListener('drop',e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(Number.isInteger(from))moveFrame(ed,from,i);});host.append(row);});
+    host.scrollTop=savedScrollTop;
   }
   function drawPreview(canvas,f){const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;drawChecker(ctx,w,h,8);const s=Math.min((w-8)/Math.max(1,f.width),(h-8)/Math.max(1,f.height));ctx.imageSmoothingEnabled=false;ctx.save();ctx.translate((w-f.width*s)/2,(h-f.height*s)/2);ctx.scale(s,s);drawLayerStack(ctx,f,0,0);ctx.restore();}
   function setPreviewVisibility(ed,visible){ed.showPreview=!!visible;const card=ed.modal.querySelector('[data-preview-card]');if(card)card.classList.toggle('hidden-preview',!ed.showPreview);const button=ed.modal.querySelector('[data-sprite-toggle-preview]');if(button){button.textContent=ed.showPreview?'▧ Preview':'▧ Preview Off';button.classList.toggle('active',ed.showPreview);}}
