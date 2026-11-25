@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v44-pointer-coordinates-collision-stability';
+const CACHE_NAME='uix-node2d-v45-ontick-current-value';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[

@@ -1,6 +1,6 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow. Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v41.6.0). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
 
 ## More information
 - Help: https://cardhollow.github.io/node2d/help
