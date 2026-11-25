@@ -7517,7 +7517,7 @@
       const label=document.createElement('span');label.className='script-input-value';
       let display=String(value??'');
       let unrecognized=!display.trim()||expressionVariableMissingReferences(display,state.script.nodeId).length>0;
-      if(!unrecognized){try{validateIIFEExpressionSource(display);new Function('ctx','Math','scriptHere','"use strict";return ('+display+');');}catch{unrecognized=true;}}
+      if(!unrecognized){try{validateIIFEExpressionSource(display);const executable=runtimeRewriteOntickBreakStatements(display);new Function('ctx','Math','scriptHere','"use strict";return ('+executable+');');}catch{unrecognized=true;}}
       if(unrecognized)display='<expression>';
       if(effectiveType==='col'&&!unrecognized){const sw=document.createElement('span');sw.className='script-input-color-swatch';sw.style.background=colorCss(value,'#FFFFFF');b.append(sw);try{display=rgbaToHex(parseColor(value));}catch{}}
       label.textContent=display;
@@ -7876,7 +7876,7 @@
     let value=hadExpression?String(sn.expressions[path]??''):String(entry.value??'');
     // Preserve existing expressions exactly; only apply the string-literal fallback to plain values.
     if(!hadExpression&&String(entry?.type||'').toLowerCase()==='str'&&value.trim()){
-      try{inferExpressionValue(value);}
+      try{inferExpressionValue(value,entry?.value);}
       catch{if(!(value.startsWith('`')&&value.endsWith('`')))value='`'+value.replace(/`/g,'\\`')+'`';}
     }
     $('#expressionInput').value=value;
@@ -7982,7 +7982,7 @@
     const mask=maskExpressionLiterals(source);
     return /\basync\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(mask)||/\basync\s+function(?:\s+[$A-Za-z_][$\w]*)?\s*\(/.test(mask);
   }
-  function inferExpressionValue(source){validateIIFEExpressionSource(source);const preview=expressionContext();return Function('ctx','Math','scriptHere','"use strict";return ('+source+');')(preview,Math,preview.scriptHere);}
+  function inferExpressionValue(source,currentValue=0){validateIIFEExpressionSource(source);const preview=expressionContext(currentValue),executable=runtimeRewriteOntickBreakStatements(source);return Function('ctx','Math','scriptHere','"use strict";return ('+executable+');')(preview,Math,preview.scriptHere);}
   function expressionVariableScope(scopeKey){return scopeKey==='local'?'Local':scopeKey==='global'?'Global':scopeKey==='server'?'Server':scopeKey==='sceneVariables'?'Scene':'';}
   function sceneForScriptOwnerNode(ownerNodeId){
     const wanted=String(ownerNodeId??'');if(!wanted)return currentScene();
@@ -8094,8 +8094,9 @@
     if(source){
       try{
         validateIIFEExpressionSource(source);
-        new Function('ctx','Math','scriptHere','"use strict";return ('+source+');');
-        const value=inferExpressionValue(source);
+        const executable=runtimeRewriteOntickBreakStatements(source);
+        new Function('ctx','Math','scriptHere','"use strict";return ('+executable+');');
+        const value=inferExpressionValue(source,edit?.entry?.value);
         if(edit&&!hasMissing){typeMessage=expressionTypeError(edit.entry,value)||'';}
       }catch(err){
         const isExistingExpression=!!edit?.hadExpression;
@@ -8192,7 +8193,7 @@
     const liveCamera=cam||state.runtime?.camera||state.camera;
     return expressionScreenView(liveCanvas,liveCamera);
   }
-  function expressionContext(){
+  function expressionContext(currentValue=0){
     const node=selectedNode(),sceneVars=sceneVariableList(),body=runtimeBodyForNode(node);
     const keybinds=keybindOptions();
     const screenCanvas=state.runtime?.running?($('#runtimeCanvas')||state.runtime.renderCanvas):$('#workplaceCanvas');
@@ -8210,7 +8211,7 @@
     for(const name of eventNumericNames){const value=Number(inputState[name]);eventInputContext[name]=Number.isFinite(value)?value:0;}
     for(const name of eventBooleanNames){const value=inputState[name];eventInputContext[name]=value===undefined?name.endsWith('Unpressed'):!!value;}
     eventInputContext.PointerType=String(inputState.PointerType||'mouse');
-    return {
+    const context={
       local:Object.fromEntries((state.localVarsByNode[state.script.nodeId]||[]).map(v=>[v.name,v.value])),
       global:Object.fromEntries(state.globalVariables.map(v=>[v.name,v.value])),
       server:Object.fromEntries(state.serverVariables.map(v=>[v.name,v.value])),
@@ -8232,7 +8233,7 @@
       text:node?component(node,'text')||{}:{},
       scriptStart:0,
       scriptHere:null,
-      ontick:{exec:(callback)=>{if(typeof callback!=='function')throw new TypeError('ctx.ontick.exec requires a lambda function');return callback();}},
+      ontick:{exec:(callback)=>{if(typeof callback!=='function')throw new TypeError('ctx.ontick.exec requires a lambda function');const value=callback(currentValue,context,Math);return value===RUNTIME_ONTICK_BREAK?currentValue:value;}},
       sceneData:currentScene(),sceneList:state.scenes,
       audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],spriteAssets:state.assets.Sprite||[],
       allNodes:allNodes().map(x=>x.node),
@@ -8253,6 +8254,7 @@
       ...Object.fromEntries(sceneJoysticks().flatMap(j=>{const base=j.variable||'joystick';const r=(state.runtime?.joysticks||[]).find(x=>x.variable===base)||{};return [[`${base}_distance`,Number(r.distance)||0],[`${base}_angle`,Number(r.angle)||0],[`${base}_value_x`,Number(r.value_x)||0],[`${base}_value_y`,Number(r.value_y)||0]];})),
       ...eventInputContext
     };
+    return context;
   }
   function expressionGroups(){
     const node=selectedNode();
@@ -8336,7 +8338,7 @@
         {label:'ctx.scriptStart',value:'ctx.scriptStart',title:'performance.now() timestamp in milliseconds when the current ScriptNode started or was called.'},
         {label:'IIFE Lambda',value:'(()=>{ return "code here" })()',title:'A return-valued immediately invoked lambda. Use let inside the IIFE. Every control-flow path must return a value.'},
         {label:'Function IIFE',value:'(function(){ return "code here"; })()',title:'Function-expression form of a return-valued IIFE.'},
-        {label:'ctx.ontick.exec(()=>{ return expression })',value:'ctx.ontick.exec(()=>{ return expression })',title:'Evaluate a lambda immediately and keep only this value slot live. The same lambda is re-evaluated internally every runtime tick without executing the whole ScriptNode again.'}
+        {label:'ctx.ontick.exec(this => this - 1)',value:'ctx.ontick.exec(this => this - 1)',title:'The callback parameter receives the current applied value of this input. The whole expression, including surrounding operators, is re-evaluated every runtime tick. Use value or another parameter name if preferred.'}
       ],
       Operators:[
         {label:'&&',value:'&&',title:'Logical AND. Example: a && b'},
@@ -9510,8 +9512,79 @@
     return null;
   }
   function runtimeExpressionKey(source,type){return `${String(type||'str')}|${String(source??'')}`;}
-  function runtimeRewriteOntickBreakStatements(source){
+  function runtimeRewriteOntickCurrentValueParameter(source){
     const text=String(source??'');
+    if(!text.includes('ctx.ontick.exec')||!(/\bthis\b/.test(text)))return text;
+    const edits=[];
+    const call=/ctx\.ontick\.exec\s*\(/g;
+    let match;
+    while((match=call.exec(text))){
+      const open=text.indexOf('(',match.index+match[0].lastIndexOf('('));
+      if(open<0)continue;
+      let p=open+1;while(/\s/.test(text[p]||''))p++;
+      let paramStart=p,paramEnd=p;
+      if(text.startsWith('this',p)&&!/[\w$]/.test(text[p+4]||'')){
+        paramEnd=p+4;
+      }else if(text[p]==='('){
+        let q=p+1;while(/\s/.test(text[q]||''))q++;
+        if(text.startsWith('this',q)&&!/[\w$]/.test(text[q+4]||'')){
+          q+=4;while(/\s/.test(text[q]||''))q++;
+          if(text[q]===')')paramEnd=q+1;
+        }
+      }
+      if(paramEnd===paramStart)continue;
+      let arrow=paramEnd;while(/\s/.test(text[arrow]||''))arrow++;
+      if(text.slice(arrow,arrow+2)!=='=>')continue;
+      const close=findCallEnd(text,open);
+      if(close<0)continue;
+      const bodyStart=arrow+2;
+      const body=text.slice(bodyStart,close);
+      edits.push({start:paramStart,end:paramEnd,value:'__node2dCurrentValue'});
+      edits.push({start:bodyStart,end:close,value:replaceCurrentValueIdentifiers(body)});
+      call.lastIndex=close+1;
+    }
+    if(!edits.length)return text;
+    let result=text;
+    edits.sort((a,b)=>b.start-a.start);
+    for(const edit of edits)result=result.slice(0,edit.start)+edit.value+result.slice(edit.end);
+    return result;
+
+    function findCallEnd(source,open){
+      let depth=0,quote='',lineComment=false,blockComment=false,escape=false;
+      for(let i=open;i<source.length;i++){
+        const ch=source[i],next=source[i+1];
+        if(lineComment){if(ch==='\n')lineComment=false;continue;}
+        if(blockComment){if(ch==='*'&&next==='/'){blockComment=false;i++;}continue;}
+        if(quote){if(escape){escape=false;continue;}if(ch==='\\'){escape=true;continue;}if(ch===quote)quote='';continue;}
+        if(ch==='/'&&next==='/'){lineComment=true;i++;continue;}
+        if(ch==='/'&&next==='*'){blockComment=true;i++;continue;}
+        if(ch==='"'||ch==="'"||ch==='`'){quote=ch;continue;}
+        if(ch==='(')depth++;
+        else if(ch===')'&&--depth===0)return i;
+      }
+      return -1;
+    }
+    function replaceCurrentValueIdentifiers(source){
+      let out='',quote='',lineComment=false,blockComment=false,escape=false;
+      for(let i=0;i<source.length;){
+        const ch=source[i],next=source[i+1];
+        if(lineComment){out+=ch;i++;if(ch==='\n')lineComment=false;continue;}
+        if(blockComment){out+=ch;i++;if(ch==='*'&&next==='/'){out+='/';i++;blockComment=false;}continue;}
+        if(quote){out+=ch;i++;if(escape){escape=false;continue;}if(ch==='\\'){escape=true;continue;}if(ch===quote)quote='';continue;}
+        if(ch==='/'&&next==='/'){out+='//';i+=2;lineComment=true;continue;}
+        if(ch==='/'&&next==='*'){out+='/*';i+=2;blockComment=true;continue;}
+        if(ch==='"'||ch==="'"||ch==='`'){quote=ch;out+=ch;i++;continue;}
+        if(source.startsWith('this',i)&&!/[\w$]/.test(source[i-1]||'')&&!/[\w$]/.test(source[i+4]||'')&&source[i-1]!=='.'){
+          out+='__node2dCurrentValue';i+=4;continue;
+        }
+        out+=ch;i++;
+      }
+      return out;
+    }
+  }
+
+  function runtimeRewriteOntickBreakStatements(source){
+    let text=runtimeRewriteOntickCurrentValueParameter(source);
     if(!text.includes('ctx.ontick.exec')||!/\bbreak\s*;/.test(text))return text;
     const out=[];let i=0;
     while(i<text.length){
@@ -9714,7 +9787,8 @@
         if(!spec.compiled?.fn)throw spec.compiled?.error||new Error('Expression compile failed');
         const previousLive=state.runtime.activeValueTickSlot;
         const previousRegistration=state.runtime.activeValueTickRegistration;
-        state.runtime.activeValueTickRegistration={type:spec.type,spec,desc,node,ctx};
+        const registration={type:spec.type,spec,desc,node,ctx,phase:'initial',slot:null,callIndex:0,stopRequested:false};
+        state.runtime.activeValueTickRegistration=registration;
         state.runtime.activeValueTickSlot=null;
         let value;
         try{value=spec.compiled.fn(ctx,Math,ctx?.scriptHere,RUNTIME_ONTICK_BREAK);}finally{
@@ -9722,9 +9796,13 @@
           state.runtime.activeValueTickSlot=previousLive;
         }
         if(spec.liveSlot){
+          const slot=spec.liveSlot;
+          const initialValue=runtimeValidateExpressionValue(value,spec.type);
+          slot.value=initialValue;slot.initialized=true;slot.version=(Number(slot.version)||0)+1;
+          if(registration.stopRequested)runtimeDeactivateValueTickSlot(slot);
           if(!Object.prototype.hasOwnProperty.call(values,'__liveSlots'))Object.defineProperty(values,'__liveSlots',{configurable:true,enumerable:false,writable:true,value:Object.create(null)});
-          values.__liveSlots[spec.name]=spec.liveSlot;
-          values[spec.name]=runtimeMakeReactiveValue(spec.liveSlot);
+          values.__liveSlots[spec.name]=slot;
+          values[spec.name]=runtimeMakeReactiveValue(slot);
         }else if(value&&typeof value.then==='function'){
           values[spec.name]=spec.entry?.value??spec.fallback;
           pending.push(Promise.resolve(value).then(resolved=>{values[spec.name]=runtimeValidateExpressionValue(resolved,spec.type);}));
@@ -9877,29 +9955,28 @@
 
   function runtimeValueTickExec(callback){
     if(typeof callback!=='function')throw new TypeError('ctx.ontick.exec requires a lambda function');
-    const rt=state.runtime;
-    const active=rt?.activeValueTickRegistration;
-    if(!rt||!active?.spec)return callback();
+    const rt=state.runtime,active=rt?.activeValueTickRegistration;
+    if(!rt||!active?.spec)return callback(0,active?.ctx||null,Math,active?.ctx?.scriptHere);
     const spec=active.spec;
-    let slot=spec.liveSlot||spec.entry?.[VALUE_TICK_SLOT]||null;
+    let slot=active.slot||spec.liveSlot||spec.entry?.[VALUE_TICK_SLOT]||null;
     if(!slot){
-      slot={type:String(active.type||spec.type||'str'),source:String(spec.source??''),callback:null,value:undefined,initialized:false,active:true,stopped:false,
-        ownerSpec:spec,ownerDesc:active.desc||null,ownerDescScript:active.desc||null,ownerNodeId:String(active.node?.id||''),ownerScriptId:String(active.desc?.id||''),ownerContext:active.ctx||null,reactiveContext:active.ctx||null,passive:true,version:0,evaluating:false,lastFixedTick:-1,sessionId:0,consumers:new Set()};
+      const entryValue=spec.entry&&Object.prototype.hasOwnProperty.call(spec.entry,'value')?spec.entry.value:spec.fallback;
+      const seedValue=runtimeUnwrapReactiveValue(entryValue);
+      slot={type:String(active.type||spec.type||'str'),source:String(spec.source??''),callback:null,callbacks:[],value:undefined,seedValue,initialized:false,active:true,stopped:false,
+        ownerSpec:spec,ownerDesc:active.desc||null,ownerDescScript:active.desc||null,ownerNodeId:String(active.node?.id||''),ownerScriptId:String(active.desc?.id||''),ownerContext:active.ctx||null,reactiveContext:active.ctx||null,passive:true,expressionBased:true,version:0,evaluating:false,lastFixedTick:-1,sessionId:0,consumers:new Set()};
       slot.sessionId=Number(rt.nextValueTickSessionId)||1;rt.nextValueTickSessionId=slot.sessionId+1;
-      spec.liveSlot=slot;spec.nodeId=String(active.node?.id||'');
+      spec.liveSlot=slot;spec.nodeId=String(active.node?.id||'');active.slot=slot;slot.lastFixedTick=Number(rt.fixedTickCounter)||0;
       if(active.desc){active.desc.liveSlotCount=(Number(active.desc.liveSlotCount)||0)+1;}
       if(spec.entry){try{Object.defineProperty(spec.entry,VALUE_TICK_SLOT,{configurable:true,enumerable:false,writable:true,value:slot});}catch{try{spec.entry[VALUE_TICK_SLOT]=slot;}catch{}}}
       (rt.valueTickPool ||= []).push(slot);
     }
-    slot.callback=callback;slot.source=String(spec.source??slot.source??'');slot.type=String(active.type||slot.type||'str');slot.ownerSpec=spec;slot.ownerDesc=active.desc||slot.ownerDesc||null;slot.ownerDescScript=active.desc||slot.ownerDescScript||null;slot.ownerNodeId=String(active.node?.id||slot.ownerNodeId||'');slot.ownerScriptId=String(active.desc?.id||slot.ownerScriptId||'');slot.ownerContext=active.ctx||slot.ownerContext||null;if(!slot.stopped)slot.active=true;
-    if(slot.evaluating)return runtimeMakeReactiveValue(slot);
-    slot.evaluating=true;
-    try{
-      const value=callback(active.ctx,Math,active.ctx?.scriptHere);
-      slot.lastFixedTick=Number(rt.fixedTickCounter)||0;
-      if(value===RUNTIME_ONTICK_BREAK){runtimeDeactivateValueTickSlot(slot);return runtimeMakeReactiveValue(slot);}
-      const validated=runtimeValidateExpressionValue(value,slot.type);slot.value=validated;slot.initialized=true;slot.version=(Number(slot.version)||0)+1;return runtimeMakeReactiveValue(slot);
-    }finally{slot.evaluating=false;}
+    active.slot=slot;
+    const callIndex=Number(active.callIndex)||0;active.callIndex=callIndex+1;
+    slot.callback=callback;slot.callbacks ||= [];slot.callbacks[callIndex]=callback;
+    const currentValue=slot.initialized?slot.value:slot.seedValue;
+    const value=callback(currentValue,active.ctx,Math,active.ctx?.scriptHere);
+    if(value===RUNTIME_ONTICK_BREAK){active.stopRequested=true;return currentValue;}
+    return runtimeUnwrapReactiveValue(value);
   }
 
   function runtimeApplyValueTickChanges(slot,value){
@@ -9963,12 +10040,20 @@
       if(!node){runtimeDeactivateValueTickSlot(slot);continue;}
       slot.lastFixedTick=tickId;
       const liveCtx=runtimeRefreshLiveOwnerContext(slot)||slot.ownerContext;
+      const spec=slot.ownerSpec;
+      if(!spec?.compiled?.fn){runtimeDeactivateValueTickSlot(slot);continue;}
+      const previous=rt.activeValueTickSlot,previousRegistration=rt.activeValueTickRegistration;
+      const registration={type:slot.type,spec,desc:slot.ownerDesc,node,ctx:liveCtx,phase:'tick',slot,callIndex:0,stopRequested:false};
+      let raw;
       try{
-        const previous=rt.activeValueTickSlot;rt.activeValueTickSlot=slot;
-        let raw;try{raw=slot.callback(liveCtx,Math,liveCtx?.scriptHere);}finally{rt.activeValueTickSlot=previous;}
-        if(raw===RUNTIME_ONTICK_BREAK){runtimeDeactivateValueTickSlot(slot);continue;}
-        runtimeApplyValueTickChanges(slot,runtimeValidateExpressionValue(raw,slot.type));
-      }catch(err){const msg=String(err?.message||err);rt.lastError=msg;runtimeOutput('error',`ctx.ontick.exec: ${msg}`);}
+        rt.activeValueTickSlot=slot;rt.activeValueTickRegistration=registration;
+        raw=spec.compiled.fn(liveCtx,Math,liveCtx?.scriptHere,RUNTIME_ONTICK_BREAK);
+      }catch(err){
+        const msg=String(err?.message||err);rt.lastError=msg;runtimeOutput('error',`ctx.ontick.exec: ${msg}`);continue;
+      }finally{rt.activeValueTickSlot=previous;rt.activeValueTickRegistration=previousRegistration;}
+      if(registration.stopRequested||raw===RUNTIME_ONTICK_BREAK){runtimeDeactivateValueTickSlot(slot);continue;}
+      try{runtimeApplyValueTickChanges(slot,runtimeValidateExpressionValue(raw,slot.type));}
+      catch(err){const msg=String(err?.message||err);rt.lastError=msg;runtimeOutput('error',`ctx.ontick.exec: ${msg}`);}
     }
     runtimeFlushReactiveBindings();
     runtimeCompactValueTicks();
