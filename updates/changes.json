@@ -1,5 +1,15 @@
 [
   {
+    "title": "Version 41.6.0",
+    "items": [
+      {
+        "id": "v41-6-ontick-current-value",
+        "subtitle": "ctx.ontick.exec current-value parameter and full-expression updates",
+        "contents": "<h2>ctx.ontick.exec current-value parameter</h2><p><code>ctx.ontick.exec()</code> now passes the current value of its ScriptNode input as the callback's first argument. The value is passed through without inferring or converting its type. The first call receives the input's existing value; later calls receive the complete expression's previously applied result.</p><pre><code>ctx.ontick.exec(value =&gt; value - 1)</code></pre><p>The whole expression is now recalculated on each runtime tick, so arithmetic around <code>ctx.ontick.exec()</code> remains live too:</p><pre><code>1 - ctx.ontick.exec(() =&gt; ctx.global.counter)</code></pre><p>Zero-argument callbacks continue to work. The runtime context is available as the second callback argument. The callback parameter can also use <code>this</code> as an alias, for example <code>ctx.ontick.exec(this =&gt; this - 1)</code>.</p>"
+      }
+    ]
+  },
+  {
     "title": "Version 41.5.0",
     "items": [
       {
