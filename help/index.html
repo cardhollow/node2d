@@ -6,8 +6,10 @@
 <title>Node2D Help</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#202020;color:#ddd;font-family:system-ui,-apple-system,Segoe UI,sans-serif}body{overflow:hidden}.help-app{display:grid;grid-template-rows:auto minmax(0,1fr);width:100%;height:100%}.help-top{padding:10px;border-bottom:1px solid #3d3d3d;background:#292929}.help-search{width:100%;height:38px;padding:0 11px;background:#202020;border:1px solid #4b4b4b;border-radius:6px;color:#ddd;outline:none}.help-search:focus{border-color:#777}.help-body{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:0}.help-nav{min-height:0;overflow:auto;border-right:1px solid #3d3d3d;padding:8px;background:#252525;-webkit-overflow-scrolling:touch}.help-section{margin-bottom:7px}.help-title{width:100%;display:flex;align-items:center;gap:7px;height:32px;padding:0 8px;background:none;border:0;border-radius:5px;color:#bbb;text-align:left;font-weight:600;cursor:pointer}.help-title:hover{background:#333;color:#eee}.help-title .arrow{width:12px;color:#888}.help-items{padding-left:18px}.help-items.hidden{display:none}.help-subtitle{width:100%;display:block;padding:6px 8px;background:none;border:0;border-radius:4px;color:#999;text-align:left;cursor:pointer}.help-subtitle:hover{background:#343434;color:#eee}.help-subtitle.active{background:#3a382d;color:#e4ca4e}.help-section.hidden-section .help-items{display:none}.help-empty{padding:20px 10px;color:#777;font-size:12px}.help-main{min-width:0;min-height:0;overflow:auto;padding:22px 24px;-webkit-overflow-scrolling:touch}.help-content{max-width:900px;line-height:1.55}.help-content h1,.help-content h2,.help-content h3{color:#eee;margin:0 0 12px}.help-content p{color:#bbb}.help-content code{background:#171717;border:1px solid #3d3d3d;border-radius:4px;padding:1px 4px;font:12px ui-monospace,SFMono-Regular,Consolas,monospace}.help-content pre{overflow:auto;background:#171717;border:1px solid #3d3d3d;border-radius:6px;padding:10px}.help-content table{border-collapse:collapse;width:100%}.help-content th,.help-content td{border:1px solid #444;padding:7px;text-align:left}.help-content a.help-ref{color:#e4ca4e;text-decoration:underline;text-underline-offset:2px}.help-content a.help-ref:hover{color:#f0d966}.help-status{color:#777;font-size:11px;margin-top:8px}.help-match{outline:1px solid #555}@media(max-width:760px){.help-body{grid-template-columns:205px minmax(0,1fr)}.help-main{padding:15px}.help-nav{padding:6px}}
+.ui-svg{display:inline-block;width:1em;height:1em;vertical-align:-.14em;flex:none}
 </style>
 <script>window.UIX_EDITOR_CONTEXT=false;</script>
+<script src="../js/svgIconData.js"></script>
 <script src="../js/keyBinds.js"></script>
 </head>
 <body>
@@ -41,7 +43,7 @@
       const hits=filtered.some(x=>x.si===si); if(terms.length&&!hits)return;
       const wrap=document.createElement('section');wrap.className='help-section';
       const title=document.createElement('button');title.className='help-title';title.type='button';
-      const collapsed=!!openState[si]; title.innerHTML=`<span class="arrow">${collapsed?'+':'−'}</span><span>${esc(section.title)}</span>`;
+      const collapsed=!!openState[si]; title.innerHTML=`<span class="arrow">${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span><span>${esc(section.title)}</span>`;
       const items=document.createElement('div');items.className='help-items'+(collapsed?' hidden':'');
       section.items.forEach((item,ii)=>{
         if(terms.length&&!matches({title:section.title,subtitle:item.subtitle,contents:item.contents},terms))return;
