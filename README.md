@@ -1,6 +1,9 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.0). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 42.2.1
+- List variable values now require valid JSON array syntax, such as `[0, 0]`. Unbracketed comma-separated values are rejected; strings must use double quotes, and nested arrays and objects are supported. Invalid edits show an error and keep the previous value.
 
 ## Version 42.2.0
 - Component cards on a Node now have Move Up / Move Down buttons (also in the card's right-click menu). Visual components are drawn in list order, so the lowest card is painted on top: add Text then Sprite and the Sprite covers the Text; move Text below the Sprite to put it on top. Applies to every visual component, including ones added later.

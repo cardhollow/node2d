@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v42-2-0-component-order';
+const CACHE_NAME='uix-node2d-v42-2-1-json-list-values';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[
