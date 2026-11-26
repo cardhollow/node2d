@@ -4,7 +4,7 @@
   const PI = Math.PI;
   const EPS = 1e-9;
   const DEG = PI / 180;
-  const ENGINE_BUILD_VERSION = '41.6.0';
+  const ENGINE_BUILD_VERSION = '42.0.0';
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const add = (a,b) => ({x:a.x+b.x,y:a.y+b.y});

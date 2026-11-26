@@ -473,7 +473,8 @@
         joysticks,
         activeJoystickPointers,
         animationStates:runtimeClone(rt.animationStates||{}),
-        particles:runtimeClone(rt.particles||[]),
+        particles:[],
+        particleGroups:runtimeSnapshotParticleGroups(),
         frameCounter:Number(rt.frameCounter)||0,
         runtimeSceneNodeIds:[...sceneNodeIds],
         nextNumericId:Number(rt.nextNumericId)||1
@@ -581,7 +582,8 @@
       rt.joysticks=snapshot.joysticks||rt.joystickDefs.map(j=>({variable:j.variable,distance:0,angle:0,value_x:0,value_y:0}));
       rt.activeJoystickPointers=snapshot.activeJoystickPointers||{};
       rt.animationStates=snapshot.animationStates||Object.create(null);
-      rt.particles=snapshot.particles||[];
+      rt.particles=[];
+      runtimeRestoreParticleGroups(snapshot.particleGroups);
       rt.frameCounter=Number(snapshot.frameCounter)||0;
       rt.nextNumericId=Math.max(1,Number(snapshot.nextNumericId)||1);
       rt.savedStates=savedStates;
@@ -7258,6 +7260,8 @@
     if(!sn||sn.defName!=='createParticles'||!def)return;
     const oldValues=Array.isArray(sn.values)?sn.values:[];
     const oldFlat=flattenEditor(oldValues),oldByName=new Map();
+    // Already the Particle1..N layout (has the Particle selector): nothing to convert.
+    if(oldFlat.some(item=>item?.entry?.name==='Particle'&&item.entry.type==='selector'))return;
     oldFlat.forEach(item=>{const name=String(item?.entry?.name||'');if(name&&!oldByName.has(name))oldByName.set(name,item);});
     const nextValues=cloneEditorDefinition(def.editor||[]).map(normalizeEditor),nextFlat=flattenEditor(nextValues),pathMap=new Map();
     for(const item of nextFlat){const old=oldByName.get(String(item.entry?.name||''));if(!old)continue;if(Object.prototype.hasOwnProperty.call(old.entry,'value'))item.entry.value=clone(old.entry.value);if(Object.prototype.hasOwnProperty.call(old.entry,'selected'))item.entry.selected=clone(old.entry.selected);pathMap.set(old.path,item.path);}
@@ -7266,6 +7270,65 @@
     sn.values=nextValues;sn.expressions=nextExpressions;
   }
 
+  // ---- createParticles: Particle1..N editor state ----------------------------------------------------------------
+  function particleStateBase(){return window.UIXScriptNodes?.particleStateBase??4;}
+  function particleStateCount(sn){return Math.max(1,(Array.isArray(sn?.values)?sn.values.length:0)-particleStateBase());}
+  function particleSelectedIndex(sn){
+    const entry=Array.isArray(sn?.values)?sn.values[particleStateBase()-1]:null;
+    const match=/^Particle(\d+)$/.exec(String(entry?.selected??''));
+    return clamp(match?Number(match[1]):1,1,particleStateCount(sn));
+  }
+  // Which particle an editor item belongs to (1-based); 0 for the global inputs and the selector.
+  function particleItemState(item){
+    const path=String(item?.path??''),dot=path.indexOf('.');
+    if(dot<0)return 0;
+    const head=Number(path.slice(0,dot)),base=particleStateBase();
+    return Number.isFinite(head)&&head>=base?head-base+1:0;
+  }
+  // Saved projects cannot store the selector option functions of extra particles: restore them from Particle1's template.
+  function restoreParticleStateDefinitions(sn,def){
+    const base=particleStateBase(),template=Array.isArray(def?.editor)?def.editor[base]:null;
+    if(!template||!Array.isArray(sn?.values))return;
+    for(let i=base;i<sn.values.length;i++)if(Array.isArray(sn.values[i]))sn.values[i]=restoreSelectorDefinition(sn.values[i],template);
+    const selector=sn.values[base-1];
+    if(selector&&selector.type==='selector'&&typeof selector.value!=='function'&&!Array.isArray(selector.value))selector.value=()=>['Particle1'];
+  }
+  function particleAddState(sn){
+    const base=particleStateBase(),count=particleStateCount(sn),next=cloneEditorDefinition(sn.values[base+count-1]);
+    // The new particle starts as a copy of the last one; its Transition is left empty (automatic).
+    const transition=next.find(entry=>entry?.name==='Transition');if(transition)transition.value=null;
+    sn.values.push(next);sn.values[base-1].selected=`Particle${count+1}`;
+    return count+1;
+  }
+  function particleDeleteState(sn,index){
+    const base=particleStateBase(),count=particleStateCount(sn);
+    if(count<=1)return false;
+    const removeAt=base+index-1;
+    sn.values.splice(removeAt,1);
+    // Expression paths are positional ("5.3" = fifth array, fourth input): drop the deleted particle's and shift the rest.
+    const old=sn.expressions||(sn.expressions={}),keep=[];
+    for(const path of Object.keys(old)){
+      const parts=path.split('.'),head=Number(parts[0]);
+      if(parts.length>1&&Number.isFinite(head)&&head>=base){
+        if(head===removeAt)continue;
+        if(head>removeAt)parts[0]=String(head-1);
+      }
+      keep.push([parts.join('.'),old[path]]);
+    }
+    for(const path of Object.keys(old))delete old[path];
+    for(const [path,source] of keep)old[path]=source;
+    sn.values[base-1].selected=`Particle${Math.min(index,count-1)}`;
+    return true;
+  }
+
+  // setVariable: the list operation inputs only show for List variables, and only the inputs the operation uses.
+  const SET_VARIABLE_ORDER=['Type','Name','Operation','Index','Value'];
+  function setVariableListState(sn){
+    const flat=flattenEditor(sn.values),typeItem=flat.find(x=>x.entry.name==='Type'),nameItem=flat.find(x=>x.entry.name==='Name'),opItem=flat.find(x=>x.entry.name==='Operation');
+    const scope=String(typeItem?scriptEditorValue(sn,typeItem):'Global'),name=String(nameItem?scriptEditorValue(sn,nameItem):'');
+    const variable=variableList(scope).find(v=>String(v.name)===name);
+    return {isList:variable?.dataType==='List',operation:String(opItem?scriptEditorValue(sn,opItem)||'Set':'Set')};
+  }
   function restoreScriptNodeDefinitions(nodesByNode){
     const out=clone(nodesByNode||{});
     Object.keys(out).forEach(nodeId=>{
@@ -7273,7 +7336,11 @@
       out[nodeId].forEach(sn=>{
         const def=scriptNodeDefinition(sn?.defName);
         if(def&&Array.isArray(sn.values)) sn.values=restoreSelectorDefinition(sn.values,def.editor||[]);
-        if(def?.name==='createParticles')migrateCreateParticlesScriptNode(sn,def);
+        if(def?.name==='createParticles'){migrateCreateParticlesScriptNode(sn,def);restoreParticleStateDefinitions(sn,def);}
+        if(def?.name==='setVariable'&&Array.isArray(sn.values)){
+          // Older setVariable nodes have no list Operation/Index inputs: append them (paths of existing inputs stay valid).
+          for(const template of def.editor||[])if(!sn.values.some(e=>e?.name===template.name))sn.values.push(cloneEditorDefinition(template));
+        }
       });
     });
     return out;
@@ -7429,6 +7496,23 @@
       },null,null,item.name||'Font Family');
       wrap.append(select);return wrap;
     }
+    if(sn.defName==='createParticles'&&entry.name==='Particle'&&entry.type==='selector'&&particleItemState(item)===0){
+      const count=particleStateCount(sn),current=particleSelectedIndex(sn);
+      const options=[...Array.from({length:count},(_,i)=>`Particle${i+1}`),'+ Add Particle','Delete Particle'];
+      const wrap=document.createElement('div');wrap.className='script-selector-wrap';
+      const select=customSelect(`Particle${current}`,options,choice=>{
+        if(choice===`Particle${current}`)return;
+        if(choice==='Delete Particle'){
+          if(count<=1){status('createParticles needs at least one particle');return;}
+          pushHistory(`Delete Particle${current}`);particleDeleteState(sn,current);
+        }else if(choice==='+ Add Particle'){
+          pushHistory('Add Particle');particleAddState(sn);
+        }else{
+          pushHistory(`Edit ${item.name||'Particle'}`);entry.selected=choice;
+        }
+        renderScriptCanvas();
+      });wrap.append(select);return wrap;
+    }
     if(entry.type==='selector'&&!isExpression){
       let options=evaluateSelector(entry.value);
       if(sn.defName==='setVariable'&&entry.name==='Name'){
@@ -7544,16 +7628,33 @@
     const title=document.createElement('div');title.className='script-node-title';title.textContent=def.label||def.name;card.append(title);
     if(def.receiver){const input=document.createElement('button');input.className='script-input-port';input.title='Input';input.setAttribute('aria-label','Input');input.style.setProperty('--script-port-color','#8a8a8a');input.addEventListener('click',e=>e.stopPropagation());card.append(input);}
     const fields=document.createElement('div');fields.className='script-editor-fields';
-    flattenEditor(sn.values).forEach(item=>{
+    const cardItems=flattenEditor(sn.values),selectedParticle=sn.defName==='createParticles'?particleSelectedIndex(sn):0;
+    const orderedItems=sn.defName==='setVariable'?[...cardItems].sort((a,b)=>SET_VARIABLE_ORDER.indexOf(a.entry.name)-SET_VARIABLE_ORDER.indexOf(b.entry.name)):cardItems;
+    const listState=sn.defName==='setVariable'?setVariableListState(sn):null;
+    orderedItems.forEach(item=>{
+      if(listState){
+        const n=item.entry.name,op=listState.operation;
+        if((n==='Operation'||n==='Index')&&!listState.isList)return;
+        if(listState.isList){
+          if(n==='Index'&&!['Insert','Set At','Remove At'].includes(op))return;
+          if(n==='Value'&&['Pop','Shift','Clear','Reverse','Sort','Remove At'].includes(op))return;
+        }
+      }
       if(sn.defName==='createParticles'){
-        const flat=flattenEditor(sn.values);
-        const typeItem=flat.find(x=>x.entry.name==='Type');
-        const sourceItem=flat.find(x=>x.entry.name==='Source');
-        const currentType=String(typeItem?scriptEditorValue(sn,typeItem):'Circle');
-        const currentSource=String(sourceItem?scriptEditorValue(sn,sourceItem):'Sprite');
-        if(['Source','Sprite','Animation','Strength'].includes(item.entry.name)&&currentType!=='Sprite')return;
-        if(item.entry.name==='Sprite'&&currentSource!=='Sprite')return;
-        if(item.entry.name==='Animation'&&currentSource!=='Animation')return;
+        // Global inputs and the Particle selector are always shown; below them only the selected particle's inputs.
+        const owner=particleItemState(item);
+        if(owner>0){
+          if(owner!==selectedParticle)return;
+          const flat=cardItems.filter(x=>particleItemState(x)===owner);
+          const typeItem=flat.find(x=>x.entry.name==='Type');
+          const sourceItem=flat.find(x=>x.entry.name==='Source');
+          const currentType=String(typeItem?scriptEditorValue(sn,typeItem):'Circle');
+          const currentSource=String(sourceItem?scriptEditorValue(sn,sourceItem):'Sprite');
+          if(['Source','Sprite','Animation','Strength'].includes(item.entry.name)&&currentType!=='Sprite')return;
+          if(item.entry.name==='Sprite'&&currentSource!=='Sprite')return;
+          if(item.entry.name==='Animation'&&currentSource!=='Animation')return;
+          if(item.entry.name==='Transition'&&owner===1)return;
+        }
       }
       const row=document.createElement('div');row.className='script-editor-row';const label=document.createElement('div');label.className='script-editor-label';label.textContent=item.entry.name;row.append(label,scriptInputButton(sn,item));fields.append(row);
     });
@@ -9359,7 +9460,7 @@
     rt.expressionCache=new Map();
     rt.contextByNode=new Map();
     rt.scriptStartById=new Map();
-    rt.valueTickPool=[];rt.valueTickCompactCounter=0;rt.nextValueTickSessionId=1;rt.fixedTickCounter=0;rt.inOnTickDispatch=false;rt.liveChangedScripts=new Set();rt.activeValueTickRegistration=null;rt.activeValueTickSlot=null;rt.reactiveBindings=new Set()
+    rt.valueTickPool=[];rt.valueTickCompactCounter=0;rt.nextValueTickSessionId=1;rt.fixedTickCounter=0;rt.inOnTickDispatch=false;rt.liveChangedScripts=new Set();rt.activeValueTickRegistration=null;rt.activeValueTickSlot=null;rt.reactiveBindings=new Set();rt.dirtyReactiveBindings=new Set();rt.reactiveBindingIndex=new Map();rt.liveContextByNode=new Map()
     rt.variableMaps={global:new Map(),server:new Map(),scene:new Map(),local:new Map()};
     rt.activeSceneVariableOverlayMap=null;
     rt.activeSceneVariableOverlayIndexMap=null;
@@ -9412,6 +9513,7 @@
     updateRuntimeCamera(0);
     if(runtimeOutputRestore)runtimeOutputRestore();
     installRuntimeOutputCapture();
+    runtimeWarmParticleAssets();
     runRuntimeSceneScripts();
     runtimeWarmAudioAssets();
     return true;
@@ -9661,6 +9763,19 @@
     }
     return String(value);
   }
+  // Values of a ScriptNode are keyed by input name. createParticles has the same input names once per
+  // particle state, so those get a "p<N>." prefix to stay independent of each other.
+  function runtimeScriptSpecName(sn,item){
+    const entry=item.entry;
+    if(sn?.defName==='createParticles'){
+      const dot=String(item.path).indexOf('.');
+      if(dot>0){
+        const base=window.UIXScriptNodes?.particleStateBase??4,head=Number(String(item.path).slice(0,dot));
+        if(Number.isFinite(head)&&head>=base)return `p${head-base+1}.${entry.name}`;
+      }
+    }
+    return entry.name;
+  }
   function runtimeCompileScriptDescriptor(sn){
     const rt=state.runtime;
     if(!sn?.id)return null;
@@ -9693,25 +9808,27 @@
     for(const item of flat){
       const entry=item.entry;
       if(!entry)continue;
+      const specName=runtimeScriptSpecName(sn,item);
       const hasExpression=Object.prototype.hasOwnProperty.call(expressionMap,item.path);
       if(hasExpression){
         const source=String(expressionMap[item.path]??'');
         const compiled=runtimeCompileExpression(source,entry.type);
-        let liveSlot=entry?.[VALUE_TICK_SLOT]||null;
+        // liveInstance nodes (createParticles) never share a live slot: each execution owns its own.
+        let liveSlot=def?.liveInstance?null:(entry?.[VALUE_TICK_SLOT]||null);
         if(liveSlot&&String(liveSlot.source??'')!==source){
           runtimeDeactivateValueTickSlot(liveSlot);
           try{delete entry[VALUE_TICK_SLOT];}catch{try{entry[VALUE_TICK_SLOT]=null;}catch{}}
           liveSlot=null;
         }
-        specs.push({kind:'expr',name:entry.name,type:entry.type,path:item.path,source,compiled,fallback:entry.value,entry,liveSlot});
+        specs.push({kind:'expr',name:specName,type:entry.type,path:item.path,source,compiled,fallback:entry.value,entry,liveSlot});
       }else if(entry.type==='selector'){
         if(Object.prototype.hasOwnProperty.call(entry,'selected')){
-          specs.push({kind:'const',name:entry.name,value:entry.selected,entry,sourceKey:'selected'});
+          specs.push({kind:'const',name:specName,value:entry.selected,entry,sourceKey:'selected'});
         }else{
-          specs.push({kind:'selector',name:entry.name,type:entry.type,valueFn:entry.value,entry});
+          specs.push({kind:'selector',name:specName,type:entry.type,valueFn:entry.value,entry});
         }
       }else{
-        specs.push({kind:'const',name:entry.name,value:entry.value,entry,sourceKey:'value'});
+        specs.push({kind:'const',name:specName,value:entry.value,entry,sourceKey:'value'});
       }
     }
     const first=flat[0]?.entry;
@@ -9774,9 +9891,12 @@
           continue;
         }
 
+        // liveInstance ScriptNodes (createParticles) get a brand new live slot on every execution, so
+        // each created object keeps its own ctx.ontick state instead of sharing one with earlier calls.
+        const instanced=!!desc.def?.liveInstance;
         // A value registered through ctx.ontick.exec is evaluated by the
         // dedicated value pool. The ScriptNode must not re-evaluate it.
-        if(spec.liveSlot){
+        if(spec.liveSlot&&!instanced){
           const slot=spec.liveSlot;
           if(!Object.prototype.hasOwnProperty.call(values,'__liveSlots'))Object.defineProperty(values,'__liveSlots',{configurable:true,enumerable:false,writable:true,value:Object.create(null)});
           values.__liveSlots[spec.name]=slot;
@@ -9787,7 +9907,7 @@
         if(!spec.compiled?.fn)throw spec.compiled?.error||new Error('Expression compile failed');
         const previousLive=state.runtime.activeValueTickSlot;
         const previousRegistration=state.runtime.activeValueTickRegistration;
-        const registration={type:spec.type,spec,desc,node,ctx,phase:'initial',slot:null,callIndex:0,stopRequested:false};
+        const registration={type:spec.type,spec,desc,node,ctx,phase:'initial',slot:null,callIndex:0,stopRequested:false,instance:instanced};
         state.runtime.activeValueTickRegistration=registration;
         state.runtime.activeValueTickSlot=null;
         let value;
@@ -9795,8 +9915,9 @@
           state.runtime.activeValueTickRegistration=previousRegistration;
           state.runtime.activeValueTickSlot=previousLive;
         }
-        if(spec.liveSlot){
-          const slot=spec.liveSlot;
+        const resolvedLiveSlot=instanced?registration.slot:spec.liveSlot;
+        if(resolvedLiveSlot){
+          const slot=resolvedLiveSlot;
           const initialValue=runtimeValidateExpressionValue(value,spec.type);
           slot.value=initialValue;slot.initialized=true;slot.version=(Number(slot.version)||0)+1;
           if(registration.stopRequested)runtimeDeactivateValueTickSlot(slot);
@@ -9922,16 +10043,47 @@
     catch{try{target[RUNTIME_REACTIVE_TARGET]=updater;}catch{}}
     return target;
   }
-  function runtimeInvokeReactiveContextMethod(target,fn,args){
+  const RUNTIME_REACTIVE_HANDLE = Symbol('node2d.reactiveHandle');
+  function runtimeReleaseReactiveHandle(handle){
+    const rt=state.runtime;
+    if(!handle||!handle.active)return;
+    handle.active=false;handle.changedSlots?.clear?.();
+    rt?.reactiveBindings?.delete(handle);rt?.dirtyReactiveBindings?.delete(handle);
+    if(handle.key&&rt?.reactiveBindingIndex?.get(handle.key)===handle)rt.reactiveBindingIndex.delete(handle.key);
+    for(const slot of handle.slots||[]){
+      slot.consumers?.delete(handle);
+      // A per-call (instance) slot has no other reader once its object is gone: stop evaluating it.
+      if(slot.instance&&!slot.consumers?.size)runtimeDeactivateValueTickSlot(slot);
+    }
+    if(handle.result&&typeof handle.result==='object'){try{handle.result[RUNTIME_REACTIVE_HANDLE]=null;}catch{}}
+  }
+  // Called by the owner of a reactive object (e.g. a particle group) when that object is gone.
+  function runtimeReleaseReactiveTarget(target){
+    const handle=target?.[RUNTIME_REACTIVE_HANDLE];
+    if(handle)runtimeReleaseReactiveHandle(handle);
+  }
+  function runtimeInvokeReactiveContextMethod(target,fn,args,prop){
     const rt=state.runtime;
     const slots=runtimeCollectReactiveValues(args);
     const invokeArgs=runtimeUnwrapReactiveArgument(args);
     const result=fn.apply(target,invokeArgs);
     if(!rt||!slots.length||!rt.running)return result;
     const updater=result&&typeof result==='object'?result[RUNTIME_REACTIVE_TARGET]:null;
-    const handle={fn,target,args,slots,result,updater,active:true,changedSlots:new Set(),nodeId:String(target?.node?.id||'')};
+    const nodeId=String(target?.node?.id||'');
+    let key='';
+    if(!updater){
+      // The same ScriptNode input running again (setTransform every tick, ...) refreshes its one
+      // binding. Before, every run stacked another binding that was re-applied on each change forever.
+      key=`${nodeId}|${String(prop??'')}|${slots.map(slot=>slot.sessionId).join(',')}`;
+      const index=rt.reactiveBindingIndex||(rt.reactiveBindingIndex=new Map());
+      const existing=index.get(key);
+      if(existing?.active){existing.args=args;existing.result=result;return result;}
+    }
+    const handle={fn,target,args,slots,result,updater,active:true,changedSlots:new Set(),nodeId,key};
     for(const slot of slots){slot.consumers ||= new Set();slot.consumers.add(handle);}
     (rt.reactiveBindings ||= new Set()).add(handle);
+    if(key)(rt.reactiveBindingIndex||(rt.reactiveBindingIndex=new Map())).set(key,handle);
+    if(updater&&result&&typeof result==='object'){try{Object.defineProperty(result,RUNTIME_REACTIVE_HANDLE,{configurable:true,enumerable:false,writable:true,value:handle});}catch{}}
     return result;
   }
   const RUNTIME_REACTIVE_CONTEXT_CACHE=new WeakMap();
@@ -9945,7 +10097,7 @@
         const value=Reflect.get(target,prop,receiver);
         if(prop==='ontick'||typeof value!=='function')return value;
         let wrapped=cache.get(prop);
-        if(!wrapped){wrapped=(...args)=>runtimeInvokeReactiveContextMethod(target,value,args);cache.set(prop,wrapped);}
+        if(!wrapped){wrapped=(...args)=>runtimeInvokeReactiveContextMethod(target,value,args,prop);cache.set(prop,wrapped);}
         return wrapped;
       }
     });
@@ -9958,16 +10110,19 @@
     const rt=state.runtime,active=rt?.activeValueTickRegistration;
     if(!rt||!active?.spec)return callback(0,active?.ctx||null,Math,active?.ctx?.scriptHere);
     const spec=active.spec;
-    let slot=active.slot||spec.liveSlot||spec.entry?.[VALUE_TICK_SLOT]||null;
+    let slot=active.slot||(active.instance?null:(spec.liveSlot||spec.entry?.[VALUE_TICK_SLOT]))||null;
     if(!slot){
       const entryValue=spec.entry&&Object.prototype.hasOwnProperty.call(spec.entry,'value')?spec.entry.value:spec.fallback;
       const seedValue=runtimeUnwrapReactiveValue(entryValue);
       slot={type:String(active.type||spec.type||'str'),source:String(spec.source??''),callback:null,callbacks:[],value:undefined,seedValue,initialized:false,active:true,stopped:false,
-        ownerSpec:spec,ownerDesc:active.desc||null,ownerDescScript:active.desc||null,ownerNodeId:String(active.node?.id||''),ownerScriptId:String(active.desc?.id||''),ownerContext:active.ctx||null,reactiveContext:active.ctx||null,passive:true,expressionBased:true,version:0,evaluating:false,lastFixedTick:-1,sessionId:0,consumers:new Set()};
+        ownerSpec:spec,ownerDesc:active.desc||null,ownerDescScript:active.desc||null,ownerNodeId:String(active.node?.id||''),ownerScriptId:String(active.desc?.id||''),ownerContext:active.ctx||null,reactiveContext:active.ctx||null,passive:true,expressionBased:true,version:0,evaluating:false,lastFixedTick:-1,sessionId:0,consumers:new Set(),instance:!!active.instance};
       slot.sessionId=Number(rt.nextValueTickSessionId)||1;rt.nextValueTickSessionId=slot.sessionId+1;
-      spec.liveSlot=slot;spec.nodeId=String(active.node?.id||'');active.slot=slot;slot.lastFixedTick=Number(rt.fixedTickCounter)||0;
-      if(active.desc){active.desc.liveSlotCount=(Number(active.desc.liveSlotCount)||0)+1;}
-      if(spec.entry){try{Object.defineProperty(spec.entry,VALUE_TICK_SLOT,{configurable:true,enumerable:false,writable:true,value:slot});}catch{try{spec.entry[VALUE_TICK_SLOT]=slot;}catch{}}}
+      active.slot=slot;slot.lastFixedTick=Number(rt.fixedTickCounter)||0;
+      if(!slot.instance){
+        spec.liveSlot=slot;spec.nodeId=String(active.node?.id||'');
+        if(active.desc){active.desc.liveSlotCount=(Number(active.desc.liveSlotCount)||0)+1;}
+        if(spec.entry){try{Object.defineProperty(spec.entry,VALUE_TICK_SLOT,{configurable:true,enumerable:false,writable:true,value:slot});}catch{try{spec.entry[VALUE_TICK_SLOT]=slot;}catch{}}}
+      }
       (rt.valueTickPool ||= []).push(slot);
     }
     active.slot=slot;
@@ -9987,32 +10142,46 @@
     slot.initialized=true;
     slot.version=(Number(slot.version)||0)+1;
     const spec=slot.ownerSpec,desc=slot.ownerDesc;
-    if(spec?.entry){try{spec.entry.value=value;}catch{}}
-    if(desc?.values&&spec?.name)try{desc.values[spec.name]=value;}catch{}
-    for(const handle of slot.consumers||[])if(handle?.active)handle.changedSlots.add(slot);
+    if(!slot.instance){
+      if(spec?.entry){try{spec.entry.value=value;}catch{}}
+      if(desc?.values&&spec?.name)try{desc.values[spec.name]=value;}catch{}
+    }
+    if(slot.consumers?.size){
+      const dirty=rt.dirtyReactiveBindings||(rt.dirtyReactiveBindings=new Set());
+      for(const handle of slot.consumers)if(handle?.active){handle.changedSlots.add(slot);dirty.add(handle);}
+    }
     return true;
   }
 
   function runtimeRefreshLiveOwnerContext(slot){
-    const rt=state.runtime;
-    const ownerNode=rt.nodeById?.get(String(slot.ownerNodeId||''));
+    const rt=state.runtime,nodeId=String(slot.ownerNodeId||'');
+    const ownerNode=rt.nodeById?.get(nodeId);
     if(!ownerNode)return null;
-    const ownerScript=slot.ownerDescScript?.sn||null;
-    const ctx=runtimeGetCachedContext(ownerNode,ownerScript||null);
-    const reactive=slot.reactiveContext&&slot.reactiveContext.__node2dReactiveOwner===ctx?slot.reactiveContext:runtimeCreateReactiveContext(ctx);
-    try{Object.defineProperty(reactive,'__node2dReactiveOwner',{configurable:true,enumerable:false,writable:false,value:ctx});}catch{}
-    slot.ownerContext=ctx;
-    slot.reactiveContext=reactive;
-    return reactive;
+    const ownerScript=slot.ownerDescScript?.sn||null,tick=Number(rt.fixedTickCounter)||0;
+    const cache=rt.liveContextByNode||(rt.liveContextByNode=new Map());
+    let entry=cache.get(nodeId);
+    if(!entry||entry.tick!==tick||entry.node!==ownerNode){
+      // Refreshing a node context walks joysticks, inputs and shared lists: do it once per node per tick.
+      const ctx=runtimeGetCachedContext(ownerNode,ownerScript||null);
+      entry={tick,node:ownerNode,ctx,reactive:runtimeCreateReactiveContext(ctx)};
+      cache.set(nodeId,entry);
+    }else if(ownerScript?.id){
+      entry.ctx.__scriptId=String(ownerScript.id);entry.ctx.__terminalScriptId='';
+    }
+    slot.ownerContext=entry.ctx;
+    slot.reactiveContext=entry.reactive;
+    return entry.reactive;
   }
 
   // Generic reactive call layer. ctx.ontick has no knowledge of any action.
   function runtimeDeactivateReactiveBindingsForNode(nodeId){
     const rt=state.runtime,nid=String(nodeId||'');if(!rt||!nid)return;
-    for(const handle of rt.reactiveBindings||[])if(String(handle?.nodeId||'')===nid){handle.active=false;handle.changedSlots?.clear?.();}
+    for(const handle of Array.from(rt.reactiveBindings||[]))if(String(handle?.nodeId||'')===nid)runtimeReleaseReactiveHandle(handle);
   }
   function runtimeFlushReactiveBindings(){
-    const rt=state.runtime,handles=rt?.reactiveBindings;if(!rt?.running||!(handles instanceof Set)||!handles.size)return;
+    const rt=state.runtime,dirty=rt?.dirtyReactiveBindings;if(!rt?.running||!(dirty instanceof Set)||!dirty.size)return;
+    // Only bindings whose slots changed this tick are visited (not every binding ever created).
+    const handles=Array.from(dirty);dirty.clear();
     for(const handle of handles){
       if(!handle?.active||!handle.changedSlots?.size)continue;
       try{const args=runtimeUnwrapReactiveArgument(handle.args);if(typeof handle.updater==='function')handle.updater(...args);else handle.fn.apply(handle.target,args);}
@@ -10619,10 +10788,36 @@
       return !!runtimeSetVariable(scope,name,rec.value,node);
     }catch(err){state.runtime.lastError=String(err?.message||err);runtimeOutput('error',`loadVariable: ${state.runtime.lastError}`);return false;}
   }
-  function runtimeSetVariable(scope,name,value,node){
-    if(name===null||name===undefined||value===null||value===undefined)return false;
+  const LIST_VARIABLE_OPERATIONS=['Set','Push','Pop','Shift','Unshift','Insert','Set At','Remove At','Remove Value','Clear','Reverse','Sort'];
+  // Returns the new list for a List variable operation (never mutates `list`).
+  function runtimeListOperation(list,operation,value,index){
+    const out=Array.isArray(list)?list.slice():[];
+    const items=value===null||value===undefined?[]:parseListValue(value);
+    const at=(fallback)=>{const n=Number.isFinite(Number(index))&&index!==null&&index!==''?Math.trunc(Number(index)):fallback;return n<0?Math.max(0,out.length+n):Math.min(n,out.length);};
+    switch(operation){
+      case 'Push':out.push(...items);break;
+      case 'Pop':out.pop();break;
+      case 'Shift':out.shift();break;
+      case 'Unshift':out.unshift(...items);break;
+      case 'Insert':out.splice(at(out.length),0,...items);break;
+      case 'Set At':{const i=at(out.length);if(items.length&&i<out.length)out[i]=items[0];break;}
+      case 'Remove At':{const i=at(-1);if(i>=0&&i<out.length)out.splice(i,1);break;}
+      case 'Remove Value':for(const item of items){const i=out.findIndex(x=>x===item||String(x)===String(item));if(i>=0)out.splice(i,1);}break;
+      case 'Clear':out.length=0;break;
+      case 'Reverse':out.reverse();break;
+      case 'Sort':out.sort((a,b)=>(typeof a==='number'&&typeof b==='number')?a-b:String(a).localeCompare(String(b),undefined,{numeric:true}));break;
+      default:return items;
+    }
+    return out;
+  }
+  function runtimeSetVariable(scope,name,value,node,operation='Set',index=null){
+    if(name===null||name===undefined)return false;
+    const record=runtimeVariableRecord(scope,name,node);
+    if(record?.dataType==='List'&&LIST_VARIABLE_OPERATIONS.includes(operation)&&operation!=='Set'){
+      value=runtimeListOperation(parseListValue(record.value),operation,value,index);
+    }else if(value===null||value===undefined)return false;
     if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(name,value);
-    const v=runtimeVariableRecord(scope,name,node);if(!v)return false;
+    const v=record;if(!v)return false;
     if(v.dataType==='Bool')v.value=!!value;
     else if(v.dataType==='Int')v.value=Number(value);
     else if(v.dataType==='List')v.value=parseListValue(value);
@@ -10710,6 +10905,25 @@ function updateRuntimeAnimations(dt){
     if(body)body._renderCache=null;
     return c.visible;
   }
+  // ---------------------------------------------------------------------------------------------------
+  // Particles
+  //
+  // One createParticles call is one emission "group". Every one of its `Count` particles is created
+  // with identical values and ages in lock-step, so they always overlap exactly. The group is therefore
+  // simulated and drawn ONCE; Count only raises the opacity of translucent particles (stacked draws
+  // composite to 1-(1-a)^Count, which is reproduced exactly). Cost no longer grows with Count.
+  //
+  // A group owns a list of particle "states" (Particle1..N in the ScriptNode). State N+1 is blended in
+  // from state N during its Transition time. Numbers and colors blend smoothly; Type/Source/Sprite/
+  // Animation switch halfway through a transition. Position and velocity of later states are applied as
+  // the change from the previous state, spread over the transition, so they combine with the motion
+  // integration instead of fighting it.
+  // ---------------------------------------------------------------------------------------------------
+  const PARTICLE_TYPES=['Circle','Trail','Box','Sprite'];
+  const PARTICLE_TINT_LIMIT=48;
+  const particleTintCache=new Map(),particleImageIds=new WeakMap();
+  let particleImageSerial=1;
+
   function runtimeParticleAnimation(node,name){
     const wanted=String(name??'').trim();
     if(!wanted)return null;
@@ -10728,119 +10942,287 @@ function updateRuntimeAnimations(dt){
     return typeof src==='string'?src:'';
   }
   function runtimeParticleColorAlpha(value){try{return clamp(Number(parseColor(value)[3]),0,1);}catch{return 1;}}
-  function runtimeDrawParticleSprite(ctx,particle){
-    const src=runtimeParticleSpriteSource(particle?.src);
+  function runtimeParticleNumber(value,fallback){
+    if(value===null||value===undefined||value==='')return fallback;
+    const n=Number(value);
+    return Number.isFinite(n)?n:fallback;
+  }
+
+  // Turns the raw inputs of one particle into a plain, fully resolved state. An empty (null) input
+  // keeps the value of `prev` (the previous particle, or the current state when updating live).
+  function runtimeParticleResolveState(raw,prev,emitter,spawn){
+    const type=PARTICLE_TYPES.includes(String(raw?.Type))?String(raw.Type):(prev?.type||'Circle');
+    const source=String(raw?.Source||prev?.source||'Sprite')==='Animation'?'Animation':'Sprite';
+    const src=type==='Sprite'&&source==='Sprite'?runtimeParticleSpriteSource(raw?.Sprite):'';
+    const animation=type==='Sprite'&&source==='Animation'?runtimeParticleAnimation(emitter,raw?.Animation):null;
+    const frames=Array.isArray(animation?.sprites)?animation.sprites.filter(f=>f?.src).map(f=>f.src):(type==='Sprite'&&source==='Animation'&&prev?.frames?prev.frames:[]);
+    // An empty (null) Color means "no color": nothing is modulated and the sprite keeps its own colors.
+    // A later particle with an empty Color keeps the previous particle's choice.
+    const hasColor=raw?.Color!==null&&raw?.Color!==undefined&&raw?.Color!=='';
+    const colorOn=hasColor?true:!!prev?.colorOn;
+    const color=hasColor?String(raw.Color):(prev?.color||'#FFFFFFFF');
+    let rgba;try{rgba=colorOn?parseColor(color).slice(0,4):[1,1,1,1];}catch{rgba=[1,1,1,1];}
+    const strengthIn=clamp(runtimeParticleNumber(raw?.Strength,prev?prev.strengthIn*100:100)/100,0,1);
+    const num=runtimeParticleNumber;
+    const transition=raw?.Transition===null||raw?.Transition===undefined||raw?.Transition===''?null:Math.max(0,num(raw.Transition,0));
+    return {
+      type,source,src,frames,fps:Number(animation?.fps)||prev?.fps||8,
+      color,colorOn,rgba,strengthIn,strength:colorOn?strengthIn:0,
+      sx:num(raw?.ScaleX,prev?prev.sx:1),sy:num(raw?.ScaleY,prev?prev.sy:1),angle:num(raw?.Angle,prev?prev.angle:0),
+      vx:num(raw?.VelocityX,prev?prev.vx:0),vy:num(raw?.VelocityY,prev?prev.vy:0),
+      ax:num(raw?.AccelerationX,prev?prev.ax:0),ay:num(raw?.AccelerationY,prev?prev.ay:0),
+      rx:num(raw?.PosX,prev?prev.rx:spawn.x),ry:num(raw?.PosY,prev?prev.ry:spawn.y),
+      transition
+    };
+  }
+  function runtimeParticleStatesFromValues(values,emitter,spawn,base){
+    const raws=Array.isArray(values?.Particles)&&values.Particles.length?values.Particles:[values||{}];
+    const states=[];
+    for(let i=0;i<raws.length;i++)states.push(runtimeParticleResolveState(raws[i],i===0?base:states[i-1],emitter,spawn));
+    return states;
+  }
+  // Segment i blends state i into state i+1. Transitions that are left empty share what is left of
+  // Lifetime evenly.
+  function runtimeParticleBuildTimeline(group){
+    const states=group.states,timeline=[];
+    group.timeline=timeline;group.sampled=null;
+    if(states.length<2)return;
+    let explicit=0,auto=0;
+    for(let i=1;i<states.length;i++){const t=states[i].transition;if(t===null)auto++;else explicit+=t;}
+    const autoMs=auto?Math.max(0,group.lifetime-explicit)/auto:0;
+    let cursor=0;
+    for(let i=1;i<states.length;i++){
+      const from=states[i-1],to=states[i],dur=to.transition===null?autoMs:to.transition;
+      timeline.push({start:cursor,end:cursor+dur,dur,from,to,dx:to.rx-from.rx,dy:to.ry-from.ry,dvx:to.vx-from.vx,dvy:to.vy-from.vy});
+      cursor+=dur;
+    }
+  }
+  // Writes the look of the group at `age` (scale, angle, acceleration, color, discrete choices).
+  function runtimeParticleSample(group,age){
+    const states=group.states,timeline=group.timeline;
+    let from=states[0],to=from,t=0;
+    if(timeline.length){
+      let seg=timeline[timeline.length-1];
+      for(let i=0;i<timeline.length;i++){if(age<timeline[i].end){seg=timeline[i];break;}}
+      if(age>=seg.end){from=to=seg.to;}
+      else{from=seg.from;to=seg.to;t=seg.dur>0?clamp((age-seg.start)/seg.dur,0,1):1;}
+    }
+    if(from===to){
+      if(group.sampled===from)return;
+      group.sampled=from;
+    }else group.sampled=null;
+    const rgba=group.rgba,a=from.rgba,b=to.rgba,k=t;
+    group.sx=from.sx+(to.sx-from.sx)*k;group.sy=from.sy+(to.sy-from.sy)*k;group.angle=from.angle+(to.angle-from.angle)*k;
+    group.ax=from.ax+(to.ax-from.ax)*k;group.ay=from.ay+(to.ay-from.ay)*k;
+    group.strength=from.strength+(to.strength-from.strength)*k;
+    rgba[0]=a[0]+(b[0]-a[0])*k;rgba[1]=a[1]+(b[1]-a[1])*k;rgba[2]=a[2]+(b[2]-a[2])*k;rgba[3]=a[3]+(b[3]-a[3])*k;
+    const cur=t>=.5?to:from;
+    group.type=cur.type;group.source=cur.source;group.frames=cur.frames;group.fps=cur.fps;
+    group.src=cur.src||(cur.frames.length?cur.frames[0]:'');
+    group.cssDirty=true;
+  }
+  // Position/velocity of later states: apply the part of the change that falls inside [a0,a1].
+  function runtimeParticleAdvanceTransitions(group,a0,a1){
+    const timeline=group.timeline;
+    for(let i=0;i<timeline.length;i++){
+      const s=timeline[i];
+      if(s.dur<=0){
+        if((a0<s.start&&a1>=s.start)||(s.start===0&&a0===0)){group.x+=s.dx;group.y+=s.dy;group.vx+=s.dvx;group.vy+=s.dvy;}
+        continue;
+      }
+      const lo=a0>s.start?a0:s.start,hi=a1<s.end?a1:s.end;
+      if(hi<=lo)continue;
+      const f=(hi-lo)/s.dur;
+      group.x+=s.dx*f;group.y+=s.dy*f;group.vx+=s.dvx*f;group.vy+=s.dvy*f;
+    }
+  }
+  function runtimeParticleRefreshCss(group){
+    const c=group.rgba,a=clamp(c[3],0,1),n=group.count;
+    // `n` identical translucent particles stacked on each other composite to 1-(1-a)^n.
+    // Sprites follow the Sprite component: alpha is lerped by Strength toward the color's alpha.
+    const base=group.type==='Sprite'?1-group.strength+a*group.strength:a;
+    const alpha=n>1?1-Math.pow(1-base,n):base;
+    group.alpha=alpha;
+    group.css=`rgba(${Math.round(clamp(c[0],0,1)*255)},${Math.round(clamp(c[1],0,1)*255)},${Math.round(clamp(c[2],0,1)*255)},${alpha})`;
+    group.cssDirty=false;
+  }
+  function runtimeInsertParticleGroup(rt,group){
+    const list=rt.particleGroups||(rt.particleGroups=[]);
+    if(!list.length||list[list.length-1].renderIndex<=group.renderIndex){list.push(group);return;}
+    let lo=0,hi=list.length;
+    while(lo<hi){const mid=(lo+hi)>>1;if(list[mid].renderIndex<=group.renderIndex)lo=mid+1;else hi=mid;}
+    list.splice(lo,0,group);
+  }
+  function runtimeCreateParticles(values,node){
+    const rt=state.runtime;if(!rt)return null;
+    const tc=component(node,'transform')||{position:[0,0]};
+    const spawn={x:Number(tc.position?.[0])||0,y:Number(tc.position?.[1])||0};
+    const count=clamp(Math.floor(Number(values?.Count)||1),1,10000),lifetime=Math.max(1,Number(values?.Lifetime)||1000);
+    const index=Number.isFinite(Number(values?.Index))?Number(values.Index):0;
+    const states=runtimeParticleStatesFromValues(values,node,spawn,null),s0=states[0];
+    const group={
+      active:true,count,lifetime,age:0,renderIndex:index,renderSerial:Number(rt.nextParticleRenderSerial)||1,emitterNodeId:node?.id||null,
+      spawnX:spawn.x,spawnY:spawn.y,states,timeline:[],sampled:null,
+      x:s0.rx,y:s0.ry,px:s0.rx,py:s0.ry,vx:s0.vx,vy:s0.vy,ax:s0.ax,ay:s0.ay,
+      sx:s0.sx,sy:s0.sy,angle:s0.angle,strength:s0.strength,rgba:[0,0,0,1],css:'',alpha:1,cssDirty:true,
+      type:s0.type,source:s0.source,src:s0.src,frames:s0.frames,fps:s0.fps,trail:null
+    };
+    rt.nextParticleRenderSerial=group.renderSerial+1;
+    runtimeParticleBuildTimeline(group);runtimeParticleSample(group,0);
+    if(group.type==='Trail')group.trail=[{x:group.x,y:group.y}];
+    runtimeSetReactiveTarget(group,next=>runtimeUpdateParticleGroup(group,next||{}));
+    runtimeInsertParticleGroup(rt,group);
+    return group;
+  }
+  // Called when a live (ctx.ontick) input of this exact emission changed.
+  function runtimeUpdateParticleGroup(group,values){
+    if(!group?.active)return;
+    const rt=state.runtime,emitter=group.emitterNodeId?rt?.nodeById?.get(group.emitterNodeId):null;
+    const previous=group.states[0],spawn={x:group.spawnX,y:group.spawnY};
+    const states=runtimeParticleStatesFromValues(values,emitter,spawn,previous),s0=states[0];
+    const raw0=Array.isArray(values?.Particles)&&values.Particles.length?values.Particles[0]:values||{};
+    const set=(v)=>v!==null&&v!==undefined;
+    // Particle1 position/velocity are absolute: a changed value moves the whole emission there.
+    if(set(raw0.PosX)&&s0.rx!==previous.rx)group.x=s0.rx;
+    if(set(raw0.PosY)&&s0.ry!==previous.ry)group.y=s0.ry;
+    if(set(raw0.VelocityX)&&s0.vx!==previous.vx)group.vx=s0.vx;
+    if(set(raw0.VelocityY)&&s0.vy!==previous.vy)group.vy=s0.vy;
+    if(set(values?.Lifetime))group.lifetime=Math.max(1,Number(values.Lifetime)||1);
+    if(set(values?.Index)&&Number.isFinite(Number(values.Index))&&Number(values.Index)!==group.renderIndex){group.renderIndex=Number(values.Index);rt.particleOrderDirty=true;}
+    group.states=states;
+    runtimeParticleBuildTimeline(group);runtimeParticleSample(group,group.age);
+  }
+  function updateRuntimeParticles(dt){
+    const rt=state.runtime,groups=rt?.particleGroups;if(!Array.isArray(groups)||!groups.length)return;
+    const seconds=Math.max(0,Number(dt)||0),ms=seconds*1000;let write=0;
+    for(let i=0;i<groups.length;i++){
+      const g=groups[i];if(!g||!g.active)continue;
+      const a0=g.age,a1=a0+ms;
+      g.px=g.x;g.py=g.y;
+      if(g.timeline.length){runtimeParticleAdvanceTransitions(g,a0,a1);runtimeParticleSample(g,a1);}
+      g.vx+=g.ax*seconds;g.vy+=g.ay*seconds;g.x+=g.vx*seconds;g.y+=g.vy*seconds;g.age=a1;
+      if(g.type==='Trail'){
+        const pts=g.trail||(g.trail=[{x:g.px,y:g.py}]),last=pts[pts.length-1];
+        if(!last||Math.hypot(last.x-g.x,last.y-g.y)>=.75)pts.push({x:g.x,y:g.y});
+        const maxPoints=Math.max(2,Math.min(240,Math.ceil(g.lifetime/16.6667)));
+        while(pts.length>maxPoints)pts.shift();
+      }
+      if(g.type==='Sprite'&&g.source==='Animation'&&g.frames.length){
+        g.src=g.frames[Math.floor((g.age/1000)*Math.max(1,Number(g.fps)||8))%g.frames.length]||g.src;
+      }
+      if(g.age<g.lifetime)groups[write++]=g;
+      else{g.active=false;runtimeReleaseReactiveTarget(g);}
+    }
+    groups.length=write;
+  }
+
+  // Sprites are tinted on a small offscreen canvas. Tinting with source-atop directly on the game canvas
+  // only clips to what is already painted there (the whole scene), which filled the sprite's whole
+  // rectangle with the color. Offscreen, source-atop clips to the sprite's own opaque pixels.
+  function runtimeTintedParticleSprite(img,rgba,strength){
+    let id=particleImageIds.get(img);if(!id){id=particleImageSerial++;particleImageIds.set(img,id);}
+    const r=Math.round(clamp(rgba[0],0,1)*255),g=Math.round(clamp(rgba[1],0,1)*255),b=Math.round(clamp(rgba[2],0,1)*255),st=Math.round(clamp(strength,0,1)*255);
+    const key=`${id}|${r},${g},${b},${st}`;
+    let canvas=particleTintCache.get(key);
+    if(canvas){particleTintCache.delete(key);particleTintCache.set(key,canvas);return canvas;}
+    if(particleTintCache.size>=PARTICLE_TINT_LIMIT){
+      const oldest=particleTintCache.keys().next().value;canvas=particleTintCache.get(oldest);particleTintCache.delete(oldest);
+    }
+    if(!canvas)canvas=document.createElement('canvas');
+    const natural=Math.max(img.naturalWidth,img.naturalHeight),k=natural>512?512/natural:1;
+    canvas.width=Math.max(1,Math.round(img.naturalWidth*k));canvas.height=Math.max(1,Math.round(img.naturalHeight*k));
+    const c=canvas.getContext('2d',{willReadFrequently:true});
+    if(!c)return null;
+    c.imageSmoothingEnabled=false;
+    c.drawImage(img,0,0,canvas.width,canvas.height);
+    const amount=st/255,fr=1-amount+(r/255)*amount,fg=1-amount+(g/255)*amount,fb=1-amount+(b/255)*amount;
+    try{
+      // Same math as the Sprite component: each channel goes from the original pixel toward pixel*color by Strength.
+      // Alpha is applied when drawing, so transparent pixels stay transparent.
+      const image=c.getImageData(0,0,canvas.width,canvas.height),d=image.data;
+      for(let i=0;i<d.length;i+=4){d[i]=Math.round(d[i]*fr);d[i+1]=Math.round(d[i+1]*fg);d[i+2]=Math.round(d[i+2]*fb);}
+      c.putImageData(image,0,0);
+    }catch{
+      c.globalCompositeOperation='source-atop';c.globalAlpha=amount;c.fillStyle=`rgb(${r},${g},${b})`;c.fillRect(0,0,canvas.width,canvas.height);
+    }
+    particleTintCache.set(key,canvas);
+    return canvas;
+  }
+  function runtimeDrawParticleSprite(ctx,group){
+    const src=group.src;
     if(!src)return false;
     const img=getAssetImage(src);
     if(!img?.complete||!img.naturalWidth||!img.naturalHeight)return false;
     const size=constrainImageSize(img);
     if(!size)return false;
-    const sx=Number(particle.sx??1),sy=Number(particle.sy??1);
-    const width=size.w*Math.abs(Number.isFinite(sx)?sx:1),height=size.h*Math.abs(Number.isFinite(sy)?sy:1);
+    const sx=Number.isFinite(group.sx)?group.sx:1,sy=Number.isFinite(group.sy)?group.sy:1;
+    const width=size.w*Math.abs(sx),height=size.h*Math.abs(sy);
     if(!(width>0&&height>0))return false;
-    ctx.save();
-    try{
-      // Particle rendering can follow other canvas effects. Reset compositing locally so
-      // the sprite is drawn as its actual image, including its source alpha channel.
-      ctx.globalCompositeOperation='source-over';
-      ctx.globalAlpha=clamp(Number(particle.colorAlpha??runtimeParticleColorAlpha(particle.color)),0,1);
-      ctx.imageSmoothingEnabled=false;
-      ctx.imageSmoothingQuality='nearest';
-      ctx.scale(sx<0?-1:1,sy<0?-1:1);
-      ctx.drawImage(img,-width/2,-height/2,width,height);
-      const strength=clamp(Number(particle.modulateStrength??1),0,1);
-      if(strength>0){
-        let tint=particle.color;
-        try{const rgba=parseColor(particle.color);tint=rgbaToHex([rgba[0],rgba[1],rgba[2],1]);}catch{tint='#FFFFFFFF';}
-        // source-atop clips modulation to non-transparent sprite pixels; do not paint
-        // the rectangular image bounds, which would erase transparent edges.
-        ctx.globalCompositeOperation='source-atop';
-        ctx.globalAlpha=strength;
-        ctx.fillStyle=colorCss(tint,'#fff');
-        ctx.fillRect(-width/2,-height/2,width,height);
-      }
-    }finally{
-      ctx.restore();
-    }
+    ctx.globalAlpha=clamp(group.alpha,0,1);
+    ctx.imageSmoothingEnabled=false;
+    if(sx<0||sy<0)ctx.scale(sx<0?-1:1,sy<0?-1:1);
+    const tinted=group.strength>0.001?runtimeTintedParticleSprite(img,group.rgba,group.strength):null;
+    ctx.drawImage(tinted||img,-width/2,-height/2,width,height);
     return true;
-  }
-  function runtimeCreateParticles(values,node){
-    const rt=state.runtime;if(!rt)return null;
-    const type=['Circle','Trail','Box','Sprite'].includes(String(values?.Type))?String(values.Type):'Circle';
-    const tc=component(node,'transform')||{position:[0,0]};const baseX=Number(tc.position?.[0])||0,baseY=Number(tc.position?.[1])||0;
-    const count=clamp(Math.floor(Number(values?.Count)||1),1,10000),lifetime=Math.max(1,Number(values?.Lifetime)||1000),particleArray=rt.particles||(rt.particles=[]);
-    const source=String(values?.Source||'Sprite')==='Animation'?'Animation':'Sprite';
-    const src=type==='Sprite'&&source==='Sprite'?runtimeParticleSpriteSource(values?.Sprite):'';
-    const animation=type==='Sprite'&&source==='Animation'?runtimeParticleAnimation(node,values?.Animation):null;
-    const animationFrames=Array.isArray(animation?.sprites)?animation.sprites.filter(f=>f?.src):[];
-    const color=String(values?.Color||'#FFFFFFFF'),colorAlpha=runtimeParticleColorAlpha(color),strength=clamp(Number(values?.Strength??100)/100,0,1);
-    const scaleX=Number(values?.ScaleX??1),scaleY=Number(values?.ScaleY??1),index=Number.isFinite(Number(values?.Index))?Number(values.Index):0;
-    const x=values?.PosX===null||values?.PosX===undefined?baseX:Number(values.PosX)||0,y=values?.PosY===null||values?.PosY===undefined?baseY:Number(values.PosY)||0;
-    const group={particles:[],active:true,particleCount:count,renderIndex:index,source,animationName:animation?.name||'',animationFrames,animationFps:Number(animation?.fps)||8,modulateStrength:strength,emitterNodeId:node?.id||null,renderSerial:Number(rt.nextParticleRenderSerial)||1};
-    rt.nextParticleRenderSerial=group.renderSerial+1;runtimeSetReactiveTarget(group,(next)=>runtimeUpdateParticleGroup(group,next||{}));(rt.particleGroups ||= []).push(group);
-    for(let i=0;i<count;i++){
-      const p={x,y,px:x,py:y,sx:Number.isFinite(scaleX)?scaleX:1,sy:Number.isFinite(scaleY)?scaleY:1,vx:Number(values?.VelocityX)||0,vy:Number(values?.VelocityY)||0,ax:Number(values?.AccelerationX)||0,ay:Number(values?.AccelerationY)||0,angle:Number(values?.Angle)||0,type,source,src,color,colorAlpha,modulateStrength:strength,animationName:animation?.name||'',animationFrames,animationFps:Number(animation?.fps)||8,age:0,lifetime,emitterNodeId:node?.id||null,liveGroup:group,renderIndex:index};
-      if(type==='Trail')p.trailPoints=[{x,y}];particleArray.push(p);group.particles.push(p);
-    }
-    return group;
-  }
-  function runtimeUpdateParticleGroup(group,values){
-    if(!group?.active)return;
-    const first=group.particles?.[0],emitter=first?.emitterNodeId?state.runtime?.nodeById?.get(first.emitterNodeId):null;
-    const type=['Circle','Trail','Box','Sprite'].includes(String(values?.Type))?String(values.Type):first?.type||'Circle';
-    const source=String(values?.Source??group.source??'Sprite')==='Animation'?'Animation':'Sprite';
-    const spriteName=String(values?.Sprite??'');
-    const animation=type==='Sprite'&&source==='Animation'?runtimeParticleAnimation(emitter,values?.Animation??group.animationName):null;
-    const animationFrames=Array.isArray(animation?.sprites)?animation.sprites.filter(f=>f?.src):group.animationFrames||[];
-    const src=type==='Sprite'&&source==='Sprite'?runtimeParticleSpriteSource(spriteName):'';
-    if(values?.Index!==null&&values?.Index!==undefined&&Number.isFinite(Number(values.Index)))group.renderIndex=Number(values.Index);
-    group.source=source;group.animationName=animation?.name||String(values?.Animation ?? group.animationName ?? '');group.animationFrames=animationFrames;group.animationFps=Number(animation?.fps)||group.animationFps||8;
-    if(values?.Strength!==null&&values?.Strength!==undefined)group.modulateStrength=clamp(Number(values.Strength)/100,0,1);
-    for(const p of group.particles||[]){
-      if(values?.PosX!==null&&values?.PosX!==undefined)p.x=Number(values.PosX)||0;if(values?.PosY!==null&&values?.PosY!==undefined)p.y=Number(values.PosY)||0;
-      if(values?.ScaleX!==null&&values?.ScaleX!==undefined)p.sx=Number(values.ScaleX)||0;if(values?.ScaleY!==null&&values?.ScaleY!==undefined)p.sy=Number(values.ScaleY)||0;
-      if(values?.VelocityX!==null&&values?.VelocityX!==undefined)p.vx=Number(values.VelocityX)||0;if(values?.VelocityY!==null&&values?.VelocityY!==undefined)p.vy=Number(values.VelocityY)||0;
-      if(values?.AccelerationX!==null&&values?.AccelerationX!==undefined)p.ax=Number(values.AccelerationX)||0;if(values?.AccelerationY!==null&&values?.AccelerationY!==undefined)p.ay=Number(values.AccelerationY)||0;
-      if(values?.Angle!==null&&values?.Angle!==undefined)p.angle=Number(values.Angle)||0;
-      if(values?.Color!==null&&values?.Color!==undefined){p.color=String(values.Color);p.colorAlpha=runtimeParticleColorAlpha(p.color);}
-      if(values?.Lifetime!==null&&values?.Lifetime!==undefined)p.lifetime=Math.max(1,Number(values.Lifetime)||1);
-      if(values?.Type!==null&&values?.Type!==undefined)p.type=type;
-      if(values?.Source!==null&&values?.Source!==undefined)p.source=source;
-      if(values?.Sprite!==null&&values?.Sprite!==undefined)p.src=src||p.src;
-      if(values?.Animation!==null&&values?.Animation!==undefined)p.animationName=group.animationName;
-      p.animationFrames=group.animationFrames;p.animationFps=group.animationFps;p.modulateStrength=group.modulateStrength;p.renderIndex=group.renderIndex;
-    }
-  }
-  function updateRuntimeParticles(dt){
-    const rt=state.runtime,particles=rt?.particles;if(!Array.isArray(particles)||!particles.length)return;
-    const seconds=Math.max(0,Number(dt)||0);let write=0;
-    for(let i=0;i<particles.length;i++){
-      const p=particles[i];if(!p)continue;const group=p.liveGroup;
-      p.px=p.x;p.py=p.y;p.vx+=p.ax*seconds;p.vy+=p.ay*seconds;p.x+=p.vx*seconds;p.y+=p.vy*seconds;p.age+=seconds*1000;
-      if(p.type==='Trail'){const pts=Array.isArray(p.trailPoints)?p.trailPoints:(p.trailPoints=[]),last=pts.at(-1);if(!last||Math.hypot(last.x-p.x,last.y-p.y)>=.75)pts.push({x:p.x,y:p.y});const maxPoints=Math.max(2,Math.min(240,Math.ceil(p.lifetime/16.6667)));if(pts.length>maxPoints)pts.splice(0,pts.length-maxPoints);}
-      if(p.type==='Sprite'&&p.source==='Animation'&&p.animationFrames.length){const frameIndex=Math.floor((p.age/1000)*Math.max(1,Number(p.animationFps)||8))%p.animationFrames.length;p.src=p.animationFrames[frameIndex]?.src||p.src;}
-      if(p.age<p.lifetime)particles[write++]=p;else if(group){group.particleCount=Math.max(0,(Number(group.particleCount)||1)-1);if(group.particleCount<=0)group.active=false;}
-    }
-    particles.length=write;if(Array.isArray(rt.particleGroups))rt.particleGroups=rt.particleGroups.filter(g=>g?.active);
   }
   function drawRuntimeParticleGroup(ctx,group,cam,halfWorldX,halfWorldY){
     if(!group?.active)return;
-    for(const p of group.particles||[]){
-      if(!p)continue;
-      if(p?.emitterNodeId){const emitter=state.runtime?.nodeById?.get?.(p.emitterNodeId);if(emitter&&!runtimeNodeVisible(emitter))continue;}
-      const points=p.type==='Trail'?p.trailPoints:null,anchorX=Number(p.x)||0,anchorY=Number(p.y)||0;
-      if(Math.abs(anchorX-(Number(cam?.x)||0))>halfWorldX+64||Math.abs(anchorY-(Number(cam?.y)||0))>halfWorldY+64)continue;
-      ctx.save();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
-      if(p.type==='Trail'&&Array.isArray(points)&&points.length>1){ctx.strokeStyle=colorCss(p.color,'#fff');ctx.lineWidth=Math.max(.5,4*Math.max(Math.abs(Number(p.sx)||0),Math.abs(Number(p.sy)||0)));ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();points.forEach((pt,i)=>{if(i===0)ctx.moveTo(pt.x,pt.y);else ctx.lineTo(pt.x,pt.y);});ctx.stroke();}
-      else{ctx.translate(anchorX,anchorY);ctx.rotate((Number(p.angle)||0)*Math.PI/180);
-        if(p.type==='Circle'){ctx.fillStyle=colorCss(p.color,'#fff');ctx.beginPath();ctx.ellipse(0,0,4*Math.abs(Number(p.sx)||0),4*Math.abs(Number(p.sy)||0),0,0,Math.PI*2);ctx.fill();}
-        else if(p.type==='Box'){ctx.fillStyle=colorCss(p.color,'#fff');ctx.fillRect(-4*(Number(p.sx)||0),-4*(Number(p.sy)||0),8*(Number(p.sx)||0),8*(Number(p.sy)||0));}
-        else if(p.type==='Sprite')runtimeDrawParticleSprite(ctx,p);
+    if(group.emitterNodeId){const emitter=state.runtime?.nodeById?.get?.(group.emitterNodeId);if(emitter&&!runtimeNodeVisible(emitter))return;}
+    const anchorX=group.x,anchorY=group.y;
+    if(Math.abs(anchorX-(Number(cam?.x)||0))>halfWorldX+64||Math.abs(anchorY-(Number(cam?.y)||0))>halfWorldY+64)return;
+    if(group.cssDirty)runtimeParticleRefreshCss(group);
+    const type=group.type;
+    ctx.save();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+    if(type==='Trail'){
+      const points=group.trail;
+      if(points&&points.length>1){
+        ctx.strokeStyle=group.css;ctx.lineWidth=Math.max(.5,4*Math.max(Math.abs(group.sx||0),Math.abs(group.sy||0)));ctx.lineCap='round';ctx.lineJoin='round';
+        ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
+        for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
+        ctx.stroke();
       }
-      ctx.restore();
+    }else{
+      ctx.translate(anchorX,anchorY);ctx.rotate((group.angle||0)*Math.PI/180);
+      if(type==='Circle'){ctx.fillStyle=group.css;ctx.beginPath();ctx.ellipse(0,0,4*Math.abs(group.sx||0),4*Math.abs(group.sy||0),0,0,Math.PI*2);ctx.fill();}
+      else if(type==='Box'){ctx.fillStyle=group.css;ctx.fillRect(-4*(group.sx||0),-4*(group.sy||0),8*(group.sx||0),8*(group.sy||0));}
+      else if(type==='Sprite')runtimeDrawParticleSprite(ctx,group);
     }
+    ctx.restore();
   }
   function drawRuntimeParticles(ctx,cam,halfWorldX,halfWorldY){for(const group of state.runtime?.particleGroups||[])drawRuntimeParticleGroup(ctx,group,cam,halfWorldX,halfWorldY);}
+  // Keeps the (renderIndex, creation order) draw order without sorting every frame.
+  function runtimeParticleDrawList(rt){
+    const list=rt.particleGroups||(rt.particleGroups=[]);
+    if(rt.particleOrderDirty){list.sort((a,b)=>(a.renderIndex-b.renderIndex)||(a.renderSerial-b.renderSerial));rt.particleOrderDirty=false;}
+    return list;
+  }
+  function runtimeSnapshotParticleGroups(){return (state.runtime?.particleGroups||[]).filter(g=>g?.active).map(g=>runtimeClone(g));}
+  function runtimeRestoreParticleGroups(saved){
+    const rt=state.runtime;
+    for(const g of rt.particleGroups||[])runtimeReleaseReactiveTarget(g);
+    rt.particleGroups=Array.isArray(saved)?saved.filter(g=>g&&Array.isArray(g.states)&&g.states.length):[];
+    rt.particleOrderDirty=true;
+  }
+  // Decodes sprite assets used by createParticles when play starts, so the first particles do not
+  // stall the first frames waiting for image decoding.
+  function runtimeWarmParticleAssets(){
+    const rt=state.runtime;if(!rt)return;
+    const seen=new Set(),base=window.UIXScriptNodes?.particleStateBase??4;
+    const warm=src=>{if(!src||seen.has(src))return;seen.add(src);try{const img=getAssetImage(src);img?.decode?.().catch(()=>{});}catch{}};
+    for(const list of Object.values(rt.dynamicScriptsByNode||{})){
+      for(const sn of Array.isArray(list)?list:[]){
+        if(sn?.defName!=='createParticles'||!Array.isArray(sn.values))continue;
+        for(let i=base;i<sn.values.length;i++){
+          const flat=flattenEditor(sn.values[i]),pick=name=>flat.find(x=>x.entry?.name===name)?.entry?.selected;
+          if(pick('Type')==='Sprite'){
+            if(pick('Source')==='Animation'){
+              for(const node of rt.nodeList||[])for(const a of component(node,'animationsprite')?.animations||[])if(String(a?.name||'')===String(pick('Animation')||''))for(const f of a.sprites||[])warm(f?.src);
+            }else warm(runtimeParticleSpriteSource(pick('Sprite')));
+          }
+        }
+      }
+    }
+  }
   function runtimeSubCameraNameError(node,value){
     const name=String(value??'').trim();
     const normalized=name.toLowerCase().replace(/\s+/g,'');
@@ -10984,7 +11366,7 @@ function updateRuntimeAnimations(dt){
     });
     const colorInput=node?component(node,'colorinput'):null;
     const applySetVisible=value=>runtimeSetVisible(node,!!value);
-    const applySetVariable=(v)=>runtimeSetVariable(v?.Type,v?.Name,v?.Value,node);
+    const applySetVariable=(v)=>runtimeSetVariable(v?.Type,v?.Name,v?.Value,node,v?.Operation,v?.Index);
     const applySetTransform=(v)=>{
       const b=runtimeBodyForNode(node);if(!b)return;
       const num=(x,f)=>{if(x===null||x===undefined||x==='')return f;const n=Number(x);return Number.isFinite(n)?n:f;};
@@ -11062,7 +11444,7 @@ function updateRuntimeAnimations(dt){
       isVisible:()=>runtimeNodeVisible(node),
       setVisible:value=>{applySetVisible(value);return true;},
       createParticles:values=>runtimeCreateParticles(values,node),
-      setVariable:(scope,name,value)=>applySetVariable({Type:scope,Name:name,Value:value}),
+      setVariable:(scope,name,value,operation,index)=>applySetVariable({Type:scope,Name:name,Value:value,Operation:operation,Index:index}),
       saveVariable:(scope,name,storageType)=>runtimeSaveVariable(scope,name,storageType,node),
       loadVariable:(scope,name,storageType)=>runtimeLoadVariable(scope,name,storageType,node),
       setTransform:(x,y,sx,sy,angle)=>{applySetTransform({PosX:x,PosY:y,ScaleX:sx,ScaleY:sy,Angle:angle});return true;},
@@ -12085,14 +12467,14 @@ function updateRuntimeAnimations(dt){
       canvas.style.touchAction='none';
       installRuntimeOutputCapture();
       installRuntimeInputHandlers(root);
-      runRuntimeSceneScripts();runtimeWarmAudioAssets();
+      runtimeWarmParticleAssets();runRuntimeSceneScripts();runtimeWarmAudioAssets();
       runtimeLast=performance.now();
       runtimeFrame=requestAnimationFrame(runtimeTick);
       return;
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button">↻ Rerun</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button">↻ Rerun</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runtimeWarmParticleAssets();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.activeCollisionPairMap=new Map();rt.frameCollisionPairs=new Map();rt.activeInputPointers?.clear?.();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
@@ -12353,7 +12735,7 @@ function updateRuntimeAnimations(dt){
     ctx.rotate(Number(cam.angle||0)*Math.PI/180);
     ctx.translate(-Number(cam.x||0),-Number(cam.y||0));
     runtimeSortRenderBodies();const renderBodies=(state.runtime.renderBodies?.length?state.runtime.renderBodies:(state.runtime.bodies||[]));const halfWorldX=cameraMap.viewW/2,halfWorldY=cameraMap.viewH/2,viewRadius=Math.hypot(halfWorldX,halfWorldY);
-    const particleGroups=(state.runtime.particleGroups||[]).filter(g=>g?.active).slice().sort((a,b)=>{const d=Number(a.renderIndex||0)-Number(b.renderIndex||0);return d||Number(a.renderSerial||0)-Number(b.renderSerial||0);});
+    const particleGroups=runtimeParticleDrawList(state.runtime);
     let bi=0,gi=0;
     while(bi<renderBodies.length||gi<particleGroups.length){
       const b=renderBodies[bi],g=particleGroups[gi],bIndex=b?Number(b.renderIndex||0):Infinity,gIndex=g?Number(g.renderIndex||0):Infinity;

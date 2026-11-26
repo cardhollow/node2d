@@ -1,6 +1,27 @@
 (() => {
   'use strict';
 
+  // Index of the first particle-state array inside createParticles.values.
+  const PARTICLE_STATE_BASE = 4;
+  const PARTICLE_STATE_FIELDS = ['PosX','PosY','ScaleX','ScaleY','VelocityX','VelocityY','AccelerationX','AccelerationY','Angle','Type','Source','Sprite','Animation','Strength','Color','Transition'];
+  // One independent set of particle inputs. Used for Particle1 and cloned for + Add Particle.
+  const PARTICLE_STATE_TEMPLATE = () => [
+    {name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},
+    {name:'ScaleX',type:'int',value:1},{name:'ScaleY',type:'int',value:1},
+    {name:'VelocityX',type:'int',value:0},{name:'VelocityY',type:'int',value:0},
+    {name:'AccelerationX',type:'int',value:0},{name:'AccelerationY',type:'int',value:0},
+    {name:'Angle',type:'int',value:0},
+    {name:'Type',type:'selector',value:()=>['Circle','Trail','Box','Sprite'],selected:'Circle'},
+    {name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},
+    {name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:''},
+    {name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a?.name).filter(Boolean),selected:''},
+    {name:'Strength',type:'int',value:100},
+    {name:'Color',type:'col',value:'#FFFFFFFF'},
+    // Milliseconds spent blending from the previous particle into this one. Empty = share the
+    // remaining Lifetime evenly. Ignored (and hidden) for Particle1.
+    {name:'Transition',type:'int',value:null}
+  ];
+
   const scriptNodes = [
     { name:'onLoad', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onTick', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
@@ -36,9 +57,12 @@
       editor:[
         {name:'Type',type:'selector',value:()=>['Global','Local','Scene','Server'],selected:'Global'},
         {name:'Name',type:'selector',value:ctx=>ctx?.variableNames||[],selected:null},
-        {name:'Value',type:'str',value:null}
+        {name:'Value',type:'str',value:null},
+        // Only shown for List variables. Index is used by Insert, Set At and Remove At (negative counts from the end).
+        {name:'Operation',type:'selector',value:()=>['Set','Push','Pop','Shift','Unshift','Insert','Set At','Remove At','Remove Value','Clear','Reverse','Sort'],selected:'Set'},
+        {name:'Index',type:'int',value:null}
       ],
-      func:(ctx,v)=>{ctx.setVariable?.(v.Type,v.Name,v.Value);return {out:true};}
+      func:(ctx,v)=>{ctx.setVariable?.(v.Type,v.Name,v.Value,v.Operation,v.Index);return {out:true};}
     },
     {
       name:'saveVariable', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -76,22 +100,29 @@
     },
     {name:'setVisible',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'Visibility',type:'bool',value:true}],func:(ctx,v)=>{ctx.setVisible?.(!!v.Visibility);return {out:true};}},
     {
+      // createParticles layout (stable on purpose - saved projects and the runtime rely on it):
+      //   values[0..2]  global inputs shared by the whole emission (Lifetime, Count, Index)
+      //   values[3]     the "Particle" selector (Particle1..N, + Add Particle, Delete Particle)
+      //   values[4..]   one array per particle state; every field inside is independent per particle.
+      // Particle N+1 blends in from Particle N over its Transition time.
       name:'createParticles', receiver:true, group:'Actions', output:[{id:'out'}],
+      liveInstance:true,
       editor:[
-        {name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},
-        {name:'ScaleX',type:'int',value:1},{name:'ScaleY',type:'int',value:1},
-        {name:'VelocityX',type:'int',value:0},{name:'VelocityY',type:'int',value:0},
-        {name:'AccelerationX',type:'int',value:0},{name:'AccelerationY',type:'int',value:0},
-        {name:'Angle',type:'int',value:0},
-        {name:'Type',type:'selector',value:()=>['Circle','Trail','Box','Sprite'],selected:'Circle'},
-        {name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},
-        {name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:''},
-        {name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a?.name).filter(Boolean),selected:''},
-        {name:'Strength',type:'int',value:100},
-        {name:'Color',type:'col',value:'#FFFFFFFF'},
-        {name:'Lifetime',type:'int',value:1000},{name:'Count',type:'int',value:1},{name:'Index',type:'int',value:0}
+        {name:'Lifetime',type:'int',value:1000},{name:'Count',type:'int',value:1},{name:'Index',type:'int',value:0},
+        {name:'Particle',type:'selector',value:()=>['Particle1'],selected:'Particle1'},
+        PARTICLE_STATE_TEMPLATE()
       ],
-      func:(ctx,v)=>{ctx.createParticles?.(v);return {out:true};}
+      func:(ctx,v)=>{
+        // Every particle state owns a "p<N>." prefixed key (see runtimeCompileScriptDescriptor).
+        const states=[];
+        for(let n=1;(`p${n}.Type`) in v;n++){
+          const state={};
+          for(const field of PARTICLE_STATE_FIELDS)state[field]=v[`p${n}.${field}`];
+          states.push(state);
+        }
+        ctx.createParticles?.({Lifetime:v.Lifetime,Count:v.Count,Index:v.Index,Particles:states});
+        return {out:true};
+      }
     },
     {
       name:'setTransform', receiver:true, group:'Actions', output:[{id:'out'}],
@@ -231,5 +262,5 @@
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
   const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
   scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
-  window.UIXScriptNodes={scriptNodes};
+  window.UIXScriptNodes={scriptNodes,particleStateBase:PARTICLE_STATE_BASE,particleStateFields:PARTICLE_STATE_FIELDS,particleStateTemplate:PARTICLE_STATE_TEMPLATE};
 })();
