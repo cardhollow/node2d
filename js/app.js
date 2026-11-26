@@ -3818,33 +3818,28 @@
     status(`${v.name} moved to ${toScope} Variables`);
   }
   function parseListValue(value){
-    if(Array.isArray(value)) return value.slice();
-    const source=String(value??'').trim();
-    if(!source) return [];
-    return source.split(',').map(part=>{
-      const token=part.trim();
-      if(!token) return '';
-      const lower=token.toLowerCase();
-      if(lower==='true') return true;
-      if(lower==='false') return false;
-      if(lower==='null') return null;
-      if((token.startsWith('"')&&token.endsWith('"'))||(token.startsWith("'")&&token.endsWith("'"))) return token.slice(1,-1);
-      const number=Number(token);
-      return Number.isFinite(number)&&token!==''?number:token;
-    });
+    if(Array.isArray(value)) return clone(value);
+    if(value===null||value===undefined) return [];
+    const source=String(value).trim();
+    if(!source) throw new SyntaxError('A List value must be an array. Use [0, 0] for example.');
+    let parsed;
+    try{parsed=JSON.parse(source);}
+    catch{
+      const startsAsArray=source.startsWith('[');
+      throw new SyntaxError(startsAsArray
+        ? 'Invalid List JSON. Use double quotes around strings and valid JSON syntax.'
+        : 'A List value must be wrapped in square brackets, for example [0, 0].');
+    }
+    if(!Array.isArray(parsed)) throw new SyntaxError('A List value must be an array wrapped in [ ]. Objects are allowed inside the array, for example [{}].');
+    return parsed;
+  }
+  function parseListValueOrEmpty(value){
+    try{return parseListValue(value);}
+    catch{return [];}
   }
   function formatListValue(value){
     if(!Array.isArray(value)) return String(value??'');
-    return value.map(item=>{
-      if(item===null)return 'null';
-      if(typeof item==='string'){
-        const lower=item.toLowerCase();
-        const numeric=item!==''&&Number.isFinite(Number(item));
-        if(numeric||lower==='true'||lower==='false'||lower==='null'||/[\s,]/.test(item)||item.includes('"')||item.includes("'")) return JSON.stringify(item);
-        return item;
-      }
-      return String(item);
-    }).join(', ');
+    return JSON.stringify(value);
   }
   function listEditorText(value){return formatListValue(value);}
   function variableEditor(v,scope){
@@ -3887,7 +3882,7 @@
           if(typeof source==='boolean') v.value=source;
           else if(typeof source==='number') v.value=source!==0;
           else v.value=['true','1','yes','on'].includes(String(source??'').trim().toLowerCase());
-        }else if(next==='List') v.value=parseListValue(oldValue);
+        }else if(next==='List') v.value=parseListValueOrEmpty(oldValue);
         else if(next==='Color') v.value=normalizeVariableColor(oldValue);
       }
       v.dataType=next;
@@ -3905,9 +3900,17 @@
       const valueRow=document.createElement('div');valueRow.className='property-row';const label=document.createElement('span');label.className='property-label';label.textContent='Value';const c=document.createElement('div');c.className='property-control';
       if(v.dataType==='Bool') c.append(customSelect(v.value?'true':'false',['true','false'],x=>{v.value=x==='true';},null,null,'Variable Value',()=>v.value?'true':'false'));
       else {const input=document.createElement('input');input.type=v.dataType==='Int'?'number':'text';input.value=v.dataType==='List'?listEditorText(v.value):String(v.value??'');
-        const commitList=()=>{if(v.dataType!=='List')return false;pushHistory(`Edit ${v.name} Value`);v.value=parseListValue(input.value);input.value=listEditorText(v.value);scheduleInspectorRefresh(true);renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();return true;};
-        input.addEventListener('change',()=>{if(commitList())return;pushHistory(`Edit ${v.name} Value`);v.value=v.dataType==='Int'?(Number(input.value)||0):input.value;scheduleInspectorRefresh();if(state.script.nodeId)renderScriptCanvas();});
-        input.addEventListener('blur',()=>{if(v.dataType==='List')commitList();});
+        if(v.dataType==='List') input.placeholder='[0, 0] — use double quotes for strings';
+        input.addEventListener('change',()=>{
+          if(v.dataType==='List'){
+            let parsed;
+            try{parsed=parseListValue(input.value);}
+            catch(err){flashValidationError(input);status(err?.message||'Invalid List value');input.value=listEditorText(v.value);return;}
+            if(JSON.stringify(parsed)!==JSON.stringify(v.value)){pushHistory(`Edit ${v.name} Value`);v.value=parsed;scheduleInspectorRefresh(true);renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();}
+            input.value=listEditorText(v.value);return;
+          }
+          pushHistory(`Edit ${v.name} Value`);v.value=v.dataType==='Int'?(Number(input.value)||0):input.value;scheduleInspectorRefresh();if(state.script.nodeId)renderScriptCanvas();
+        });
         c.append(input);}
       valueRow.append(label,c);body.append(valueRow);
     }
@@ -7554,7 +7557,7 @@
       if(old===null||old===undefined) valueItem.entry.value=null;
       else if(next==='bool') valueItem.entry.value=typeof old==='boolean'?old:['true','1','yes','on'].includes(String(old).toLowerCase());
       else if(next==='int'){const source=Array.isArray(old)?old[0]:old;const n=typeof source==='boolean'?(source?1:0):Number(source);valueItem.entry.value=Number.isFinite(n)?n:0;}
-      else if(next==='list') valueItem.entry.value=parseListValue(old);
+      else if(next==='list') valueItem.entry.value=parseListValueOrEmpty(old);
       else if(next==='col') valueItem.entry.value=normalizeVariableColor(old);
       else valueItem.entry.value=Array.isArray(old)?formatListValue(old):String(old);
       valueItem.entry.type=next;
@@ -7580,7 +7583,11 @@
     const finish=(value,cancel=false)=>{
       if(cancel)return renderScriptCanvas();
       const oldValue=scriptEditorValue(sn,item);
-      const nextValue=type==='list'?parseListValue(value):value;
+      let nextValue=value;
+      if(type==='list'){
+        try{nextValue=parseListValue(value);}
+        catch(err){flashValidationError(input);status(err?.message||'Invalid List value');return;}
+      }
       const same=type==='list'?JSON.stringify(oldValue??[])===JSON.stringify(nextValue??[]):String(oldValue??'')===String(nextValue??'');
       if(same)return renderScriptCanvas();
       pushHistory(`Edit ${item.name||'ScriptNode input'}`);
@@ -7613,7 +7620,7 @@
       const select=customSelect(current,['','true','false'],v=>finish(v===''?null:v==='true'));return select;
     }
     const isScriptTextEntry=type==='str'&&/^(text|placeholder)$/i.test(String(entry.name||''));
-    const input=document.createElement(isScriptTextEntry?'textarea':'input');input.className='script-inline-editor-input';input.type=(input.tagName==='INPUT'&&(type==='int'||type==='number'))?'number':'text';input.value=type==='list'?listEditorText(scriptEditorValue(sn,item)):String(scriptEditorValue(sn,item)??'');input.step=type==='int'?'1':'any';if(type==='list')input.placeholder='item, 123, true';
+    const input=document.createElement(isScriptTextEntry?'textarea':'input');input.className='script-inline-editor-input';input.type=(input.tagName==='INPUT'&&(type==='int'||type==='number'))?'number':'text';input.value=type==='list'?listEditorText(scriptEditorValue(sn,item)):String(scriptEditorValue(sn,item)??'');input.step=type==='int'?'1':'any';if(type==='list')input.placeholder='[0, 0] — strings need double quotes';
     if(isScriptTextEntry){input.rows=3;input.style.resize='vertical';}
     input.onkeydown=e=>{if(e.key==='Enter'&&e.shiftKey)return;if(e.key==='Enter'){e.preventDefault();finish((type==='int'||type==='number')?(Number(input.value)||0):input.value);}else if(e.key==='Escape'){e.preventDefault();finish('',true);}};
     input.onblur=()=>finish((type==='int'||type==='number')?(Number(input.value)||0):input.value);
