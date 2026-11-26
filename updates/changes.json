@@ -1,5 +1,15 @@
 [
   {
+    "title": "Version 42.2.1",
+    "items": [
+      {
+        "id": "v42-2-1-strict-json-list-values",
+        "subtitle": "Strict JSON values for List variables",
+        "contents": "List variable values must now be written as a JSON array, for example [0, 0]. Unbracketed values such as 0, 0 are rejected instead of being silently split. Text values must use double quotes, and nested arrays and objects are supported, including [\"text\", [0, 0], {}]. Invalid input displays an error and preserves the previous value."
+      }
+    ]
+  },
+  {
     "title": "Version 42.2.0",
     "items": [
       {
