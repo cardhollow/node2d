@@ -6,6 +6,7 @@
 <title>Node2D Updates</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#202020;color:#ddd;font-family:system-ui,-apple-system,Segoe UI,sans-serif}body{overflow:hidden}.updates-app{display:grid;grid-template-rows:auto minmax(0,1fr);width:100%;height:100%}.updates-top{padding:10px;border-bottom:1px solid #3d3d3d;background:#292929}.updates-search{width:100%;height:38px;padding:0 11px;background:#202020;border:1px solid #4b4b4b;border-radius:6px;color:#ddd;outline:none}.updates-search:focus{border-color:#777}.updates-body{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:0}.updates-nav{min-height:0;overflow:auto;border-right:1px solid #3d3d3d;padding:8px;background:#252525;-webkit-overflow-scrolling:touch}.updates-section{margin-bottom:7px}.updates-title{width:100%;display:flex;align-items:center;gap:7px;height:32px;padding:0 8px;background:none;border:0;border-radius:5px;color:#bbb;text-align:left;font-weight:600;cursor:pointer}.updates-title:hover{background:#333;color:#eee}.updates-title .arrow{width:12px;color:#888}.updates-items{padding-left:18px}.updates-items.hidden{display:none}.updates-subtitle{width:100%;display:block;padding:6px 8px;background:none;border:0;border-radius:4px;color:#999;text-align:left;cursor:pointer}.updates-subtitle:hover{background:#343434;color:#eee}.updates-subtitle.active{background:#3a382d;color:#e4ca4e}.updates-main{min-width:0;min-height:0;overflow:auto;padding:22px 24px;-webkit-overflow-scrolling:touch}.updates-content{max-width:900px;line-height:1.55}.updates-content h1,.updates-content h2,.updates-content h3{color:#eee;margin:0 0 12px}.updates-content p{color:#bbb}.updates-content code{background:#171717;border:1px solid #3d3d3d;border-radius:4px;padding:1px 4px;font:12px ui-monospace,SFMono-Regular,Consolas,monospace}.updates-content ul{padding-left:20px}.updates-empty{padding:20px 10px;color:#777;font-size:12px}@media(max-width:760px){.updates-body{grid-template-columns:205px minmax(0,1fr)}.updates-main{padding:15px}.updates-nav{padding:6px}}
+.ui-svg{display:inline-block;width:1em;height:1em;vertical-align:-.14em;flex:none}
 </style>
 </head>
 <body>
@@ -13,6 +14,7 @@
   <div class="updates-top"><input id="updatesSearch" class="updates-search" type="search" placeholder="Search updates…" autocomplete="off" spellcheck="false"></div>
   <div class="updates-body"><nav id="updatesNav" class="updates-nav"></nav><main id="updatesMain" class="updates-main"><article id="updatesContent" class="updates-content"></article></main></div>
 </div>
+<script src="../js/svgIconData.js"></script>
 <script>
 (()=>{
   let sections=[];let filtered=[];let selected=null;let openState=Object.create(null);
@@ -34,7 +36,7 @@
       const hits=filtered.some(x=>x.si===si);if(terms.length&&!hits)return;
       const wrap=document.createElement('section');wrap.className='updates-section';
       const title=document.createElement('button');title.className='updates-title';title.type='button';
-      const collapsed=!!openState[si];title.innerHTML=`<span class="arrow">${collapsed?'+':'−'}</span><span>${esc(section.title)}</span>`;
+      const collapsed=!!openState[si];title.innerHTML=`<span class="arrow">${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span><span>${esc(section.title)}</span>`;
       const items=document.createElement('div');items.className='updates-items'+(collapsed?' hidden':'');
       section.items.forEach((item,ii)=>{if(terms.length&&!matches(section,item,terms))return;const b=document.createElement('button');b.className='updates-subtitle'+(selected?.si===si&&selected?.ii===ii?' active':'');b.type='button';b.textContent=item.subtitle;b.onclick=()=>{selected={si,ii};render();showSelected();};items.append(b);});
       title.onclick=()=>{openState[si]=!openState[si];render();};wrap.append(title,items);nav.append(wrap);

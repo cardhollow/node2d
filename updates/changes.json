@@ -1,5 +1,80 @@
 [
   {
+    "title": "Version 42.2.0",
+    "items": [
+      {
+        "id": "v42-2-0-component-order",
+        "subtitle": "Reorder components to control what draws on top",
+        "contents": "Components on a Node can now be moved up or down with arrow buttons on each component card or from the card's right-click menu. Visual components are drawn in list order, so a component lower in the list is painted above the ones before it: add Text and then Sprite and the Sprite covers the Text, or move Text below the Sprite to bring it to the front. This applies to Text, Sprite, Animation Sprite, Canvas, Input, Color Input, Progress Bar and any visual component added later. Node, Script and Transform stay at the top. Moves are part of undo history."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.1.4",
+    "items": [
+      {
+        "id": "v42-1-4-all-svg-icons",
+        "subtitle": "All interface icons are SVG",
+        "contents": "Replaced the last text and symbol icons with SVG: modal close buttons, expand/collapse toggles, panel chevrons, checkboxes, Scene and Node tree icons, the Add Component picker, Sprite Editor Preview and Layers buttons, the MIDI editor toolbar and record/play controls, and the Help and Updates pages. Icons placed in HTML or created later by the editor are filled in automatically from js/svgIconData.js."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.1.3",
+    "items": [
+      {
+        "id": "v42-1-3-icons-single-source",
+        "subtitle": "One source of truth for icons",
+        "contents": "All interface icons now come from js/svgIconData.js. The HTML uses small data-icon placeholders that are replaced with the SVG at startup, and context menus, the Sprite Editor and the MIDI editor ask for icons by name. The old text-glyph mapping table was removed."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.1.2",
+    "items": [
+      {
+        "id": "v42-1-2-own-svg-icons",
+        "subtitle": "New original SVG icon set everywhere",
+        "contents": "Replaced every interface icon with a new original SVG set: top bar, File/Scene/Actions/Play menus, editor modes, project chooser, Sprite Editor tools and action buttons, layer controls, context menus, and ScriptNode inspector actions. Icons use the current text colour so they follow the theme. The old svgIcons folder and all references to it, including the service worker cache list, were removed; icon artwork now lives in js/svgIconData.js."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.1.1",
+    "items": [
+      {
+        "id": "v42-1-1-inline-svg-local-preview",
+        "subtitle": "SVG icons render in local and offline previews",
+        "contents": "Fixed missing editor icons in Android and other local file previews. SVG artwork from the bundled svgIcons folder is now embedded directly in the interface, so static icons do not depend on file:// image requests. Dynamically created action icons use the generated local SVG data map as inline SVG elements. The svgIcons folder remains the canonical source asset set."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.1.0",
+    "items": [
+      {
+        "id": "v42-1-raw-json-transfer",
+        "subtitle": "Import and export raw project JSON",
+        "contents": "Added raw JSON project import and export. JSON files contain the project data object directly, including scenes, components, scripts, settings, and embedded asset values. The files are plain, readable JSON and are not wrapped in or encoded as NDC."
+      },
+      {
+        "id": "v42-1-json-viewer",
+        "subtitle": "Read-only JSON viewer",
+        "contents": "Added View JSON for the current project. The custom viewer formats the complete project JSON with line numbers and syntax colouring for object keys, strings, numbers, booleans, null values, and punctuation. The viewer is read-only and does not provide editing controls."
+      },
+      {
+        "id": "v42-1-component-render-order",
+        "subtitle": "Visual components follow component order",
+        "contents": "Node visuals now render in the order their visual components appear in the component list. A component added later is drawn later and therefore appears above previously added visual components, including Sprite, Text, Canvas, Input, Color Input, and Progress Bar visuals."
+      },
+      {
+        "id": "v42-1-svg-interface",
+        "subtitle": "SVG icons used across the editor interface",
+        "contents": "Expanded use of the bundled svgIcons assets across the top toolbar, editor modes, File and Project menus, and common project actions. Added matching icons for JSON, file transfer, settings, history, assets, and related actions; refreshed icon colouring for consistent display."
+      }
+    ]
+  },
+  {
     "title": "Version 42.0.0",
     "items": [
       {
