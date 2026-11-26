@@ -18,79 +18,83 @@
   <div id="appShell" class="app-shell">
     <header id="topbar" class="topbar">
       <div class="top-part part-left" anchor="left">
-        <button class="top-button menu-trigger" data-menu="fileMenu" title="File"><span class="icon">▣</span><span class="label">File</span></button>
+        <button class="top-button menu-trigger" data-menu="fileMenu" title="File"><span class="icon"><i class="svg-icon" data-icon="file"></i></span><span class="label">File</span></button>
         <div id="fileMenu" class="context-menu" data-close-outside="true">
-          <button data-menu-sub="projectMenu"><span>▰</span>Project <b>›</b></button>
+          <button data-menu-sub="projectMenu"><span><i class="svg-menu-icon" data-icon="folder"></i></span>Project <b><i class="ui-svg" data-icon="next"></i></b></button>
           <div id="projectMenu" class="context-menu nested-menu" data-close-outside="true">
-            <button data-action="new-project"><span>＋</span>New</button>
-            <button data-action="load-local"><span>▱</span>Load Local</button>
-            <button data-action="save-project"><span>▣</span>Save in Project</button>
-            <button data-action="export-ndc"><span>⇧</span>Export .ndc</button>
-            <button data-action="import-project"><span>⇩</span>Import .ndc</button>
-            <button data-action="share-ndc"><span>⇄</span>Share NDC</button>
+            <button data-action="new-project"><span><i class="svg-menu-icon" data-icon="add"></i></span>New</button>
+            <button data-action="load-local"><span><i class="svg-menu-icon" data-icon="folder"></i></span>Load Local</button>
+            <button data-action="save-project"><span><i class="svg-menu-icon" data-icon="save"></i></span>Save in Project</button>
+            <button data-action="export-ndc"><span><i class="svg-menu-icon" data-icon="export"></i></span>Export .ndc</button>
+            <button data-action="import-project"><span><i class="svg-menu-icon" data-icon="import"></i></span>Import .ndc</button>
+            <button data-action="share-ndc"><span><i class="svg-menu-icon" data-icon="share"></i></span>Share NDC</button>
+            <div class="menu-separator"></div>
+            <button data-action="export-json"><span><i class="svg-menu-icon" data-icon="export"></i></span>Export Raw JSON</button>
+            <button data-action="import-json"><span><i class="svg-menu-icon" data-icon="import"></i></span>Import Raw JSON</button>
+            <button data-action="view-json"><span><i class="svg-menu-icon" data-icon="json"></i></span>View JSON</button>
           </div>
           <div class="menu-separator"></div>
-          <button data-menu-sub="viewMenu"><span>◫</span>View <b>›</b></button>
+          <button data-menu-sub="viewMenu"><span><i class="svg-menu-icon" data-icon="grid"></i></span>View <b><i class="ui-svg" data-icon="next"></i></b></button>
           <div id="viewMenu" class="context-menu nested-menu" data-close-outside="true">
-            <button data-toggle-panel="selectionPanel"><span class="check-box-icon" id="selectionPanelIcon">☑</span>Selection panel</button>
-            <button data-toggle-panel="componentPanel"><span class="check-box-icon" id="componentPanelIcon">☑</span>Component panel</button>
+            <button data-toggle-panel="selectionPanel"><span class="check-box-icon" id="selectionPanelIcon"><i class="ui-svg" data-icon="checkon"></i></span>Selection panel</button>
+            <button data-toggle-panel="componentPanel"><span class="check-box-icon" id="componentPanelIcon"><i class="ui-svg" data-icon="checkon"></i></span>Component panel</button>
           </div>
           <div class="menu-separator"></div>
-          <button data-action="export-project"><span>⇧</span>Export Project</button>
-          <button data-action="game-settings"><span>⚙</span>Game Settings</button>
-          <button data-action="editor-settings"><span>⚙</span>Editor Settings</button>
-          <button data-action="help"><span>?</span>Help</button>
+          <button data-action="export-project"><span><i class="svg-menu-icon" data-icon="export"></i></span>Export Project</button>
+          <button data-action="game-settings"><span><i class="svg-menu-icon" data-icon="settings"></i></span>Game Settings</button>
+          <button data-action="editor-settings"><span><i class="svg-menu-icon" data-icon="settings"></i></span>Editor Settings</button>
+          <button data-action="help"><span><i class="svg-menu-icon" data-icon="help"></i></span>Help</button>
           <div class="menu-separator"></div>
-          <button data-action="install-node2d" data-node2d-install hidden><span>⇩</span>Install Node2D</button>
+          <button data-action="install-node2d" data-node2d-install hidden><span><i class="svg-menu-icon" data-icon="import"></i></span>Install Node2D</button>
           <div class="menu-separator"></div>
-          <button data-action="exit"><span>⏻</span>Exit</button>
+          <button data-action="exit"><span><i class="svg-menu-icon" data-icon="exit"></i></span>Exit</button>
         </div>
       </div>
 
       <div class="top-part part-center scene-part" anchor="center">
-        <button class="top-button menu-trigger" data-menu="sceneMenu" title="Scene"><span class="icon">◇</span><span class="label">Scene</span><span class="chevron">⌄</span></button>
+        <button class="top-button menu-trigger" data-menu="sceneMenu" title="Scene"><span class="icon"><i class="svg-icon" data-icon="scene"></i></span><span class="label">Scene</span><span class="chevron"><i class="ui-svg" data-icon="chevdown"></i></span></button>
         <div id="sceneMenu" class="context-menu scene-menu" data-close-outside="true">
           <div class="menu-title">Scenes</div>
           <div id="sceneList"></div>
           <div class="menu-separator"></div>
-          <button data-action="add-scene"><span class="accent">＋</span>Add scene</button>
+          <button data-action="add-scene"><span><i class="svg-menu-icon" data-icon="add"></i></span>Add scene</button>
         </div>
-        <button class="top-button" data-action="open-assets" title="Assets Manager"><span class="icon">▦</span><span class="label">Assets Manager</span></button>
+        <button class="top-button" data-action="open-assets" title="Assets Manager"><span class="icon"><i class="svg-icon" data-icon="assets"></i></span><span class="label">Assets Manager</span></button>
       </div>
 
       <div class="top-part part-actions" anchor="center">
-        <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon">☷</span><span class="label">Actions</span><span class="chevron">⌄</span></button>
-        <button id="topUndoButton" class="top-button history-top-button" data-action="undo" title="Undo"><span class="icon">↶</span><span class="label">Undo</span></button>
-        <button id="topRedoButton" class="top-button history-top-button" data-action="redo" title="Redo"><span class="icon">↷</span><span class="label">Redo</span></button>
+        <button class="top-button menu-trigger" data-menu="actionsMenu" title="Actions"><span class="icon"><i class="svg-icon" data-icon="actions"></i></span><span class="label">Actions</span><span class="chevron"><i class="ui-svg" data-icon="chevdown"></i></span></button>
+        <button id="topUndoButton" class="top-button history-top-button" data-action="undo" title="Undo"><span class="icon"><i class="svg-icon" data-icon="undo"></i></span><span class="label">Undo</span></button>
+        <button id="topRedoButton" class="top-button history-top-button" data-action="redo" title="Redo"><span class="icon"><i class="svg-icon" data-icon="redo"></i></span><span class="label">Redo</span></button>
         <div id="actionsMenu" class="context-menu" data-close-outside="true">
-          <button data-action="cut-node"><span>✂</span>Cut Node</button>
-          <button data-action="copy-node"><span>⧉</span>Copy Node</button>
-          <button data-action="paste-node"><span>▣</span>Paste Node</button>
-          <button id="toggleMultiSelectionAction" data-action="toggle-multi-selection" aria-pressed="false"><span data-multi-selection-icon>☐</span>Multi Selection</button>
+          <button data-action="cut-node"><span><i class="svg-menu-icon" data-icon="cut"></i></span>Cut Node</button>
+          <button data-action="copy-node"><span><i class="svg-menu-icon" data-icon="copy"></i></span>Copy Node</button>
+          <button data-action="paste-node"><span><i class="svg-menu-icon" data-icon="paste"></i></span>Paste Node</button>
+          <button id="toggleMultiSelectionAction" data-action="toggle-multi-selection" aria-pressed="false"><span data-multi-selection-icon><i class="ui-svg" data-icon="checkoff"></i></span>Multi Selection</button>
           <div class="menu-separator"></div>
-          <button data-action="open-history"><span>◷</span>History</button>
+          <button data-action="open-history"><span><i class="svg-menu-icon" data-icon="history"></i></span>History</button>
         </div>
       </div>
 
       <div class="top-part part-modes" anchor="center">
-        <button class="mode-button active" data-mode="select" title="Select"><span>⌖</span><span class="mode-label">Select</span></button>
-        <button class="mode-button" data-mode="move" title="Move"><span>↔</span><span class="mode-label">Move</span></button>
-        <button class="mode-button" data-mode="rotate" title="Rotate"><span>⟳</span><span class="mode-label">Rotate</span></button>
-        <button class="mode-button" data-mode="scale" title="Scale"><span>⤢</span><span class="mode-label">Scale</span></button>
-        <button class="mode-button" data-mode="transform" title="Transform"><span>✣</span><span class="mode-label">Transform</span></button>
+        <button class="mode-button active" data-mode="select" title="Select"><span class="mode-icon"><i class="svg-icon" data-icon="select"></i></span><span class="mode-label">Select</span></button>
+        <button class="mode-button" data-mode="move" title="Move"><span class="mode-icon"><i class="svg-icon" data-icon="move"></i></span><span class="mode-label">Move</span></button>
+        <button class="mode-button" data-mode="rotate" title="Rotate"><span class="mode-icon"><i class="svg-icon" data-icon="rotate"></i></span><span class="mode-label">Rotate</span></button>
+        <button class="mode-button" data-mode="scale" title="Scale"><span class="mode-icon"><i class="svg-icon" data-icon="scale"></i></span><span class="mode-label">Scale</span></button>
+        <button class="mode-button" data-mode="transform" title="Transform"><span class="mode-icon"><i class="svg-icon" data-icon="transform"></i></span><span class="mode-label">Transform</span></button>
       </div>
 
       <div class="top-part part-right" anchor="right">
-        <button class="top-button add-node-top" data-action="add-node" title="Add Node"><span class="icon">◇＋</span><span class="label">Add Node</span></button>
-        <button class="top-button menu-trigger" data-menu="playMenu" title="Play"><span class="icon">▶</span><span class="label">Play</span><span class="chevron">⌄</span></button>
+        <button class="top-button add-node-top" data-action="add-node" title="Add Node"><span class="icon"><i class="svg-icon" data-icon="node"></i></span><span class="label">Add Node</span></button>
+        <button class="top-button menu-trigger" data-menu="playMenu" title="Play"><span class="icon"><i class="svg-icon" data-icon="play"></i></span><span class="label">Play</span><span class="chevron"><i class="ui-svg" data-icon="chevdown"></i></span></button>
         <div id="playMenu" class="context-menu right-align" data-close-outside="true">
-          <button data-action="play-scene"><span>▶</span>Play Scene</button>
-          <button data-action="debug-scene"><span>⌁</span>Debug</button>
+          <button data-action="play-scene"><span><i class="svg-menu-icon" data-icon="play"></i></span>Play Scene</button>
+          <button data-action="debug-scene"><span><i class="svg-menu-icon" data-icon="debug"></i></span>Debug</button>
           <div class="context-separator"></div>
-          <button data-action="play-current-scene"><span>▶</span>Play Current Scene</button>
-          <button data-action="debug-current-scene"><span>⌁</span>Debug Current Scene</button>
+          <button data-action="play-current-scene"><span><i class="svg-menu-icon" data-icon="play"></i></span>Play Current Scene</button>
+          <button data-action="debug-current-scene"><span><i class="svg-menu-icon" data-icon="debug"></i></span>Debug Current Scene</button>
         </div>
-        <button id="fullscreenButton" class="top-button icon-only fullscreen-button" data-action="toggle-fullscreen" title="Fullscreen" type="button"><span class="icon">⛶</span><span class="shortcut-hint">F11</span></button>
+        <button id="fullscreenButton" class="top-button icon-only fullscreen-button" data-action="toggle-fullscreen" title="Fullscreen" type="button"><span class="icon"><i class="svg-icon" data-icon="fullscreen"></i></span><span class="shortcut-hint">F11</span></button>
       </div>
     </header>
     <div id="stageStatus" class="workplace-status">Ready</div>
@@ -107,14 +111,14 @@
       <aside id="inspectorDock" class="inspector-dock" aria-label="Editor inspector panels">
         <section id="selectionPanel" class="panel selection-panel">
           <div class="panel-edge panel-edge-right" data-resize-split="selection"></div>
-          <div class="panel-header"><div><strong>Selection</strong><span class="panel-subtitle">Scene structure</span></div><span id="selectionId" class="selection-id">—</span><button class="panel-icon" data-action="collapse-selection" title="Collapse">‹</button></div>
+          <div class="panel-header"><div><strong>Selection</strong><span class="panel-subtitle">Scene structure</span></div><span id="selectionId" class="selection-id">—</span><button class="panel-icon" data-action="collapse-selection" title="Collapse"><i class="ui-svg" data-icon="prev"></i></button></div>
           <div id="selectionTree" class="selection-tree"></div>
         </section>
         <section id="componentPanel" class="panel component-panel">
           <div class="panel-edge panel-edge-left" data-resize-split="component"></div>
-          <div class="panel-header"><div><strong>Components</strong><span id="componentTarget" class="panel-subtitle">Scene Camera</span></div><button class="panel-icon" data-action="collapse-components" title="Collapse">›</button></div>
+          <div class="panel-header"><div><strong>Components</strong><span id="componentTarget" class="panel-subtitle">Scene Camera</span></div><button class="panel-icon" data-action="collapse-components" title="Collapse"><i class="ui-svg" data-icon="next"></i></button></div>
           <div id="componentContent" class="component-scroll"></div>
-          <div class="component-footer"><button class="add-component-button" data-action="open-add-component"><span>＋</span>Add Component</button></div>
+          <div class="component-footer"><button class="add-component-button" data-action="open-add-component"><span><i class="svg-menu-icon" data-icon="add"></i></span>Add Component</button></div>
         </section>
       </aside>
     </main>
@@ -126,11 +130,11 @@
   <section id="projectModal" class="modal project-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
     <div class="modal-header project-modal-header"><div><h3>Node2D</h3><p>Create a project to enter the editor.</p></div><span id="node2dVersion" class="node2d-version" aria-label="Node2D version">v—</span></div>
     <div class="project-choice-grid">
-      <button class="project-choice" data-project-action="create"><span class="choice-icon">＋</span><strong>Create New</strong><small>Create a new unsaved Node2D project.</small></button>
-      <button class="project-choice" data-project-action="load"><span class="choice-icon">▱</span><strong>Load</strong><small>Load a local project or import an .ndc file.</small></button>
+      <button class="project-choice" data-project-action="create"><span class="choice-icon"><i class="svg-choice-icon" data-icon="add"></i></span><strong>Create New</strong><small>Create a new unsaved Node2D project.</small></button>
+      <button class="project-choice" data-project-action="load"><span class="choice-icon"><i class="svg-choice-icon" data-icon="folder"></i></span><strong>Load</strong><small>Load a local project or import an .ndc or JSON file.</small></button>
     </div>
     <div id="node2dInstallBar" class="node2d-install-bar" data-node2d-install hidden>
-      <div class="node2d-install-info"><span class="node2d-install-icon">⇩</span><div><strong>Install Node2D APP</strong><small>Install Node2D Game Engine for faster access and offline use.</small></div></div>
+      <div class="node2d-install-info"><span class="node2d-install-icon"><i class="ui-svg" data-icon="import"></i></span><div><strong>Install Node2D APP</strong><small>Install Node2D Game Engine for faster access and offline use.</small></div></div>
       <button class="btn primary node2d-install-button" type="button" data-action="install-node2d">Install</button>
     </div>
 
@@ -143,7 +147,7 @@
   </section>
 
   <section id="exportProjectModal" class="modal export-project-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Export Project</h3><p>Build a standalone app package from the current project.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Export Project</h3><p>Build a standalone app package from the current project.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="export-project-scroll">
       <div class="export-section">
         <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input id="exportProjectName" class="export-input" type="text" maxlength="120" autocomplete="off"></div></div>
@@ -188,8 +192,15 @@
     <div class="modal-actions"><button id="ndcTransferCancel" class="btn" type="button">Cancel</button></div>
   </section>
 
+  <section id="jsonViewerModal" class="modal json-viewer-modal" data-close-outside="true" hidden role="dialog" aria-modal="true" aria-labelledby="jsonViewerTitle">
+    <div class="modal-header json-viewer-header"><div><h3 id="jsonViewerTitle">View JSON</h3><p id="jsonViewerSubtitle">Raw project data · read-only</p></div><span class="json-readonly-tag">READ ONLY</span><button class="modal-close" data-action="close-modal" type="button" aria-label="Close JSON viewer"><i class="ui-svg" data-icon="close"></i></button></div>
+    <div class="json-viewer-toolbar"><span id="jsonViewerStats">Project JSON</span><span>Keys · Strings · Numbers · Booleans · Null</span></div>
+    <div id="jsonViewerContent" class="json-viewer-content" role="document" aria-readonly="true" tabindex="0"></div>
+    <div class="modal-actions"><button class="btn" data-action="close-modal" type="button">Close</button></div>
+  </section>
+
   <section id="gameSettingsModal" class="modal game-settings-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Game Settings</h3><p>The Preferred Scene is the first scene loaded when you Play or Debug.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Game Settings</h3><p>The Preferred Scene is the first scene loaded when you Play or Debug.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="game-settings-body">
       <div class="property-row"><span class="property-label">Preferred Scene</span><div class="property-control" id="preferredSceneControl"></div></div>
       <div class="property-row"><span class="property-label">Screen Type</span><div class="property-control" id="screenTypeControl"></div></div>
@@ -204,41 +215,42 @@
   </section>
 
   <section id="loadModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Load Project</h3><p>Choose where the project should come from.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Load Project</h3><p>Choose where the project should come from.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="project-choice-grid">
-      <button class="project-choice" data-action="load-local"><span class="choice-icon">▱</span><strong>Load Local</strong><small>Open one of the .ndc projects saved on this device.</small></button>
-      <button class="project-choice" data-action="import-project"><span class="choice-icon">⇩</span><strong>Import .ndc</strong><small>Choose an .ndc file and load the complete project.</small></button>
+      <button class="project-choice" data-action="load-local"><span class="choice-icon"><i class="svg-choice-icon" data-icon="folder"></i></span><strong>Load Local</strong><small>Open one of the .ndc projects saved on this device.</small></button>
+      <button class="project-choice" data-action="import-project"><span class="choice-icon"><i class="svg-choice-icon" data-icon="import"></i></span><strong>Import .ndc</strong><small>Choose an .ndc file and load the complete project.</small></button>
+      <button class="project-choice" data-action="import-json"><span class="choice-icon"><i class="svg-choice-icon" data-icon="json"></i></span><strong>Import JSON</strong><small>Load a plain, uncompressed Node2D project JSON file.</small></button>
     </div>
   </section>
 
   <section id="localNdcModal" class="modal local-ndc-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Load Local</h3><p>Projects saved in this device's IndexedDB.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Load Local</h3><p>Projects saved in this device's IndexedDB.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div id="localNdcList" class="local-ndc-list"></div>
   </section>
 
   <section id="componentModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Add Component</h3><p>Choose a component.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Add Component</h3><p>Choose a component.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div id="componentGrid" class="component-grid"></div>
   </section>
 
   <section id="assetModal" class="modal asset-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Assets Manager</h3><p>Project assets are saved with the project and included in project exports.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Assets Manager</h3><p>Project assets are saved with the project and included in project exports.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="asset-toolbar"><div class="asset-tabs"><button class="asset-tab active" data-asset-tab="Sprite">Sprites</button><button class="asset-tab" data-asset-tab="Audio">Audio</button><button class="asset-tab" data-asset-tab="MIDI">MIDI</button><button class="asset-tab" data-asset-tab="Font">Fonts</button></div><div class="asset-actions"><button class="btn" data-action="import-assets">Import</button><button class="btn" data-action="create-asset">Create</button><span id="assetDropHint" class="asset-drop-hint">Drag &amp; Drop your file</span></div></div>
     <div id="assetContent" class="asset-content"></div>
   </section>
 
   <section id="assetCreateModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Create Asset</h3><p>Choose an editor.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
-    <div class="project-choice-grid"><button class="project-choice" data-action="new-sprite-editor"><span class="choice-icon">▧</span><strong>Sprite Editor</strong><small>Create single or multiple PNG frames.</small></button><button class="project-choice" data-action="new-midi-editor"><span class="choice-icon">♫</span><strong>MIDI Editor</strong><small>Create and edit note-based MIDI files.</small></button></div>
+    <div class="modal-header"><div><h3>Create Asset</h3><p>Choose an editor.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
+    <div class="project-choice-grid"><button class="project-choice" data-action="new-sprite-editor"><span class="choice-icon"><i class="ui-svg" data-icon="sprite"></i></span><strong>Sprite Editor</strong><small>Create single or multiple PNG frames.</small></button><button class="project-choice" data-action="new-midi-editor"><span class="choice-icon"><i class="ui-svg" data-icon="music"></i></span><strong>MIDI Editor</strong><small>Create and edit note-based MIDI files.</small></button></div>
   </section>
 
   <section id="assetSelectorModal" class="modal asset-selector-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3 id="assetSelectorTitle">Select Sprite</h3><p id="assetSelectorSubtitle">Select an imported asset.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3 id="assetSelectorTitle">Select Sprite</h3><p id="assetSelectorSubtitle">Select an imported asset.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div id="assetSelectorGrid" class="asset-selector-grid"></div>
   </section>
 
   <section id="spriteModal" class="modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Animation Sprite</h3><p>Add and select animation frames.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Animation Sprite</h3><p>Add and select animation frames.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div id="spriteEditor" class="sprite-editor"></div>
   </section>
 
@@ -246,9 +258,9 @@
   <div id="spriteEditorMount"></div>
 
   <section id="colorModal" class="modal color-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Color</h3><p id="colorTargetLabel">RGBA</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Color</h3><p id="colorTargetLabel">RGBA</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="color-editor">
-      <div class="color-main"><canvas id="colorWheel" width="260" height="260"></canvas><div class="color-preview-row"><span id="colorPreview"></span><span id="colorHexPreview">#FFFFFFFF</span><button class="btn color-eyedrop-btn" id="colorEyeDropper" type="button" title="Pick any visible color from the screen">⌖ Pick Screen Color</button></div></div>
+      <div class="color-main"><canvas id="colorWheel" width="260" height="260"></canvas><div class="color-preview-row"><span id="colorPreview"></span><span id="colorHexPreview">#FFFFFFFF</span><button class="btn color-eyedrop-btn" id="colorEyeDropper" type="button" title="Pick any visible color from the screen"><i class="ui-svg" data-icon="picker"></i> Pick Screen Color</button></div></div>
       <div id="colorSliders" class="color-sliders"></div>
       <div class="color-input-row"><label>Color Input</label><input id="colorTextInput" value="#FFFFFFFF" spellcheck="false"></div>
       <div class="modal-actions"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="apply-color">Apply</button></div>
@@ -256,12 +268,12 @@
   </section>
 
   <section id="scriptModal" class="modal script-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><div class="script-header-actions"><button id="scriptUndoButton" class="script-history-button" data-action="undo" title="Undo">↶</button><button id="scriptRedoButton" class="script-history-button" data-action="redo" title="Redo">↷</button><button class="modal-close" data-action="close-modal">×</button></div></div>
+    <div class="script-modal-header"><div><strong>Script Editor</strong><span id="scriptTarget">Node</span></div><div class="script-header-actions"><button id="scriptUndoButton" class="script-history-button" data-action="undo" title="Undo"><i class="ui-svg" data-icon="undo"></i></button><button id="scriptRedoButton" class="script-history-button" data-action="redo" title="Redo"><i class="ui-svg" data-icon="redo"></i></button><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div></div>
     <div class="script-layout">
       <aside class="script-left">
         <div class="script-panel-header">
           <div class="script-panel-heading"><strong>Local Variables</strong><span>Lives only inside this node</span></div>
-          <button class="script-panel-collapse" type="button" data-script-panel-collapse="left" title="Collapse">‹</button>
+          <button class="script-panel-collapse" type="button" data-script-panel-collapse="left" title="Collapse"><i class="ui-svg" data-icon="prev"></i></button>
         </div>
         <div class="script-panel-resize script-panel-resize-left" data-resize-script-panel="left"></div>
         <div id="scriptVariablesScroll" class="script-variables-scroll">
@@ -280,23 +292,23 @@
   </section>
 
   <section id="historyModal" class="modal history-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>History</h3><p>Click any history point to restore it. New edits after Undo create a separate branch; old branches remain loadable. Entries show Name — timestamp.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>History</h3><p>Click any history point to restore it. New edits after Undo create a separate branch; old branches remain loadable. Entries show Name — timestamp.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div id="historyList" class="history-list"></div>
     <div class="modal-actions"><button class="btn" data-action="close-modal">Close</button></div>
   </section>
 
   <section id="updatesModal" class="modal updates-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Updates</h3><p>Node2D changes and version history.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Updates</h3><p>Node2D changes and version history.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="updates-frame-wrap"><iframe id="updatesFrame" title="Node2D Updates"></iframe></div>
   </section>
 
   <section id="helpModal" class="modal help-modal editor-fullscreen-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Help</h3><p>Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Help</h3><p>Node2D documentation.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="help-frame-wrap"><iframe id="helpFrame" title="Node2D Help"></iframe></div>
   </section>
 
   <section id="expressionModal" class="modal expression-modal editor-fullscreen-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="modal-header expression-header"><div><h3 id="expressionTitle">Input</h3><p>Edit this input or expression.</p></div><div class="modal-header-actions"><button class="btn" type="button" data-action="open-expression-replace">Replace <span class="shortcut-hint-inline">Ctrl+R</span></button><button class="modal-close" data-action="close-modal">×</button></div></div>
+    <div class="modal-header expression-header"><div><h3 id="expressionTitle">Input</h3><p>Edit this input or expression.</p></div><div class="modal-header-actions"><button class="btn" type="button" data-action="open-expression-replace">Replace <span class="shortcut-hint-inline">Ctrl+R</span></button><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div></div>
     <div class="expression-layout">
       <div class="expression-main">
         <label>Input</label><textarea id="expressionInput" spellcheck="false"></textarea>
@@ -308,7 +320,7 @@
   </section>
 
   <section id="expressionReplaceModal" class="modal expression-replace-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Replace Expression Text</h3><p>Choose the matches to replace. The original expression stays editable in the Expression Editor.</p></div><button class="modal-close" data-action="close-modal">×</button></div>
+    <div class="modal-header"><div><h3>Replace Expression Text</h3><p>Choose the matches to replace. The original expression stays editable in the Expression Editor.</p></div><button class="modal-close" data-action="close-modal"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="expression-replace-body">
       <div class="replace-input-grid">
         <label class="replace-field"><span>Target</span><input id="replaceTarget" type="text" spellcheck="false" autocomplete="off"></label>
@@ -322,7 +334,7 @@
   </section>
 
   <section id="editorSettingsModal" class="modal editor-settings-modal" data-close-outside="true" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>Editor Settings</h3><p>Change shortcuts used throughout Node2D.</p></div><button class="modal-close" data-action="close-modal" type="button">×</button></div>
+    <div class="modal-header"><div><h3>Editor Settings</h3><p>Change shortcuts used throughout Node2D.</p></div><button class="modal-close" data-action="close-modal" type="button"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="editor-settings-body">
       <div class="editor-settings-toolbar"><span>Shortcut</span><div class="editor-settings-toolbar-actions"><button class="btn" data-action="download-preferences">Download Pref...</button><button class="btn" data-action="import-preferences">Import Pref...</button><button class="btn" data-action="reset-keybinds">Reset Defaults</button></div></div>
       <div id="editorKeybindList" class="editor-keybind-list"></div>
@@ -331,13 +343,15 @@
   </section>
 
   <section id="confirmModal" class="modal confirmation-modal" data-close-outside="false" hidden role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3 id="confirmModalTitle">Confirm</h3><p id="confirmModalText"></p></div><button class="modal-close" data-action="cancel-confirm">×</button></div>
+    <div class="modal-header"><div><h3 id="confirmModalTitle">Confirm</h3><p id="confirmModalText"></p></div><button class="modal-close" data-action="cancel-confirm"><i class="ui-svg" data-icon="close"></i></button></div>
     <div class="modal-actions"><button class="btn" data-action="cancel-confirm">Cancel</button><button id="confirmModalOk" class="btn danger">Delete</button></div>
   </section>
 
   <div id="floatingContextMenu" class="context-menu floating-context" data-close-outside="true" hidden></div>
   <input id="assetFileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.gif,.webp,.svg,audio/*,.mp3,.wav,.ogg,.m4a,.uixaudio,.mid,.midi,audio/midi,audio/x-midi,font/ttf,font/otf,font/woff,font/woff2,.ttf,.otf,.woff,.woff2" multiple hidden>
   <input id="projectFileInput" type="file" accept=".ndc,application/x-ndc" hidden>
+  <input id="projectJsonFileInput" type="file" accept=".json,application/json,text/json" hidden>
+  <script src="js/svgIconData.js"></script>
   <script src="js/node.js"></script>
   <script src="js/assets.js"></script>
   <script src="js/network.js"></script>
