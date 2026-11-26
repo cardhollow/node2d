@@ -1,5 +1,30 @@
 [
   {
+    "title": "Version 42.2.3",
+    "items": [
+      {
+        "id": "v42-2-3-scriptnode-pushoutput-registry-fix",
+        "subtitle": "Fix pushOutput visibility in ScriptNode Actions",
+        "contents": "Fixed the ScriptNode ordering registry so pushOutput is retained and appears in the Actions list. Newly registered ScriptNodes are also preserved if they are not yet included in the preferred ordering list."
+      },
+      {
+        "id": "v42-2-3-scriptnode-library-filter-sort",
+        "subtitle": "Filter and sort ScriptNodes",
+        "contents": "Added a Filter / Search input and Sort selector above the ScriptNode library. Sort by Name or Group and choose Ascending or Descending. Filtering keeps every matching ScriptNode inside its original Events, Actions, or Controls section."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.2.2",
+    "items": [
+      {
+        "id": "v42-2-2-push-output",
+        "subtitle": "Add pushOutput ScriptNode",
+        "contents": "Added the pushOutput ScriptNode action with a Type selector (Log, Warn, Err, Debug, Info) and an Output string field. When executed, it writes the supplied value to the runtime Output panel at the selected log level, then triggers its out connection."
+      }
+    ]
+  },
+  {
     "title": "Version 42.2.1",
     "items": [
       {
