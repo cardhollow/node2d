@@ -3,6 +3,7 @@
 
   const { NodeSettings, COMPONENT_LABELS, createComponent, createNode, normalizeNode, normalizeFolder } = window.UIXNodeConfig;
   const { Assets } = window.UIXAssets;
+  const UIXIcons = window.UIXIcons || Object.freeze({icons:{},get:()=>'',set:el=>el,hydrate(){}});
   const { scriptNodes } = window.UIXScriptNodes;
   const { createJoystick } = window.UIXUIComponents;
 
@@ -877,7 +878,7 @@
     button.setAttribute('aria-pressed',String(on));
     button.classList.toggle('active',on);
     const icon=button.querySelector('[data-multi-selection-icon]');
-    if(icon)icon.textContent=on?'☑':'☐';
+    if(icon)UIXIcons.set(icon,on?'checkon':'checkoff');
   }
   function selectionIdsForFolder(folder){
     const ids=[];
@@ -1001,21 +1002,21 @@
     const list = sceneJoysticks();
     const section = document.createElement('section'); section.className='ui-component-section';
     const head = document.createElement('button'); head.className='library-group-header'; head.type='button';
-    head.innerHTML='<span>−</span>Joystick';
+    head.innerHTML='<span><i class="ui-svg" data-icon="minus"></i></span>Joystick';
     const body = document.createElement('div'); body.className='ui-component-body';
-    const groupKey='ui:joystick:group'; const groupCollapsed=!!state.ui.componentCollapsed[groupKey]; body.classList.toggle('hidden',groupCollapsed); head.firstElementChild.textContent=groupCollapsed?'+':'−';
-    head.onclick=e=>{e.stopPropagation();state.ui.componentCollapsed[groupKey]=!state.ui.componentCollapsed[groupKey];body.classList.toggle('hidden',state.ui.componentCollapsed[groupKey]);head.firstElementChild.textContent=state.ui.componentCollapsed[groupKey]?'+':'−';};
+    const groupKey='ui:joystick:group'; const groupCollapsed=!!state.ui.componentCollapsed[groupKey]; body.classList.toggle('hidden',groupCollapsed); UIXIcons.set(head.firstElementChild,groupCollapsed?'add':'minus');
+    head.onclick=e=>{e.stopPropagation();state.ui.componentCollapsed[groupKey]=!state.ui.componentCollapsed[groupKey];body.classList.toggle('hidden',state.ui.componentCollapsed[groupKey]);UIXIcons.set(head.firstElementChild,state.ui.componentCollapsed[groupKey]?'add':'minus');};
     list.forEach((joystick, index) => {
       const key=`joystick:${joystick.id}`;
       const card=document.createElement('section'); card.className='component-card ui-joystick-card';
       const header=document.createElement('div'); header.className='component-card-header';
       const title=document.createElement('strong'); title.textContent=`Joystick · ${joystick.variable || index+1}`;
       const acts=document.createElement('div'); acts.className='comp-actions';
-      const fold=document.createElement('button'); fold.textContent=state.ui.componentCollapsed[key]?'+':'−'; fold.title='Collapse';
-      const del=document.createElement('button'); del.className='delete-component'; del.title='Delete Joystick'; del.textContent='×'; del.onclick=e=>{e.stopPropagation();removeJoystick(joystick);};
+      const fold=document.createElement('button'); UIXIcons.set(fold,state.ui.componentCollapsed[key]?'add':'minus'); fold.title='Collapse';
+      const del=document.createElement('button'); del.className='delete-component'; del.title='Delete Joystick'; UIXIcons.set(del,'close'); del.onclick=e=>{e.stopPropagation();removeJoystick(joystick);};
       acts.append(fold,del); header.append(title,acts); card.append(header);
       const content=document.createElement('div'); content.className='component-body'; const collapsed=!!state.ui.componentCollapsed[key]; content.classList.toggle('hidden',collapsed);
-      fold.onclick=e=>{e.stopPropagation();state.ui.componentCollapsed[key]=!state.ui.componentCollapsed[key];content.classList.toggle('hidden',state.ui.componentCollapsed[key]);fold.textContent=state.ui.componentCollapsed[key]?'+':'−';};
+      fold.onclick=e=>{e.stopPropagation();state.ui.componentCollapsed[key]=!state.ui.componentCollapsed[key];content.classList.toggle('hidden',state.ui.componentCollapsed[key]);UIXIcons.set(fold,state.ui.componentCollapsed[key]?'add':'minus');};
       content.append(field('Variable',joystick.variable,'text',v=>{const n=String(v||'').trim();if(!n)return status('Joystick variable cannot be empty');if(hasJoystickVariable(n,joystick))return status('A joystick variable with that name already exists in this scene');joystick.variable=n;title.textContent=`Joystick · ${n}`;}));content.append(checkboxField('Debug',joystick.debug===true,v=>{joystick.debug=!!v;drawWorkplace();}));
       content.append(colorField('BG Color',joystick.bgColor,v=>{joystick.bgColor=v;drawWorkplace();}));
       content.append(colorField('Knob Color',joystick.knobColor,v=>{joystick.knobColor=v;drawWorkplace();}));
@@ -1023,7 +1024,7 @@
       ['left','top','right','bottom'].forEach(anchor=>content.append(field(anchor[0].toUpperCase()+anchor.slice(1),joystick.position[anchor] ?? '','text',v=>{joystick.position[anchor]=String(v).trim()===''?null:Number(v);drawWorkplace();})));
       card.append(content); body.append(card);
     });
-    const add=document.createElement('button'); add.className='add-component-button'; add.innerHTML='<span>＋</span>Add Joystick'; add.onclick=addJoystick; body.append(add);
+    const add=document.createElement('button'); add.className='add-component-button'; add.innerHTML='<span><i class="ui-svg" data-icon="add"></i></span>Add Joystick'; add.onclick=addJoystick; body.append(add);
     section.append(head,body); host.append(section);
   }
 
@@ -1752,7 +1753,7 @@
     const host = $('#sceneList'); host.innerHTML = '';
     state.scenes.forEach(scene => {
       const row = document.createElement('div'); row.className = `scene-row${scene.id === state.currentSceneId ? ' active' : ''}`; row.dataset.sceneId = scene.id;
-      row.innerHTML = `<span class="node-icon">◇</span><span class="scene-row-name">${esc(scene.name)}</span><span class="scene-row-actions"><button class="mini-action" title="Rename">✎</button><button class="mini-action danger" title="Delete">×</button></span>`;
+      row.innerHTML = `<span class="node-icon"><i class="ui-svg" data-icon="tag"></i></span><span class="scene-row-name">${esc(scene.name)}</span><span class="scene-row-actions"><button class="mini-action" title="Rename"><i class="ui-svg" data-icon="pencil"></i></button><button class="mini-action danger" title="Delete"><i class="ui-svg" data-icon="close"></i></button></span>`;
       $('.mini-action', row).addEventListener('click', e => { e.stopPropagation(); renameScene(scene.id); });
       $$('.mini-action', row)[1].addEventListener('click', e => { e.stopPropagation(); deleteScene(scene.id); });
       row.addEventListener('click', () => { state.currentSceneId = scene.id; state.selectedId = 'scene-camera'; syncSceneCamera(); closeMenus(); renderAll(); status(`Scene: ${scene.name}`); });
@@ -1766,13 +1767,13 @@
       const rowWrap=document.createElement('div');
       rowWrap.className=`tree-node special-node${state.selectedId===id?' selected':''}`;
       rowWrap.dataset.nodeId=id;
-      rowWrap.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:${6+indent*12}px"><span class="twisty">+</span><span class="node-icon">${icon}</span><span class="node-name">${esc(name)}</span></div>`;
+      rowWrap.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:${6+indent*12}px"><span class="twisty"><i class="ui-svg" data-icon="add"></i></span><span class="node-icon">${UIXIcons.get(icon,'ui-svg')}</span><span class="node-name">${esc(name)}</span></div>`;
       rowWrap.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();onClick?.(e);});
       rowWrap.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();onClick?.(e);});
       return rowWrap;
     };
     const worldOpen=state.ui.worldSceneTreeExpanded!==false;
-    const worldRow=addSpecialRow('world-scene','◈','World Scene',0,()=>{
+    const worldRow=addSpecialRow('world-scene','globe','World Scene',0,()=>{
       state.ui.worldSceneTreeExpanded=!worldOpen;
       if(state.selectedId==='world-scene')state.selectedId='scene-camera';
       renderSelectionTree();
@@ -1780,13 +1781,13 @@
     worldRow.classList.remove('selected');
     worldRow.querySelector('.node-row')?.setAttribute('aria-selected','false');
     worldRow.querySelector('.node-row')?.setAttribute('aria-expanded',worldOpen?'true':'false');
-    worldRow.querySelector('.twisty').textContent=worldOpen?'−':'+';
+    UIXIcons.set(worldRow.querySelector('.twisty'),worldOpen?'minus':'add');
     host.append(worldRow);
     if(worldOpen){
-      const cameraRow=addSpecialRow('scene-camera','◉','Scene Camera',1,()=>{if(state.selectedId==='scene-camera')return;clearNodeSelection('scene-camera');renderAll();status('Selected Scene Camera');});
+      const cameraRow=addSpecialRow('scene-camera','camera','Scene Camera',1,()=>{if(state.selectedId==='scene-camera')return;clearNodeSelection('scene-camera');renderAll();status('Selected Scene Camera');});
       cameraRow.querySelector('.twisty').textContent='';
       host.append(cameraRow);
-      const skyLabel=`Sky Box${sceneSkyBoxes(currentScene()).length>1?` (${sceneSkyBoxes(currentScene()).length})`:''}`;const skyRow=addSpecialRow('sky-box','▧',skyLabel,1,()=>{if(state.selectedId==='sky-box')return;clearNodeSelection('sky-box');renderAll();status('Selected Sky Box');});
+      const skyLabel=`Sky Box${sceneSkyBoxes(currentScene()).length>1?` (${sceneSkyBoxes(currentScene()).length})`:''}`;const skyRow=addSpecialRow('sky-box','sprite',skyLabel,1,()=>{if(state.selectedId==='sky-box')return;clearNodeSelection('sky-box');renderAll();status('Selected Sky Box');});
       skyRow.querySelector('.twisty').textContent='';
       host.append(skyRow);
     }
@@ -1794,35 +1795,35 @@
     const variables=document.createElement('div');
     variables.className=`tree-node special-node${state.selectedId==='variables'?' selected':''}`;
     variables.dataset.nodeId='variables';
-    variables.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId==='variables'}"><span class="twisty">${varsOpen?'−':'+'}</span><span class="node-icon">◇</span><span class="node-name">Variables</span></div>`;
+    variables.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId==='variables'}"><span class="twisty">${UIXIcons.get(varsOpen?'minus':'add','ui-svg')}</span><span class="node-icon"><i class="ui-svg" data-icon="tag"></i></span><span class="node-name">Variables</span></div>`;
     variables.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();state.ui.variablesTreeExpanded=!state.ui.variablesTreeExpanded;renderSelectionTree();});
     host.append(variables);
     if(varsOpen){
       const child=(id,icon,name)=>{
         const row=document.createElement('div');row.className=`tree-node special-node${state.selectedId===id?' selected':''}`;row.dataset.nodeId=id;
-        row.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:30px"><span class="twisty"></span><span class="node-icon">${icon}</span><span class="node-name">${esc(name)}</span></div>`;
+        row.innerHTML=`<div class="node-row" role="button" aria-selected="${state.selectedId===id}" style="padding-left:30px"><span class="twisty"></span><span class="node-icon">${UIXIcons.get(icon,'ui-svg')}</span><span class="node-name">${esc(name)}</span></div>`;
         row.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();clearNodeSelection(id);renderAll();status(`Selected ${name}`);});
         host.append(row);
       };
-      child('scene-variables','▣','Scene Variables');
-      child('global-variables','◆','Global Variables');
-      child('server-variables','◇','Server Variables');
+      child('scene-variables','scene','Scene Variables');
+      child('global-variables','globe','Global Variables');
+      child('server-variables','share','Server Variables');
     }
     const uiRow=document.createElement('div');
     uiRow.className=`tree-node special-node${(state.selectedId==='ui-components'||!!sceneJoysticks().find(j=>j.id===state.selectedId))?' selected':''} future-node`;
     uiRow.dataset.nodeId='ui-components';
-    uiRow.innerHTML='<div class="node-row" role="button"><span class="twisty">+</span><span class="node-icon">▣</span><span class="node-name">UI Components</span></div>';
+    uiRow.innerHTML='<div class="node-row" role="button"><span class="twisty"><i class="ui-svg" data-icon="add"></i></span><span class="node-icon"><i class="ui-svg" data-icon="folder"></i></span><span class="node-name">UI Components</span></div>';
     uiRow.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();clearNodeSelection('ui-components');renderAll();status('Selected UI Components');});
     host.append(uiRow);
     const separator = document.createElement('div'); separator.className = 'tree-separator'; host.append(separator);
     const label = document.createElement('div'); label.className = 'nodes-label'; label.textContent = 'Nodes'; host.append(label);
     const nodesHost = document.createElement('div'); nodesHost.id = 'sceneNodes'; host.append(nodesHost);
     renderTreeItems(nodesHost, currentScene().nodes, 0);
-    const rootDrop = document.createElement('div'); rootDrop.className = 'root-drop'; rootDrop.innerHTML = '<span>↳</span> Drop here to place at scene root'; host.append(rootDrop);
+    const rootDrop = document.createElement('div'); rootDrop.className = 'root-drop'; rootDrop.innerHTML = '<span><i class="ui-svg" data-icon="dropin"></i></span> Drop here to place at scene root'; host.append(rootDrop);
     rootDrop.addEventListener('dragover', e => { e.preventDefault(); rootDrop.classList.add('drag-over'); });
     rootDrop.addEventListener('dragleave', () => rootDrop.classList.remove('drag-over'));
     rootDrop.addEventListener('drop', e => { e.preventDefault(); rootDrop.classList.remove('drag-over'); if (state.dragTree?.items?.length) moveItemsToRoot(state.dragTree.items); else if (state.dragTree?.nodeId) moveToRoot(state.dragTree.nodeId); });
-    const add = document.createElement('button'); add.className = 'add-folder'; add.innerHTML = '<span class="folder-plus-icon">▰＋</span>Add folder'; add.addEventListener('click', () => addFolder()); host.append(add);
+    const add = document.createElement('button'); add.className = 'add-folder'; add.innerHTML = '<span class="folder-plus-icon"><i class="ui-svg" data-icon="folderadd"></i></span>Add folder'; add.addEventListener('click', () => addFolder()); host.append(add);
   }
 
   function renderTreeItems(host, items, depth) {
@@ -1830,7 +1831,7 @@
       normalizeSelectionState(); const wrap = document.createElement('div'); wrap.className = `tree-node scene-node${state.selectedIds.includes(node.id) ? ' selected' : ''}${state.selectedIds.length>1 && state.selectedIds.includes(node.id) ? ' multi-selected' : ''}`; wrap.dataset.nodeId = node.id; wrap.dataset.nodeType = node.type; wrap.draggable = true; wrap.style.paddingLeft = `${depth * 12}px`;
       wrap.style.width = '100%';
       const folder = node.type === 'folder'; const hasChildren = folder && Array.isArray(node.children) && node.children.length;
-      wrap.innerHTML = `<div class="node-row"><span class="twisty">${folder ? (hasChildren ? (node.collapsed ? '+' : '−') : '·') : ''}</span><span class="node-icon ${folder ? 'folder-node-icon' : 'node-node-icon'}">${folder ? '▰' : '◇'}</span><span class="node-name">${esc(node.name)}</span><button type="button" class="tree-delete" title="Delete">×</button></div>`;
+      wrap.innerHTML = `<div class="node-row"><span class="twisty">${folder ? (hasChildren ? UIXIcons.get(node.collapsed ? 'add' : 'minus','ui-svg') : UIXIcons.get('point','ui-svg')) : ''}</span><span class="node-icon ${folder ? 'folder-node-icon' : 'node-node-icon'}">${UIXIcons.get(folder ?'folder':'tag','ui-svg')}</span><span class="node-name">${esc(node.name)}</span><button type="button" class="tree-delete" title="Delete"><i class="ui-svg" data-icon="close"></i></button></div>`;
       $('.tree-delete', wrap).addEventListener('click', e => {e.stopPropagation();if(state.selectedIds.length>1&&state.selectedIds.includes(node.id))deleteSelectedNodes();else deleteTreeItem(node);});
       $('.node-row', wrap).addEventListener('contextmenu', e => {if(e.target.closest('.tree-delete'))return;});
       $('.node-row', wrap).addEventListener('click', e => {
@@ -1859,8 +1860,8 @@
         if(!state.selectedIds.includes(node.id)) clearNodeSelection(node.id); else state.selectedId=node.id;
         renderSelectionTree(); renderComponentPanel(); drawWorkplace();
         const count=topLevelSelectedItems().length;
-        const items=folder ? [{label:'Duplicate Folder',icon:'⧉',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'↑',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'↓',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>duplicateNodes([node])},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
-        if(count>1)items.unshift({label:`${count} selected`,icon:'☷',disabled:true});
+        const items=folder ? [{label:'Duplicate Folder',icon:'duplicate',shortcut:'',action:()=>cloneFolder(node)},{label:'Copy',icon:'copy',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Cut',icon:'cut',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Paste',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Delete',icon:'delete',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()}] : [{label:'Move Up',icon:'up',shortcut:'',action:()=>moveNodeIndex(node,1)},{label:'Move Down',icon:'down',shortcut:'',action:()=>moveNodeIndex(node,-1)},{label:'Cut',icon:'cut',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),action:()=>cutNode(node)},{label:'Copy',icon:'copy',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),action:()=>copyNode(node)},{label:'Paste',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},{label:'Duplicate',icon:'duplicate',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:false,action:()=>duplicateNodes([node])},{label:'Delete',icon:'delete',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),action:()=>deleteSelectedNodes()},{label:'Snap to Node',icon:'snap',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),action:()=>snapSelectedMainNode()}];
+        if(count>1)items.unshift({label:`${count} selected`,icon:'selectall',disabled:true});
         showContextMenu(items,e.clientX??0,e.clientY??0);
       };
       wrap.addEventListener('contextmenu', openTreeContext);
@@ -2328,7 +2329,7 @@
   function skyAssetRow(entry,label,remove,choose){
     const row=document.createElement('div');row.className='world-skybox-asset-row';
     const thumb=document.createElement('button');thumb.type='button';thumb.className='world-skybox-asset-preview';thumb.title='Click to replace this image; selecting multiple images inserts the extras below it';
-    if(entry?.src){const img=document.createElement('img');img.src=entry.src;img.alt='';thumb.append(img);}else thumb.textContent='▧';
+    if(entry?.src){const img=document.createElement('img');img.src=entry.src;img.alt='';thumb.append(img);}else UIXIcons.set(thumb,'sprite');
     const activate=()=>{if(typeof choose==='function')choose();};thumb.addEventListener('click',activate);
     const info=document.createElement('div');info.className='world-skybox-asset-info';info.textContent=label||entry?.name||'Asset';info.title='Click to replace this image';info.tabIndex=0;info.setAttribute('role','button');info.addEventListener('click',activate);info.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate();}});
     const btn=document.createElement('button');btn.type='button';btn.className='btn';btn.textContent='Remove';btn.addEventListener('click',e=>{e.stopPropagation();pushHistory('Remove Sky Box Asset');remove();renderComponentPanel();drawWorkplace();});
@@ -2378,7 +2379,7 @@
       host.append(componentCard('World Scene',body,false,null,'world-scene-info'));return;
     }
     const topActions=document.createElement('div');topActions.className='world-skybox-toolbar';
-    const addTop=document.createElement('button');addTop.type='button';addTop.className='btn primary';addTop.textContent='+ Add Sky Box';
+    const addTop=document.createElement('button');addTop.type='button';addTop.className='btn primary';addTop.innerHTML='<i class="ui-svg" data-icon="add"></i> Add Sky Box';
     addTop.addEventListener('click',()=>{pushHistory('Add Sky Box');const next=defaultSkyBox();next.name=uniqueSkyBoxName(world,`Sky Box ${world.skyBoxes.length+1}`);next.index=world.skyBoxes.length?Math.max(...world.skyBoxes.map(s=>Number(s.index)||0))+1:0;world.skyBoxes.push(next);normalizeWorldScene(scene);renderComponentPanel();drawWorkplace();});
     const importTop=document.createElement('button');importTop.type='button';importTop.className='btn';importTop.textContent='Import Sky Box';importTop.addEventListener('click',()=>importSkyBoxFile(scene));
     topActions.append(addTop,importTop);host.append(topActions);
@@ -2416,7 +2417,7 @@
         const title=document.createElement('div');title.className='world-skybox-assets-title';title.textContent='Sprites';assetsHost.append(title);
         if(!sky.sprites.length){const none=document.createElement('div');none.className='world-skybox-hint';none.textContent='No sprites selected yet.';assetsHost.append(none);}
         sky.sprites.forEach((entry,i)=>assetsHost.append(skyAssetRow(entry,entry.name,()=>sky.sprites.splice(i,1),()=>editSkyBoxAssetAt(sky.sprites,i,'Sky Box Sprite'))));
-        const add=document.createElement('button');add.type='button';add.className='btn world-skybox-add';add.textContent='+ Add Sprite';add.addEventListener('click',()=>addSkyBoxSprites(sky));assetsHost.append(add);
+        const add=document.createElement('button');add.type='button';add.className='btn world-skybox-add';add.innerHTML='<i class="ui-svg" data-icon="add"></i> Add Sprite';add.addEventListener('click',()=>addSkyBoxSprites(sky));assetsHost.append(add);
       }else{
         const title=document.createElement('div');title.className='world-skybox-assets-title';title.textContent='Animations';assetsHost.append(title);
         sky.animations.forEach((anim,i)=>{
@@ -2427,9 +2428,9 @@
           const remove=document.createElement('button');remove.type='button';remove.className='btn';remove.textContent='Delete';remove.addEventListener('click',()=>{pushHistory('Delete Sky Box Animation');sky.animations.splice(i,1);renderComponentPanel();drawWorkplace();});head.append(name,fps,remove);block.append(head);
           if(!anim.frames.length){const none=document.createElement('div');none.className='world-skybox-hint';none.textContent='No frames selected.';block.append(none);}
           anim.frames.forEach((fr,fi)=>block.append(skyAssetRow(fr,`${fi+1}. ${fr.name}`,()=>anim.frames.splice(fi,1),()=>editSkyBoxAssetAt(anim.frames,fi,'Sky Box Animation Frame'))));
-          const addFrames=document.createElement('button');addFrames.type='button';addFrames.className='btn world-skybox-add';addFrames.textContent='+ Add Frames';addFrames.addEventListener('click',()=>addSkyBoxAnimationFrames(sky,i));block.append(addFrames);assetsHost.append(block);
+          const addFrames=document.createElement('button');addFrames.type='button';addFrames.className='btn world-skybox-add';addFrames.innerHTML='<i class="ui-svg" data-icon="add"></i> Add Frames';addFrames.addEventListener('click',()=>addSkyBoxAnimationFrames(sky,i));block.append(addFrames);assetsHost.append(block);
         });
-        const addAnim=document.createElement('button');addAnim.type='button';addAnim.className='btn world-skybox-add';addAnim.textContent='+ Add Animation';addAnim.addEventListener('click',()=>{pushHistory('Add Sky Box Animation');sky.animations.push({name:`Animation ${sky.animations.length+1}`,fps:8,frames:[]});renderComponentPanel();drawWorkplace();});assetsHost.append(addAnim);
+        const addAnim=document.createElement('button');addAnim.type='button';addAnim.className='btn world-skybox-add';addAnim.innerHTML='<i class="ui-svg" data-icon="add"></i> Add Animation';addAnim.addEventListener('click',()=>{pushHistory('Add Sky Box Animation');sky.animations.push({name:`Animation ${sky.animations.length+1}`,fps:8,frames:[]});renderComponentPanel();drawWorkplace();});assetsHost.append(addAnim);
       }
       section.querySelector('.component-body')?.append(assetsHost);
       const actions=document.createElement('div');actions.className='world-skybox-item-actions';
@@ -2704,7 +2705,7 @@
     const addRow=document.createElement('div');addRow.className='joint-add-row';
     const addLabel=document.createElement('div');addLabel.className='property-label';addLabel.textContent='Add Joint';
     const addButton=document.createElement('button');addButton.type='button';addButton.className='script-button joint-add-button';addButton.textContent='Add Joint';
-    addButton.addEventListener('click',e=>{e.stopPropagation();const r=addButton.getBoundingClientRect();showContextMenu(Object.entries(JOINT_TYPE_LABELS).map(([type,label])=>({label,icon:'↔',action:()=>{if(multiAddJoint(type))return;pushHistory(`Add ${label}`);comp.joints.push(makeJoint(type));renderComponentPanel();drawWorkplace();}})),r.left,r.bottom+4);});
+    addButton.addEventListener('click',e=>{e.stopPropagation();const r=addButton.getBoundingClientRect();showContextMenu(Object.entries(JOINT_TYPE_LABELS).map(([type,label])=>({label,icon:'swap',action:()=>{if(multiAddJoint(type))return;pushHistory(`Add ${label}`);comp.joints.push(makeJoint(type));renderComponentPanel();drawWorkplace();}})),r.left,r.bottom+4);});
     addRow.append(addLabel,addButton);rows.push(addRow);
     const opts=jointNodeOptions(node),objectLabelFor=joint=>opts.find(o=>o.value===String(joint.object||''))?.label||'Select Node';
     comp.joints.forEach((joint,index)=>{
@@ -2712,16 +2713,16 @@
       const head=document.createElement('div');head.className='joint-editor-head';const titleWrap=document.createElement('div');titleWrap.className='joint-editor-title-wrap';
       const title=document.createElement('strong');title.textContent=JOINT_TYPE_LABELS[joint.type]||`${joint.type} Joint`;
       const subtitle=document.createElement('span');subtitle.textContent=`#${index+1} · ${objectLabelFor(joint)}`;titleWrap.append(title,subtitle);
-      const menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='joint-menu-button';menuBtn.textContent='⋮';menuBtn.title='Joint actions';
+      const menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='joint-menu-button';UIXIcons.set(menuBtn,'dots');menuBtn.title='Joint actions';
       menuBtn.addEventListener('click',e=>{e.stopPropagation();const r=menuBtn.getBoundingClientRect();showContextMenu([
-        {label:'Change Joint Type',icon:'↔',action:()=>{const rr=menuBtn.getBoundingClientRect();showContextMenu(Object.entries(JOINT_TYPE_LABELS).map(([type,label])=>({label,icon:'↔',action:()=>{if(multiEditJoint(index,'Change Joint Type',j=>{j.type=type}))return;pushHistory('Change Joint Type');joint.type=type;renderComponentPanel();drawWorkplace();}})),rr.left,rr.bottom+4);}},
-        {label:'Focus Joint',icon:'⌖',action:()=>{const target=allNodes().find(x=>x.node?.id===joint.object)?.node;const focus=target||node;const t=component(focus,'transform');if(t){state.pan.x=-Number(t.position?.[0]||0)*state.zoom;state.pan.y=-Number(t.position?.[1]||0)*state.zoom;}state.selectedId=focus.id;state.selectedIds=[focus.id];renderSelectionTree();renderComponentPanel();drawWorkplace();}},
-        {label:'Delete Joint',icon:'×',action:()=>{askConfirm('Delete Joint',`Delete ${JOINT_TYPE_LABELS[joint.type]||'Joint'} #${index+1}?`,()=>{if(multiDeleteJoint(index,'Delete Joint'))return;pushHistory('Delete Joint');comp.joints.splice(index,1);renderComponentPanel();drawWorkplace();},'Delete');}}
+        {label:'Change Joint Type',icon:'swap',action:()=>{const rr=menuBtn.getBoundingClientRect();showContextMenu(Object.entries(JOINT_TYPE_LABELS).map(([type,label])=>({label,icon:'swap',action:()=>{if(multiEditJoint(index,'Change Joint Type',j=>{j.type=type}))return;pushHistory('Change Joint Type');joint.type=type;renderComponentPanel();drawWorkplace();}})),rr.left,rr.bottom+4);}},
+        {label:'Focus Joint',icon:'follow',action:()=>{const target=allNodes().find(x=>x.node?.id===joint.object)?.node;const focus=target||node;const t=component(focus,'transform');if(t){state.pan.x=-Number(t.position?.[0]||0)*state.zoom;state.pan.y=-Number(t.position?.[1]||0)*state.zoom;}state.selectedId=focus.id;state.selectedIds=[focus.id];renderSelectionTree();renderComponentPanel();drawWorkplace();}},
+        {label:'Delete Joint',icon:'delete',action:()=>{askConfirm('Delete Joint',`Delete ${JOINT_TYPE_LABELS[joint.type]||'Joint'} #${index+1}?`,()=>{if(multiDeleteJoint(index,'Delete Joint'))return;pushHistory('Delete Joint');comp.joints.splice(index,1);renderComponentPanel();drawWorkplace();},'Delete');}}
       ],r.left,r.bottom+4);});
       head.append(titleWrap,menuBtn);card.append(head);
       const objectWrap=document.createElement('div');objectWrap.className='joint-object-row';const objectLabel=document.createElement('span');objectLabel.className='property-label';objectLabel.textContent='Object';const objectControl=document.createElement('div');objectControl.className='joint-object-control';
       const objectButton=document.createElement('button');objectButton.type='button';objectButton.className='script-button joint-object-button';objectButton.textContent=objectLabelFor(joint);
-      objectButton.addEventListener('click',e=>{e.stopPropagation();const r=objectButton.getBoundingClientRect();const items=opts.length?opts.map(o=>({label:o.label,icon:'◇',action:()=>{if(multiEditJoint(index,'Set Joint Object',j=>{j.object=o.value;}))return;pushHistory('Set Joint Object');joint.object=o.value;if(joint.type==='Pulley'&&!joint.constant){const target=allNodes().find(x=>x.node?.id===o.value)?.node;const pa=jointWorldAnchor(node,joint.anchorA||[0,0]),pb=target?jointWorldAnchor(target,joint.anchorB||[0,0]):{x:0,y:0};const ga=joint.groundA||[-100,0],gb=joint.groundB||[100,0];joint.constant=Math.hypot(pa.x-ga[0],pa.y-ga[1])+(Number(joint.ratio)||1)*Math.hypot(pb.x-gb[0],pb.y-gb[1]);}renderComponentPanel();drawWorkplace();}})):[{label:'No other Nodes available',icon:'○',disabled:true}];showContextMenu(items,r.left,r.bottom+4);});
+      objectButton.addEventListener('click',e=>{e.stopPropagation();const r=objectButton.getBoundingClientRect();const items=opts.length?opts.map(o=>({label:o.label,icon:'tag',action:()=>{if(multiEditJoint(index,'Set Joint Object',j=>{j.object=o.value;}))return;pushHistory('Set Joint Object');joint.object=o.value;if(joint.type==='Pulley'&&!joint.constant){const target=allNodes().find(x=>x.node?.id===o.value)?.node;const pa=jointWorldAnchor(node,joint.anchorA||[0,0]),pb=target?jointWorldAnchor(target,joint.anchorB||[0,0]):{x:0,y:0};const ga=joint.groundA||[-100,0],gb=joint.groundB||[100,0];joint.constant=Math.hypot(pa.x-ga[0],pa.y-ga[1])+(Number(joint.ratio)||1)*Math.hypot(pb.x-gb[0],pb.y-gb[1]);}renderComponentPanel();drawWorkplace();}})):[{label:'No other Nodes available',icon:'circle',disabled:true}];showContextMenu(items,r.left,r.bottom+4);});
       objectControl.append(objectButton);objectWrap.append(objectLabel,objectControl);card.append(objectWrap);
       const fields=document.createElement('div');fields.className='joint-fields-grid';
       const pushVector=(label,key)=>{fields.append(axisVectorField(label,joint[key]||[0,0],(x,y)=>{joint[key]=[Number(x)||0,Number(y)||0];if(joint.type==='Pulley')joint.constant=0;drawWorkplace();}));};
@@ -2771,20 +2772,20 @@
       const title=document.createElement('div');title.className='animation-block-head';
       const nameInput=document.createElement('input');nameInput.type='text';nameInput.value=anim.name;nameInput.className='animation-name-input';
       nameInput.addEventListener('change',()=>{const next=nameInput.value.trim()||`Animation ${index+1}`;const old=anim.name;if(next===old)return;pushHistory('Rename Animation');anim.name=next;if(comp.activeAnimation===old)comp.activeAnimation=next;renderComponentPanel();drawWorkplace();});
-      const del=document.createElement('button');del.type='button';del.className='mini-action danger';del.textContent='×';del.title='Delete Animation';
+      const del=document.createElement('button');del.type='button';del.className='mini-action danger';UIXIcons.set(del,'close');del.title='Delete Animation';
       del.addEventListener('click',()=>{if(comp.animations.length===1)return status('At least one animation is required');askConfirm('Delete Animation',`Delete “${anim.name}”?`,()=>{pushHistory('Delete Animation');comp.animations.splice(index,1);if(comp.activeAnimation===anim.name)comp.activeAnimation=comp.animations[0].name;renderComponentPanel();drawWorkplace();});});
       title.append(nameInput,del);block.append(title);
       block.append(field('FPS',anim.fps||8,'number',v=>{const next=Math.max(1,Number(v)||1);if(next===Number(anim.fps||8))return;pushHistory('Edit Animation FPS');anim.fps=next;drawWorkplace();}));
       (Array.isArray(anim.sprites)?anim.sprites:[]).forEach((sprite,si)=>{
         const row=assetField(`Sprite ${si+1}`,sprite.src,'Sprite',asset=>{if(!asset||sprite.src===asset.value)return;pushHistory('Edit Animation Sprite');sprite.name=asset.name;sprite.src=asset.value;renderComponentPanel();drawWorkplace();});
-        const remove=document.createElement('button');remove.type='button';remove.className='mini-action danger animation-sprite-remove';remove.textContent='×';remove.title='Remove Sprite';remove.onclick=()=>{pushHistory('Remove Animation Sprite');anim.sprites.splice(si,1);renderComponentPanel();drawWorkplace();};
+        const remove=document.createElement('button');remove.type='button';remove.className='mini-action danger animation-sprite-remove';UIXIcons.set(remove,'close');remove.title='Remove Sprite';remove.onclick=()=>{pushHistory('Remove Animation Sprite');anim.sprites.splice(si,1);renderComponentPanel();drawWorkplace();};
         row.querySelector('.property-control')?.append(remove);block.append(row);
       });
-      const add=document.createElement('button');add.className='small-action';add.type='button';add.textContent='＋ Add Sprite(s)';add.addEventListener('click',()=>openAssetSelector('Sprite',assets=>{const selected=(Array.isArray(assets)?assets:[assets]).filter(Boolean);if(!selected.length)return;pushHistory(`Add ${selected.length} Animation Sprite${selected.length===1?'':'s'}`);selected.forEach(asset=>anim.sprites.push({name:asset.name,src:asset.value}));renderComponentPanel();drawWorkplace();},{isMulti:true}));block.append(add);
+      const add=document.createElement('button');add.className='small-action';add.type='button';add.innerHTML='<i class="ui-svg" data-icon="add"></i> Add Sprite(s)';add.addEventListener('click',()=>openAssetSelector('Sprite',assets=>{const selected=(Array.isArray(assets)?assets:[assets]).filter(Boolean);if(!selected.length)return;pushHistory(`Add ${selected.length} Animation Sprite${selected.length===1?'':'s'}`);selected.forEach(asset=>anim.sprites.push({name:asset.name,src:asset.value}));renderComponentPanel();drawWorkplace();},{isMulti:true}));block.append(add);
       const activate=document.createElement('button');activate.className='small-action';activate.type='button';activate.textContent=comp.activeAnimation===anim.name?'Active':'Use Animation';activate.disabled=comp.activeAnimation===anim.name;activate.addEventListener('click',()=>{pushHistory('Use Animation');comp.activeAnimation=anim.name;renderComponentPanel();drawWorkplace();});block.append(activate);
       rows.push(block);
     });
-    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.textContent='＋ New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');pushHistory('Add Animation');comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();drawWorkplace();}));
+    const addAnim=document.createElement('button');addAnim.className='small-action';addAnim.type='button';addAnim.innerHTML='<i class="ui-svg" data-icon="add"></i> New Anim';addAnim.addEventListener('click',()=>promptModal('New Animation','Animation name','Animation '+(comp.animations.length+1),name=>{name=String(name||'').trim();if(!name)return;if(comp.animations.some(a=>a.name.toLowerCase()===name.toLowerCase()))return status('Animation name already exists');pushHistory('Add Animation');comp.animations.push({name,fps:8,sprites:[]});comp.activeAnimation=name;renderComponentPanel();drawWorkplace();}));
     rows.push(addAnim);return rows;
   }
 
@@ -2895,6 +2896,27 @@
     status(`${COMPONENT_LABELS[type]||type} pasted to ${targets.length} selected Node${targets.length===1?'':'s'}`);
   }
 
+  const CORE_COMPONENT_TYPES=['node','script','transform'];
+  /* Components are drawn in list order: the last visual component is painted on top. Moving a card up/down changes that order. */
+  function movableComponents(node){return (Array.isArray(node?.components)?node.components:[]).filter(c=>c&&!CORE_COMPONENT_TYPES.includes(c.type));}
+  function canMoveComponent(node,comp,delta){
+    if(!node||!comp||CORE_COMPONENT_TYPES.includes(comp.type))return false;
+    const list=movableComponents(node),i=list.indexOf(comp),j=i+delta;
+    return i>=0&&j>=0&&j<list.length;
+  }
+  function moveComponent(node,comp,delta){
+    if(!canMoveComponent(node,comp,delta))return;
+    const list=movableComponents(node),i=list.indexOf(comp),j=i+delta;
+    pushHistory(`Move ${COMPONENT_LABELS[comp.type]||comp.type} ${delta<0?'up':'down'}`);
+    [list[i],list[j]]=[list[j],list[i]];
+    node.components=[...node.components.filter(c=>c&&CORE_COMPONENT_TYPES.includes(c.type)),...list];
+    normalizeNode(node);
+    try{markEditorVisualsDirty?.();}catch{}
+    state.ui.renderOrderCache=null;state.ui.renderOrderSceneId='';
+    renderComponentPanel();drawWorkplace();
+    status(`${COMPONENT_LABELS[comp.type]||comp.type} moved ${delta<0?'up (drawn earlier, below the components after it)':'down (drawn later, above the components before it)'}`);
+  }
+
   function componentCard(title, content, removable, removeFn, foldKey = title, copyTarget = null) {
     const card = document.createElement('section'); card.className='component-card';
     card.dataset.componentCard = 'true'; card.dataset.componentKey = foldKey; card.classList.toggle('component-selected', state.ui.selectedComponentKey===foldKey);
@@ -2904,13 +2926,17 @@
     const fold=document.createElement('button'); fold.title='Collapse';
     const body=document.createElement('div'); body.className='component-body';
     const collapsed=!!state.ui.componentCollapsed[foldKey];
-    body.classList.toggle('hidden',collapsed); fold.textContent=collapsed?'+':'−';
-    fold.addEventListener('click',()=>{state.ui.componentCollapsed[foldKey]=!state.ui.componentCollapsed[foldKey];body.classList.toggle('hidden',state.ui.componentCollapsed[foldKey]);fold.textContent=state.ui.componentCollapsed[foldKey]?'+':'−';}); actions.append(fold);
-    if(removable){const del=document.createElement('button');del.className='delete-component';del.title='Delete component';del.textContent='×';del.addEventListener('click',()=>removeFn?.());actions.append(del);}
+    body.classList.toggle('hidden',collapsed); UIXIcons.set(fold,collapsed?'add':'minus');
+    fold.addEventListener('click',()=>{state.ui.componentCollapsed[foldKey]=!state.ui.componentCollapsed[foldKey];body.classList.toggle('hidden',state.ui.componentCollapsed[foldKey]);UIXIcons.set(fold,state.ui.componentCollapsed[foldKey]?'add':'minus');}); actions.append(fold);
+    if(copyTarget?.node&&copyTarget?.comp){
+      const mk=(delta,key,title)=>{const b=document.createElement('button');b.type='button';b.className='move-component';b.title=title;UIXIcons.set(b,key);b.disabled=!canMoveComponent(copyTarget.node,copyTarget.comp,delta);b.addEventListener('click',e=>{e.stopPropagation();moveComponent(copyTarget.node,copyTarget.comp,delta);});return b;};
+      if(!CORE_COMPONENT_TYPES.includes(copyTarget.comp.type))actions.append(mk(-1,'up','Move up (drawn earlier, below later components)'),mk(1,'down','Move down (drawn later, above earlier components)'));
+    }
+    if(removable){const del=document.createElement('button');del.className='delete-component';del.title='Delete component';UIXIcons.set(del,'close');del.addEventListener('click',()=>removeFn?.());actions.append(del);}
     header.append(strong,actions); card.append(header,body);
     if (content instanceof DocumentFragment) body.append(content); else if (Array.isArray(content)) content.forEach(x=>body.append(x)); else if (content) body.append(content);
     const selectThis=()=>{if(!copyTarget?.node||!copyTarget?.comp)return;state.ui.selectedComponentKey=foldKey;$$('.component-card.component-selected').forEach(el=>el.classList.remove('component-selected'));card.classList.add('component-selected');drawWorkplace();};
-    const showComponentMenu=e=>{e.preventDefault();e.stopPropagation();selectThis();const sameName=copyTarget?.node?.name??'';const items=[...(copyTarget?.node&&copyTarget?.comp?[{label:`Apply to all - ${sameName}`,icon:'✓',action:()=>applyComponentToSameNamedNodes(copyTarget)}]:[]),{label:'Copy',icon:'⧉',action:()=>copyComponent(copyTarget)},{label:'Paste',icon:'▣',disabled:!state.componentClipboard,action:()=>pasteComponent(copyTarget)}];if(removable)items.push({label:'Delete',icon:'×',action:()=>removeFn?.()});items.push({label:'? Documentation',icon:'',action:()=>openDocumentation(title)});showContextMenu(items,e.clientX??0,e.clientY??0);};
+    const showComponentMenu=e=>{e.preventDefault();e.stopPropagation();selectThis();const sameName=copyTarget?.node?.name??'';const moveItems=(copyTarget?.node&&copyTarget?.comp&&!CORE_COMPONENT_TYPES.includes(copyTarget.comp.type))?[{label:'Move Up',icon:'up',disabled:!canMoveComponent(copyTarget.node,copyTarget.comp,-1),action:()=>moveComponent(copyTarget.node,copyTarget.comp,-1)},{label:'Move Down',icon:'down',disabled:!canMoveComponent(copyTarget.node,copyTarget.comp,1),action:()=>moveComponent(copyTarget.node,copyTarget.comp,1)}]:[];const items=[...moveItems,...(copyTarget?.node&&copyTarget?.comp?[{label:`Apply to all - ${sameName}`,icon:'check',action:()=>applyComponentToSameNamedNodes(copyTarget)}]:[]),{label:'Copy',icon:'copy',action:()=>copyComponent(copyTarget)},{label:'Paste',icon:'paste',disabled:!state.componentClipboard,action:()=>pasteComponent(copyTarget)}];if(removable)items.push({label:'Delete',icon:'delete',action:()=>removeFn?.()});items.push({label:'? Documentation',icon:'help',action:()=>openDocumentation(title)});showContextMenu(items,e.clientX??0,e.clientY??0);};
     card.addEventListener('contextmenu',showComponentMenu);
     card.addEventListener('pointerdown',e=>{if(e.button===2){e.stopPropagation();return;}if(e.target.closest('.component-card-header,.component-body'))selectThis();},{capture:true});
     header.addEventListener('contextmenu',showComponentMenu);
@@ -3583,7 +3609,7 @@
     const wrap=document.createElement('div');wrap.className='select-wrap';
     const readCurrent=()=>{try{const v=typeof getCurrentValue==='function'?getCurrentValue():value;return v===undefined||v===null?'':v;}catch{return value===undefined||value===null?'':value;}};
     const isFontSelect=/font\s*(family)?/i.test(String(label||''));
-    const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(readCurrent())}</span><span>⌄</span>`;
+    const b=document.createElement('button');b.className='select-button';b.type='button';b.innerHTML=`<span>${esc(readCurrent())}</span><span><i class="ui-svg" data-icon="chevdown"></i></span>`;
     if(isFontSelect)b.firstElementChild.style.fontFamily=fontFamilyCss(readCurrent());
     const menu=document.createElement('div');menu.className='select-menu floating-select-menu';menu.hidden=true;menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';
     const updateCurrent=()=>{
@@ -3708,11 +3734,11 @@
     const head=document.createElement('button');head.className='library-group-header';head.type='button';
     const body=document.createElement('div');body.className='variable-section-body';
     const collapsed=!!state.ui[collapsedKey];body.classList.toggle('hidden',collapsed);
-    head.innerHTML=`<span>${collapsed?'+':'−'}</span>${esc(title)}`;
-    head.addEventListener('click',e=>{e.stopPropagation();state.ui[collapsedKey]=!state.ui[collapsedKey];const c=!!state.ui[collapsedKey];body.classList.toggle('hidden',c);head.firstElementChild.textContent=c?'+':'−';});
+    head.innerHTML=`<span>${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span>${esc(title)}`;
+    head.addEventListener('click',e=>{e.stopPropagation();state.ui[collapsedKey]=!state.ui[collapsedKey];const c=!!state.ui[collapsedKey];body.classList.toggle('hidden',c);UIXIcons.set(head.firstElementChild,c?'add':'minus');});
     if(!vars.length)body.append(empty(`No ${title.toLowerCase()} yet.`));
     vars.forEach(variable=>body.append(variableEditor(variable,scope)));
-    const footer=document.createElement('div');footer.className='variable-footer';const add=document.createElement('button');add.className='add-component-button';add.innerHTML='<span>＋</span>Add Variable';add.addEventListener('click',e=>{e.stopPropagation();addVariable(scope);});footer.append(add);body.append(footer);
+    const footer=document.createElement('div');footer.className='variable-footer';const add=document.createElement('button');add.className='add-component-button';add.innerHTML='<span><i class="ui-svg" data-icon="add"></i></span>Add Variable';add.addEventListener('click',e=>{e.stopPropagation();addVariable(scope);});footer.append(add);body.append(footer);
     section.append(head,body);host.append(section);
   }
   function renderVariables(host, scope='Global') {
@@ -3827,10 +3853,10 @@
     const title=document.createElement('strong');title.textContent=v.name||'Variable';
     const actions=document.createElement('div');actions.className='variable-head-actions';
     const toggle=document.createElement('button');toggle.className='mini-action variable-toggle';toggle.type='button';
-    const del=document.createElement('button');del.className='mini-action danger';del.type='button';del.textContent='×';del.title='Delete Variable';
+    const del=document.createElement('button');del.className='mini-action danger';del.type='button';UIXIcons.set(del,'close');del.title='Delete Variable';
     const key=v.id||`${scope}:${v.name||'Variable'}`;const collapsed=!!state.ui.variableCollapsed[key];
-    const body=document.createElement('div');body.className='variable-body';body.classList.toggle('hidden',collapsed);toggle.textContent=collapsed?'+':'−';toggle.title=collapsed?'Expand':'Collapse';
-    toggle.addEventListener('click',e=>{e.stopPropagation();state.ui.variableCollapsed[key]=!state.ui.variableCollapsed[key];const c=!!state.ui.variableCollapsed[key];body.classList.toggle('hidden',c);toggle.textContent=c?'+':'−';toggle.title=c?'Expand':'Collapse';});
+    const body=document.createElement('div');body.className='variable-body';body.classList.toggle('hidden',collapsed);UIXIcons.set(toggle,collapsed?'add':'minus');toggle.title=collapsed?'Expand':'Collapse';
+    toggle.addEventListener('click',e=>{e.stopPropagation();state.ui.variableCollapsed[key]=!state.ui.variableCollapsed[key];const c=!!state.ui.variableCollapsed[key];body.classList.toggle('hidden',c);UIXIcons.set(toggle,c?'add':'minus');toggle.title=c?'Expand':'Collapse';});
     del.addEventListener('click',e=>{e.stopPropagation();askConfirm('Delete Variable',`Delete “${v.name||'Variable'}”?`,()=>{const list=variableList(scope),i=list.indexOf(v);if(i>=0){pushHistory(`Delete ${v.name||'Variable'}`);list.splice(i,1);}delete state.ui.variableCollapsed[key];scope==='Local'?renderLocalVariables():(state.script.nodeId?renderScriptScopeVariables():renderComponentPanel());if(state.script.nodeId)renderScriptCanvas();scheduleInspectorRefresh();});});
     actions.append(toggle,del);head.append(title,actions);card.append(head);
     const nameRow=field('Name',v.name,'text',x=>{
@@ -3893,16 +3919,16 @@
       e.stopPropagation();
       const items=[];
       if(scope==='Scene'){
-        items.push({label:'Set as Global Var',icon:'◆',action:()=>confirmVariableScopeMove(v,'Scene','Global')});
-        items.push({label:'Set as Server Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Scene','Server')});
+        items.push({label:'Set as Global Var',icon:'tagfill',action:()=>confirmVariableScopeMove(v,'Scene','Global')});
+        items.push({label:'Set as Server Var',icon:'tag',action:()=>confirmVariableScopeMove(v,'Scene','Server')});
       }else if(scope==='Global'){
-        items.push({label:'Set as Scene Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Global','Scene')});
-        items.push({label:'Set as Server Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Global','Server')});
+        items.push({label:'Set as Scene Var',icon:'tag',action:()=>confirmVariableScopeMove(v,'Global','Scene')});
+        items.push({label:'Set as Server Var',icon:'tag',action:()=>confirmVariableScopeMove(v,'Global','Server')});
       }else if(scope==='Server'){
-        items.push({label:'Set as Global Var',icon:'◆',action:()=>confirmVariableScopeMove(v,'Server','Global')});
-        items.push({label:'Set as Scene Var',icon:'◇',action:()=>confirmVariableScopeMove(v,'Server','Scene')});
+        items.push({label:'Set as Global Var',icon:'tagfill',action:()=>confirmVariableScopeMove(v,'Server','Global')});
+        items.push({label:'Set as Scene Var',icon:'tag',action:()=>confirmVariableScopeMove(v,'Server','Scene')});
       }
-      items.push({label:'Delete',icon:'×',action:()=>del.click()});
+      items.push({label:'Delete',icon:'delete',action:()=>del.click()});
       showContextMenu(items,e.clientX,e.clientY);
     });
     return card;
@@ -3913,14 +3939,14 @@
     const node=selectedNodes[0]||selectedNode();
     if(!node)return status('Select a Node first');
     const grid=$('#componentGrid');if(!grid)return;grid.innerHTML='';
-    const icons={text:'T',sprite:'▧',animationsprite:'◫',physics:'◌',collider:'□',joints:'↔',subcamera:'▣',canvas:'▤',colorinput:'◉',input:'▭',progressbar:'▥'};
+    const icons={text:'text',sprite:'sprite',animationsprite:'film',physics:'physics',collider:'rectangle',joints:'link',subcamera:'camera',canvas:'layers',colorinput:'picker',input:'input',progressbar:'progress'};
     Object.keys(NodeSettings).filter(type=>!['node','script','transform'].includes(type)).forEach(type=>{
       const existsAll=selectedNodes.length>1?selectedNodes.every(n=>!!component(n,type)):!!component(node,type);
       const existsSome=selectedNodes.length>1?selectedNodes.some(n=>!!component(n,type)):existsAll;
       const b=document.createElement('button');b.className='component-option';b.disabled=existsAll;
-      const icon=icons[type]||'◇';
+      const icon=icons[type]||'tag';
       const small=selectedNodes.length>1?(existsAll?'Already added to all':(existsSome?`Add to missing Nodes (${selectedNodes.length})`:`Add to ${selectedNodes.length} Nodes`)):(existsAll?'Already added':'Add component');
-      b.innerHTML=`<span class="option-icon">${icon}</span><span><strong>${COMPONENT_LABELS[type]}</strong><small>${small}</small></span>`;
+      b.innerHTML=`<span class="option-icon">${UIXIcons.get(icon,'ui-svg')}</span><span><strong>${COMPONENT_LABELS[type]}</strong><small>${small}</small></span>`;
       if(existsAll)b.classList.add('disabled-option');
       b.addEventListener('click',()=>addComponent(type));grid.append(b);
     });
@@ -3965,9 +3991,9 @@
     selection.classList.toggle('editor-panel-collapsed',a&&sc);
     component.classList.toggle('editor-panel-collapsed',b&&cc);
     const sb=selection.querySelector('[data-action="collapse-selection"]'),cb=component.querySelector('[data-action="collapse-components"]');
-    if(sb){sb.textContent=sc?'›':'‹';sb.title=sc?'Expand':'Collapse';sb.setAttribute('aria-label',sb.title);}
-    if(cb){cb.textContent=cc?'‹':'›';cb.title=cc?'Expand':'Collapse';cb.setAttribute('aria-label',cb.title);}
-    $('#selectionPanelIcon').textContent=a?'☑':'☐';$('#componentPanelIcon').textContent=b?'☑':'☐';
+    if(sb){UIXIcons.set(sb,sc?'next':'prev');sb.title=sc?'Expand':'Collapse';sb.setAttribute('aria-label',sb.title);}
+    if(cb){UIXIcons.set(cb,cc?'prev':'next');cb.title=cc?'Expand':'Collapse';cb.setAttribute('aria-label',cb.title);}
+    UIXIcons.set($('#selectionPanelIcon'),a?'checkon':'checkoff');UIXIcons.set($('#componentPanelIcon'),b?'checkon':'checkoff');
     updateTopbarModeRailPosition();
   }
   function positionPanelRestoreRail(){}
@@ -5078,68 +5104,83 @@
   function drawNodeVisual(ctx,node,x,y,sx,sy,angle){
     if(!runtimeNodeVisible(node))return;
     ctx.save();ctx.translate(x,y);ctx.rotate(angle*Math.PI/180);ctx.scale(sx,sy);
-    const canvas=component(node,'canvas'),text=component(node,'text'),sprite=component(node,'sprite'),anim=component(node,'animationsprite'),progress=component(node,'progressbar');
-    if(canvas){
+    const drawCanvas=canvas=>{
       let surface=null;
       if(state.runtime?.running&&!runtimeSubCameraStack.has(String(canvas.source||''))){try{surface=runtimeCameraSurfaceForCanvas(canvas);}catch{surface=null;}}
       drawCanvasFrame(ctx,canvas,surface);
-    }
-    if(text){
+    };
+    const drawText=text=>{
       const p=text.position||[0,0];ctx.save();ctx.translate(Number(p[0]||0),Number(p[1]||0));
       const m=getTextMetrics(node,text,ctx);ctx.font=`${Number(text.fontSize)||32}px ${text.fontFamily||'sans-serif'}`;ctx.textAlign=text.justify==='Left'?'left':text.justify==='Right'?'right':'center';ctx.textBaseline='middle';const left=-m.w/2,top=-m.h/2;
       if(text.bg&&text.bg!=='#00000000'){roundRectPath(ctx,left,top,m.w,m.h,text.border?.radius||[0,0,0,0]);ctx.fillStyle=colorCss(text.bg,'rgba(0,0,0,0)');ctx.fill();}
       if(text.border?.enabled){roundRectPath(ctx,left,top,m.w,m.h,text.border.radius);ctx.strokeStyle=colorCss(text.border.color,'#fff');ctx.lineWidth=Number(text.border.width)||1;ctx.stroke();}
-      ctx.fillStyle=colorCss(text.fgcol,'#fff');const lines=String(text.txt||'').split('\n'),lh=(Number(text.fontSize)||32)*1.25;const padX=8;let firstCenter;if(text.align==='Top')firstCenter=top+lh/2;else if(text.align==='Bottom')firstCenter=top+(lines.length-.5)*lh;else firstCenter=-(lines.length-1)*lh/2;const x=text.justify==='Left'?left+padX:text.justify==='Right'?(-left-padX):0;lines.forEach((line,i)=>ctx.fillText(line,x,firstCenter+i*lh));ctx.restore();
-    }
-    const colorInput=component(node,'colorinput');
-    if(colorInput){
-      const p=colorInput.position||[0,0],w=Math.max(1,Number(colorInput.width)||72),h=Math.max(1,Number(colorInput.height)||42),sx=Number(colorInput.scale?.[0]??1)||1,sy=Number(colorInput.scale?.[1]??1)||1;
-      ctx.save();ctx.translate(Number(p[0]||0),Number(p[1]||0));ctx.scale(sx,sy);
+      ctx.fillStyle=colorCss(text.fgcol,'#fff');const lines=String(text.txt||'').split('\n'),lh=(Number(text.fontSize)||32)*1.25;const padX=8;let firstCenter;if(text.align==='Top')firstCenter=top+lh/2;else if(text.align==='Bottom')firstCenter=top+(lines.length-.5)*lh;else firstCenter=-(lines.length-1)*lh/2;const tx=text.justify==='Left'?left+padX:text.justify==='Right'?(-left-padX):0;lines.forEach((line,i)=>ctx.fillText(line,tx,firstCenter+i*lh));ctx.restore();
+    };
+    const drawColorInput=colorInput=>{
+      const p=colorInput.position||[0,0],w=Math.max(1,Number(colorInput.width)||72),h=Math.max(1,Number(colorInput.height)||42),csx=Number(colorInput.scale?.[0]??1)||1,csy=Number(colorInput.scale?.[1]??1)||1;
+      ctx.save();ctx.translate(Number(p[0]||0),Number(p[1]||0));ctx.scale(csx,csy);
       roundRectPath(ctx,-w/2,-h/2,w,h,Math.min(8,Math.min(w,h)*.18));ctx.fillStyle=colorCss(colorInput.color,'#FFFFFFFF');ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=1;ctx.stroke();
       ctx.font=`${Math.max(9,Math.min(15,h*.32))}px ui-monospace,SFMono-Regular,Consolas,monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
       let hex=String(colorInput.color||'#FFFFFFFF');try{hex=rgbaToHex(parseColor(hex));}catch{}
       const [r,g,b]=parseColorSafeRgb(colorInput.color||'#FFFFFFFF');ctx.fillStyle=((r*299+g*587+b*114)/1000)<.5?'#fff':'#111';ctx.fillText(hex,0,0);
       ctx.restore();
-    }
-    const input=component(node,'input');
-    if(input)drawEditorInputVisual(ctx,input,node);
-    const visual=nodeVisualSource(node);
-    if(visual.src){
+    };
+    const drawSprite=()=>{
+      const sprite=component(node,'sprite'),visual=nodeVisualSource(node);
+      if(!visual.src)return;
       const img=getAssetImage(visual.src);
-      if(img?.complete&&img.naturalWidth){
-        const m=spriteLocalGeometry(node);
-        const base=m||(()=>{const auto=constrainImageSize(img);return{x:0,y:0,w:auto.w,h:auto.h};})();
-        const prevSmooth=ctx.imageSmoothingEnabled,prevAlpha=ctx.globalAlpha;
-        const modulate=sprite?.modulate||'#FFFFFFFF';
-        const modulateStrength=clamp(Number(sprite?.strength??1),0,1);
-        const needsModulate=modulate!=='#FFFFFFFF' && modulateStrength>0;
-        ctx.imageSmoothingEnabled=!visual.pixelated;
-        ctx.imageSmoothingQuality=visual.pixelated?'nearest':'low';
-        ctx.globalAlpha=clamp(Number(sprite?.opacity??1),0,1)*prevAlpha;
-        const drawOne=(dx,dy,dw,dh)=>{
-          if(!(dw>0&&dh>0))return;
-          if(!needsModulate){spriteDrawFitted(ctx,img,dx,dy,dw,dh,sprite?.scaleType);return;}
-          const e=spriteTileEntry(img,dw,dh,sprite?.scaleType==='Crop'?'Crop':'Stretch',modulate,modulateStrength,visual.pixelated);
-          ctx.drawImage(e.tile,dx,dy,dw,dh);
-        };
-        if(m){
-          const x=m.x-m.w/2,y=m.y-m.h/2;
-          if(sprite?.renderType==='Texture'){
-            const regionW=Math.max(1,Math.abs(Number(m.w)||1)),regionH=Math.max(1,Math.abs(Number(m.h)||1));
-            // Texture Size = size of EACH repeated tile (0 = the image's normal size).
-            const tile=spriteTextureTile(img,sprite),tileW=tile.w,tileH=tile.h;
-            drawSpriteTexture(ctx,img,x,y,regionW,regionH,tileW,tileH,sprite,visual.pixelated);
-          }else drawOne(x,y,m.w,m.h);
-        }else drawOne(base.x-base.w/2,base.y-base.h/2,base.w,base.h);
-        ctx.globalAlpha=prevAlpha;ctx.imageSmoothingEnabled=prevSmooth;
-      }
-    }
-    if(progress){
+      if(!img?.complete||!img.naturalWidth)return;
+      const m=spriteLocalGeometry(node);
+      const base=m||(()=>{const auto=constrainImageSize(img);return{x:0,y:0,w:auto.w,h:auto.h};})();
+      const prevSmooth=ctx.imageSmoothingEnabled,prevAlpha=ctx.globalAlpha;
+      const modulate=sprite?.modulate||'#FFFFFFFF';
+      const modulateStrength=clamp(Number(sprite?.strength??1),0,1);
+      const needsModulate=modulate!=='#FFFFFFFF' && modulateStrength>0;
+      ctx.imageSmoothingEnabled=!visual.pixelated;
+      ctx.imageSmoothingQuality=visual.pixelated?'nearest':'low';
+      ctx.globalAlpha=clamp(Number(sprite?.opacity??1),0,1)*prevAlpha;
+      const drawOne=(dx,dy,dw,dh)=>{
+        if(!(dw>0&&dh>0))return;
+        if(!needsModulate){spriteDrawFitted(ctx,img,dx,dy,dw,dh,sprite?.scaleType);return;}
+        const e=spriteTileEntry(img,dw,dh,sprite?.scaleType==='Crop'?'Crop':'Stretch',modulate,modulateStrength,visual.pixelated);
+        ctx.drawImage(e.tile,dx,dy,dw,dh);
+      };
+      if(m){
+        const dx=m.x-m.w/2,dy=m.y-m.h/2;
+        if(sprite?.renderType==='Texture'){
+          const regionW=Math.max(1,Math.abs(Number(m.w)||1)),regionH=Math.max(1,Math.abs(Number(m.h)||1));
+          const tile=spriteTextureTile(img,sprite),tileW=tile.w,tileH=tile.h;
+          drawSpriteTexture(ctx,img,dx,dy,regionW,regionH,tileW,tileH,sprite,visual.pixelated);
+        }else drawOne(dx,dy,m.w,m.h);
+      }else drawOne(base.x-base.w/2,base.y-base.h/2,base.w,base.h);
+      ctx.globalAlpha=prevAlpha;ctx.imageSmoothingEnabled=prevSmooth;
+    };
+    const drawProgress=progress=>{
       const p=progress.position||[0,0],w=Math.max(1,Number(progress.width)||1),h=Math.max(1,Number(progress.height)||1),min=Number(progress.min)||0,max=Number(progress.max)||100,val=clamp(Number(progress.value)||0,min,max),ratio=max===min?1:(val-min)/(max-min);
       ctx.save();ctx.translate(Number(p[0]||0),Number(p[1]||0));roundRectPath(ctx,-w/2,-h/2,w,h,progress.cornerRadius||[0,0,0,0]);ctx.fillStyle=colorCss(progress.bgCol,'#303030');ctx.fill();
       const fillW=w*ratio;if(fillW>0){ctx.save();roundRectPath(ctx,-w/2,-h/2,w,h,progress.cornerRadius||[0,0,0,0]);ctx.clip();ctx.fillStyle=colorCss(progress.fillCol,'#fff');if(progress.direction==='right')ctx.fillRect(-w/2+w-fillW,-h/2,fillW,h);else ctx.fillRect(-w/2,-h/2,fillW,h);ctx.restore();}
       if(Number(progress.outline?.size||0)>0){roundRectPath(ctx,-w/2,-h/2,w,h,progress.cornerRadius||[0,0,0,0]);ctx.strokeStyle=colorCss(progress.outline.color,'#000');ctx.lineWidth=Number(progress.outline.size)||1;ctx.stroke();}ctx.restore();
+    };
+
+    // components[] is the editor's layer stack. Later-added visual components are
+    // painted later, so they naturally sit above every earlier visual component.
+    // The Sprite and Animation Sprite entries share one visual source and are drawn once.
+    let spriteLayerDrawn=false;
+    const components=Array.isArray(node.components)?node.components:[];
+    for(const entry of components){
+      if(!entry||typeof entry!=='object')continue;
+      switch(entry.type){
+        case 'canvas': drawCanvas(entry); break;
+        case 'text': drawText(entry); break;
+        case 'colorinput': drawColorInput(entry); break;
+        case 'input': drawEditorInputVisual(ctx,entry,node); break;
+        case 'sprite':
+        case 'animationsprite':
+          if(!spriteLayerDrawn){drawSprite();spriteLayerDrawn=true;}
+          break;
+        case 'progressbar': drawProgress(entry); break;
+      }
     }
     ctx.restore();
   }
@@ -5219,18 +5260,18 @@
     if(node){if(!state.selectedIds.includes(node.id)){clearNodeSelection(node.id);}else state.selectedId=node.id;renderSelectionTree();renderComponentPanel();drawWorkplace();}
     const many=topLevelSelectedItems().length>1;
     showContextMenu([
-      ...(many?[{label:`${topLevelSelectedItems().length} selected`,icon:'☷',disabled:true}]:[]),
-      {label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),disabled:!topLevelSelectedItems().length,action:()=>cutNode()},
-      {label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),disabled:!topLevelSelectedItems().length,action:()=>copyNode()},
-      {label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},
-      {label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:!topLevelSelectedItems().length,action:()=>duplicateNodes()},
-      {label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),disabled:!topLevelSelectedItems().length,action:()=>deleteSelectedNodes()},
-      {label:'Snap to Node',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),disabled:!selectedNode(),action:()=>snapSelectedMainNode()},
-      {label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('selectAll',{scope:'editor'})},
-      ...(node?[{label:`Select All - ${node.name}`,icon:'☷',action:()=>selectAllNodesWithName(node.name)}]:[]),
-      {label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('deselectAll',{scope:'editor'})},
-      {label:'Add Node',icon:'◇',action:()=>addNode()},
-      ...(node?[{label:'? Documentation',icon:'',action:()=>openDocumentation(node.name)}]:[])
+      ...(many?[{label:`${topLevelSelectedItems().length} selected`,icon:'selectall',disabled:true}]:[]),
+      {label:'Cut',icon:'cut',shortcut:window.UIXKeyBinds?.shortcutFor('cut','editor'),disabled:!topLevelSelectedItems().length,action:()=>cutNode()},
+      {label:'Copy',icon:'copy',shortcut:window.UIXKeyBinds?.shortcutFor('copy','editor'),disabled:!topLevelSelectedItems().length,action:()=>copyNode()},
+      {label:'Paste',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','editor'),disabled:!state.nodeClipboard,action:()=>pasteNode()},
+      {label:'Duplicate',icon:'duplicate',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','editor'),disabled:!topLevelSelectedItems().length,action:()=>duplicateNodes()},
+      {label:'Delete',icon:'delete',shortcut:window.UIXKeyBinds?.shortcutFor('delete','editor'),disabled:!topLevelSelectedItems().length,action:()=>deleteSelectedNodes()},
+      {label:'Snap to Node',icon:'snap',shortcut:window.UIXKeyBinds?.shortcutFor('snap','editor'),disabled:!selectedNode(),action:()=>snapSelectedMainNode()},
+      {label:'Select All',icon:'selectall',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('selectAll',{scope:'editor'})},
+      ...(node?[{label:`Select All - ${node.name}`,icon:'selectall',action:()=>selectAllNodesWithName(node.name)}]:[]),
+      {label:'Deselect All',icon:'selectall',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','editor'),action:()=>window.UIXKeyBinds?.runCommand?.('deselectAll',{scope:'editor'})},
+      {label:'Add Node',icon:'node',action:()=>addNode()},
+      ...(node?[{label:'? Documentation',icon:'help',action:()=>openDocumentation(node.name)}]:[])
     ],x,y);
   }
 
@@ -5449,12 +5490,12 @@
     showModal($('#helpModal'));
   }
 
-  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${item.icon||'×'}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
+  function showContextMenu(items,x,y){const menu=$('#floatingContextMenu');menu.innerHTML='';items.forEach(item=>{const b=document.createElement('button');b.type='button';b.disabled=!!item.disabled;b.classList.toggle('disabled-menu-item',!!item.disabled);const shortcut=item.shortcut||'';b.innerHTML=`<span>${window.UIXIcons?.get(item.icon,'svg-menu-icon')||''}</span><span>${esc(item.label)}</span>${shortcut?`<span class="shortcut-hint">${esc(window.UIXKeyBinds?.display?.(shortcut)||shortcut)}</span>`:''}`;b.addEventListener('click',()=>{if(item.disabled)return;closeContextMenu();item.action?.();});menu.append(b);});menu.hidden=false;menu.classList.add('open');menu.style.position='fixed';menu.style.zIndex='2147483646';menu.style.pointerEvents='auto';menu.style.visibility='hidden';menu.style.left='0px';menu.style.top='0px';const r=menu.getBoundingClientRect(),pad=6;const left=clamp(x,pad,innerWidth-r.width-pad),top=clamp(y,pad,innerHeight-r.height-pad);menu.style.left=`${left}px`;menu.style.top=`${top}px`;menu.style.visibility='visible';}
   function closeContextMenu(){const m=$('#floatingContextMenu');m.hidden=true;m.classList.remove('open');m.innerHTML='';}
   function askConfirm(title,text,onConfirm,okText='Delete'){ $('#confirmModalTitle').textContent=title;$('#confirmModalText').textContent=text;$('#confirmModalOk').textContent=okText;confirmAction=onConfirm;showModal($('#confirmModal')); }
   function doConfirm(){const fn=confirmAction;confirmAction=null;closeModal($('#confirmModal'));fn?.();}
   function promptModal(title,label,value,onSubmit){
-    const modal=document.createElement('section');modal.className='modal';modal.id=`prompt-${Date.now()}`;modal.innerHTML=`<div class="modal-header"><div><h3>${esc(title)}</h3><p>${esc(label)}</p></div><button class="modal-close">×</button></div><div class="prompt-body"><input></div><div class="modal-actions"><button class="btn cancel">Cancel</button><button class="btn primary apply">Apply</button></div>`;document.body.append(modal);showModal(modal);const input=$('input',modal);input.value=value||'';input.focus();$('.cancel',modal).onclick=()=>{closeModal(modal);modal.remove();};$('.modal-close',modal).onclick=()=>{closeModal(modal);modal.remove();};$('.apply',modal).onclick=()=>{const v=input.value;closeModal(modal);modal.remove();onSubmit(v);};
+    const modal=document.createElement('section');modal.className='modal';modal.id=`prompt-${Date.now()}`;modal.innerHTML=`<div class="modal-header"><div><h3>${esc(title)}</h3><p>${esc(label)}</p></div><button class="modal-close"><i class="ui-svg" data-icon="close"></i></button></div><div class="prompt-body"><input></div><div class="modal-actions"><button class="btn cancel">Cancel</button><button class="btn primary apply">Apply</button></div>`;document.body.append(modal);showModal(modal);const input=$('input',modal);input.value=value||'';input.focus();$('.cancel',modal).onclick=()=>{closeModal(modal);modal.remove();};$('.modal-close',modal).onclick=()=>{closeModal(modal);modal.remove();};$('.apply',modal).onclick=()=>{const v=input.value;closeModal(modal);modal.remove();onSubmit(v);};
   }
 
   function showInfo(title,text){askConfirm(title,text,()=>{},'Close');}
@@ -5604,6 +5645,9 @@
       case 'load-local': openLocalNDCModal(); break;
       case 'load-flappybird-sample': loadFlappyBirdSample(); break;
       case 'import-project': openProjectImport(); break;
+      case 'import-json': openProjectJSONImport(); break;
+      case 'export-json': exportProjectJSON(); break;
+      case 'view-json': openProjectJSONViewer(); break;
       case 'save-project': saveProjectToProjectStorage(); break;
       case 'export-project': openExportProjectModal(); break;
       case 'open-history': openHistory(); break;
@@ -6043,14 +6087,14 @@
       for(const record of list){
         const row=document.createElement('div');row.className='local-ndc-row';
         const open=document.createElement('button');open.type='button';open.className='local-ndc-name';open.textContent=record.name||'Untitled Node2D';open.title='Load this project';open.onclick=()=>loadLocalNDC(record.id);
-        const dup=document.createElement('button');dup.type='button';dup.className='local-ndc-edit';dup.textContent='⧉';dup.title='Duplicate Project';
+        const dup=document.createElement('button');dup.type='button';dup.className='local-ndc-edit';UIXIcons.set(dup,'copy');dup.title='Duplicate Project';
         dup.onclick=()=>openDuplicateLocalProject(record);
-        const edit=document.createElement('button');edit.type='button';edit.className='local-ndc-edit';edit.textContent='✎';edit.title='Rename';
+        const edit=document.createElement('button');edit.type='button';edit.className='local-ndc-edit';UIXIcons.set(edit,'pencil');edit.title='Rename';
         edit.onclick=()=>promptModal('Rename Local NDC','Edit the saved project name.',record.name||'',async value=>{
           const name=String(value||'').trim();if(!name){status('Name is required');return;}
           try{await window.UIXNDCCodec.renameLocal(record.id,name);if(state.project.localNdcId===record.id)state.project.name=name;openLocalNDCModal();status(`Renamed to ${name}`);}catch(err){status(`Rename failed: ${err.message||err}`);}
         });
-        const del=document.createElement('button');del.type='button';del.className='local-ndc-delete';del.textContent='×';del.title='Delete';
+        const del=document.createElement('button');del.type='button';del.className='local-ndc-delete';UIXIcons.set(del,'close');del.title='Delete';
         del.onclick=()=>askConfirm('Delete Local NDC',`Delete “${record.name||'Untitled Node2D'}” from this device?`,async()=>{
           try{await window.UIXNDCCodec.deleteLocal(record.id);openLocalNDCModal();status('Local NDC deleted');}catch(err){status(`Delete failed: ${err.message||err}`);}
         },'Delete');
@@ -6086,7 +6130,7 @@
       modal.id='ndcImportModeModal';
       modal.className='modal';
       modal.dataset.closeOutside='false';
-      modal.innerHTML=`<div class="modal-header"><div><h3>Import NDC</h3><p>Choose how to import “${esc(name||'project.ndc')}”.</p></div><button class="modal-close" type="button" aria-label="Cancel">×</button></div><div class="modal-body"><p><strong>Load</strong> replaces the current project.</p><p><strong>Merge</strong> adds the imported scenes and project content to your current project.</p></div><div class="modal-actions"><button class="btn" type="button" data-import-mode="cancel">Cancel</button><button class="btn" type="button" data-import-mode="merge">Merge</button><button class="btn primary" type="button" data-import-mode="load">Load</button></div>`;
+      modal.innerHTML=`<div class="modal-header"><div><h3>Import NDC</h3><p>Choose how to import “${esc(name||'project.ndc')}”.</p></div><button class="modal-close" type="button" aria-label="Cancel"><i class="ui-svg" data-icon="close"></i></button></div><div class="modal-body"><p><strong>Load</strong> replaces the current project.</p><p><strong>Merge</strong> adds the imported scenes and project content to your current project.</p></div><div class="modal-actions"><button class="btn" type="button" data-import-mode="cancel">Cancel</button><button class="btn" type="button" data-import-mode="merge">Merge</button><button class="btn primary" type="button" data-import-mode="load">Load</button></div>`;
       document.body.append(modal);
       let finished=false;
       const finish=value=>{if(finished)return;finished=true;document.removeEventListener('keydown',onKey,true);closeModal(modal);modal.remove();resolve(value);};
@@ -6110,6 +6154,33 @@
       const data=window.UIXNDCCodec?.decode?.(bytes);
       mergeProjectData(data,file.name);
     }catch(err){console.error(err);status(`Import failed: ${err.message||err}`);}
+  }
+
+  function openProjectJSONImport(){
+    const input=$('#projectJsonFileInput');
+    if(input)input.click();
+  }
+
+  async function importProjectJSONFile(file){
+    try{
+      const jsonText=(await file.text()).replace(/^\uFEFF/,'');
+      const parsed=JSON.parse(jsonText);
+      if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('The JSON root must be a Node2D project object.');
+      if(!Array.isArray(parsed.scenes)||!parsed.scenes.length)throw new Error('This JSON does not contain a valid Node2D scenes array.');
+      const data={...parsed};
+      delete data.__ndc;
+      if(!data.project||typeof data.project!=='object'||Array.isArray(data.project))data.project={name:String(file.name||'Imported JSON').replace(/\.json$/i,'')};
+      const importedName=String(data.project.name||file.name||'Imported JSON');
+      const apply=()=>{
+        try{
+          applyProjectData(data,{localNdcId:null});
+          status(`Imported raw JSON · ${importedName}`);
+        }catch(error){console.error(error);status(`JSON import failed: ${error.message||error}`);}
+      };
+      if(hasLoadedProject()&&!window.__UIX_STANDALONE__){
+        askConfirm('Replace Current Project',`Import “${importedName}” from raw JSON and replace the current project?`,apply,'Import');
+      }else apply();
+    }catch(err){console.error(err);status(`JSON import failed: ${err.message||err}`);}
   }
 
   async function loadProjectFromURL(urlText){
@@ -6346,6 +6417,73 @@
     }catch(err){if(!ndcTransferCancelled){console.error(err);setNdcTransferProgress(0,`Export failed: ${err.message||err}`);status(`Export failed: ${err.message||err}`);setTimeout(closeNdcTransferModal,600);}}
   }
 
+
+  function prepareRawProjectJSON(){
+    ensureProject();
+    flushPendingValueEditors();
+    flushPendingHistory();
+    syncEmbeddedAssetsFromValue({scenes:state.scenes,script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},game:state.game});
+    normalizeAssetFilenames();
+    ensureAssetIds();
+    return cloneSaveValue(collectProjectData(),true);
+  }
+
+  function rawProjectJSONText(){
+    const source=prepareRawProjectJSON();
+    return JSON.stringify(source,null,2);
+  }
+
+  function rawProjectJSONFilename(){
+    const base=String(state.project?.name||'Node2D Project').trim().replace(/[^a-z0-9._-]+/gi,'_').replace(/^\.+|\.+$/g,'')||'Node2D_Project';
+    return `${base}.json`;
+  }
+
+  function exportProjectJSON(){
+    try{
+      const json=rawProjectJSONText();
+      const bytes=new TextEncoder().encode(json);
+      downloadBytes(bytes,rawProjectJSONFilename(),'application/json;charset=utf-8');
+      status(`Exported raw JSON · ${Math.round(bytes.length/1024)} KB`);
+    }catch(err){console.error(err);status(`JSON export failed: ${err.message||err}`);}
+  }
+
+  function highlightJSONLine(line){
+    const tokenPattern=/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}\[\],:]/g;
+    let html='',last=0,match;
+    while((match=tokenPattern.exec(line))){
+      html+=esc(line.slice(last,match.index));
+      const token=match[0];
+      let type='json-punctuation';
+      if(token[0]==='"'){
+        const tail=line.slice(tokenPattern.lastIndex);
+        type=/^\s*:/.test(tail)?'json-key':'json-string';
+      }else if(token==='true'||token==='false')type='json-boolean';
+      else if(token==='null')type='json-null';
+      else if(token[0]==='-'||/\d/.test(token[0]))type='json-number';
+      html+=`<span class="${type}">${esc(token)}</span>`;
+      last=tokenPattern.lastIndex;
+    }
+    return html+esc(line.slice(last));
+  }
+
+  function openProjectJSONViewer(){
+    try{
+      const json=rawProjectJSONText();
+      const lines=json.split('\n');
+      const host=$('#jsonViewerContent');
+      const stats=$('#jsonViewerStats');
+      if(!host)throw new Error('JSON viewer is unavailable');
+      host.innerHTML=`<div class="json-viewer-lines">${lines.map((line,index)=>`<div class="json-view-line"><span class="json-line-no">${index+1}</span><code>${highlightJSONLine(line)}</code></div>`).join('')}</div>`;
+      if(stats){
+        const size=new TextEncoder().encode(json).length;
+        const prettySize=size<1024?`${size} B`:`${(size/1024).toFixed(1)} KB`;
+        stats.textContent=`${lines.length.toLocaleString()} lines · ${prettySize} · ${state.project?.name||'Untitled Node2D'}`;
+      }
+      showModal($('#jsonViewerModal'));
+      if(host)host.scrollTop=0;
+    }catch(err){console.error(err);status(`Could not open JSON viewer: ${err.message||err}`);}
+  }
+
   let exportPwaManifest={};
   function getExportSettings(){
     const s=state.project.exportSettings||{};
@@ -6495,7 +6633,7 @@
     if(!asset?.value)return;
     const existing=$('#audioPreviewModal');existing?.remove();
     const modal=document.createElement('section');modal.id='audioPreviewModal';modal.className='modal audio-preview-modal';modal.dataset.closeOutside='true';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');
-    modal.innerHTML=`<div class="modal-header"><div><h3>Audio Preview</h3><p>${esc(asset.name||asset.filename||'Audio')}</p></div><button class="modal-close" type="button">×</button></div><div class="audio-preview-body"></div><div class="modal-actions"><button class="btn" type="button">Close</button></div>`;
+    modal.innerHTML=`<div class="modal-header"><div><h3>Audio Preview</h3><p>${esc(asset.name||asset.filename||'Audio')}</p></div><button class="modal-close" type="button"><i class="ui-svg" data-icon="close"></i></button></div><div class="audio-preview-body"></div><div class="modal-actions"><button class="btn" type="button">Close</button></div>`;
     document.body.append(modal);
     const body=$('.audio-preview-body',modal),audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=asset.value;audio.style.width='100%';body.append(audio);
     Object.assign(body.style,{padding:'18px',minHeight:'88px',display:'grid',placeItems:'center'});
@@ -6514,7 +6652,7 @@
       let badge=preview.querySelector('.selection-order-badge');
       if(selected){if(!badge){badge=document.createElement('span');badge.className='selection-order-badge';preview.append(badge);}badge.textContent=String(order.get(card.dataset.assetKey)||'');badge.hidden=false;}
       else if(badge)badge.remove();
-      const mark=preview.querySelector('.asset-selection-mark');if(mark)mark.textContent=selected?'✓':'+';
+      const mark=preview.querySelector('.asset-selection-mark');if(mark)UIXIcons.set(mark,selected?'check':'add');
       card.title=selected?`Selected ${order.get(card.dataset.assetKey)}`:'Tap or drag to select';
     });
     const title=modal.querySelector('.asset-section-title .selection-count');if(title)title.textContent=`${set.size} selected`;
@@ -6618,7 +6756,7 @@
   function openSpriteAssetActionModal(asset){
     const existing=$('#spriteAssetActionModal');if(existing)existing.remove();
     const modal=document.createElement('section');modal.id='spriteAssetActionModal';modal.className='modal';modal.dataset.closeOutside='true';
-    modal.innerHTML=`<div class="modal-header"><div><h3>Sprite Asset</h3><p>${esc(asset?.filename||asset?.name||'Image')}</p></div><button class="modal-close" type="button">×</button></div><div style="padding:18px;display:grid;gap:12px"><button class="btn primary" type="button" data-sprite-action="edit">Edit Image</button><button class="btn" type="button" data-sprite-action="rename">Rename Image</button></div>`;
+    modal.innerHTML=`<div class="modal-header"><div><h3>Sprite Asset</h3><p>${esc(asset?.filename||asset?.name||'Image')}</p></div><button class="modal-close" type="button"><i class="ui-svg" data-icon="close"></i></button></div><div style="padding:18px;display:grid;gap:12px"><button class="btn primary" type="button" data-sprite-action="edit">Edit Image</button><button class="btn" type="button" data-sprite-action="rename">Rename Image</button></div>`;
     document.body.append(modal);
     const close=()=>{closeModal(modal);modal.remove();};
     modal.querySelector('.modal-close').onclick=close;
@@ -6671,21 +6809,21 @@
       const key=assetKey(asset),isSelected=selected.has(key);
       const card=document.createElement('article'); card.className=`asset-card${isSelected?' asset-selected':''}`; card.dataset.assetKey=key;
       const preview=document.createElement('div'); preview.className=`asset-preview ${type==='Audio'?'audio-preview':''} ${type==='MIDI'?'midi-preview':''} ${type==='Font'?'font-preview':''}`;
-      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);} else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol">♫</span><span class="midi-asset-meta">MIDI</span>';} else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';sample.style.fontSize='38px';sample.style.lineHeight='1';preview.append(sample);} else preview.textContent='◉';
+      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);} else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol"><i class="ui-svg" data-icon="music"></i></span><span class="midi-asset-meta">MIDI</span>';} else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';sample.style.fontSize='38px';sample.style.lineHeight='1';preview.append(sample);} else UIXIcons.set(preview,'camera');
       if(state.assetManagerSelectMode){
-        const mark=document.createElement('span');mark.className='asset-selection-mark';mark.textContent=isSelected?'✓':'+';preview.append(mark);
+        const mark=document.createElement('span');mark.className='asset-selection-mark';UIXIcons.set(mark,isSelected?'check':'add');preview.append(mark);
         if(isSelected){const order=document.createElement('span');order.className='selection-order-badge';order.textContent=String(selectionOrder.get(key)||'');preview.append(order);}
         card.title=isSelected?`Selected ${selectionOrder.get(key)}`:'Tap to select';
       }
       const actions=document.createElement('div'); actions.className='asset-card-actions';
-      const edit=document.createElement('button'); edit.type='button'; edit.className='asset-edit'; edit.title='Edit'; edit.setAttribute('aria-label','Edit asset'); edit.textContent='✎';
+      const edit=document.createElement('button'); edit.type='button'; edit.className='asset-edit'; edit.title='Edit'; edit.setAttribute('aria-label','Edit asset'); UIXIcons.set(edit,'pencil');
       edit.onclick=e=>{
         e.stopPropagation();
         if(type==='Sprite')openSpriteAssetActionModal(asset);
         else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);
         else if(type==='Audio'||type==='Font')promptModal(`Rename ${type}`,'Asset name',asset.name||asset.filename||type,value=>{const raw=String(value||'').trim();if(!raw)return;const currentExt=(String(asset.filename||'').match(/\.[^.]+$/)||[''])[0];const filename=uniqueAssetFilename(`${raw}${currentExt}`,asset);asset.filename=filename;asset.name=splitAssetFilename(filename).base;if(type==='Font'){asset.fontFamily=raw;loadFontAsset(asset);}renderAssetManager();status(`${type} renamed to ${asset.name}`);});
       };
-      const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); del.textContent='×';
+      const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); UIXIcons.set(del,'close');
       del.onclick=e=>{e.stopPropagation();if(type==='Sprite')deleteSpriteAsset(asset);else if(type==='MIDI')deleteMIDIAsset(asset);else{const remove=()=>{state.assets[type]=state.assets[type].filter(a=>a!==asset);state.assetManagerSelection=new Set();renderAssetManager();status(`${type} removed`);};askConfirm(`Remove ${type}`,`Remove ${asset.name||type}?`,remove,'Remove');}};
       actions.append(edit,del);preview.append(actions);
       const name=document.createElement('div'); name.className='asset-name'; name.textContent=asset.filename||`${asset.name||type}.asset`;
@@ -6724,7 +6862,7 @@
   }
   async function openAssetImportFromLocalProjects(){
     const existing=$('#assetLocalProjectsModal');if(existing)existing.remove();
-    const modal=document.createElement('section');modal.id='assetLocalProjectsModal';modal.className='modal asset-local-projects-modal';modal.dataset.closeOutside='true';modal.innerHTML=`<div class="modal-header"><div><h3>Import Assets from Local Projects</h3><p>Select a local project to browse its assets.</p></div><button class="modal-close" type="button">×</button></div><div class="asset-local-project-list"></div>`;document.body.append(modal);showModal(modal);
+    const modal=document.createElement('section');modal.id='assetLocalProjectsModal';modal.className='modal asset-local-projects-modal';modal.dataset.closeOutside='true';modal.innerHTML=`<div class="modal-header"><div><h3>Import Assets from Local Projects</h3><p>Select a local project to browse its assets.</p></div><button class="modal-close" type="button"><i class="ui-svg" data-icon="close"></i></button></div><div class="asset-local-project-list"></div>`;document.body.append(modal);showModal(modal);
     const host=modal.querySelector('.asset-local-project-list');host.innerHTML='<div class="local-ndc-empty">Loading local projects…</div>';
     modal.querySelector('.modal-close').onclick=()=>{closeModal(modal);modal.remove();};
     try{
@@ -6742,7 +6880,7 @@
   function showLocalProjectAssetPicker(parentModal,saved){
     const data=window.UIXNDCCodec.decode(saved.bytes), assets=data?.assets||{};
     parentModal.hidden=true;
-    const picker=document.createElement('section');picker.id='assetLocalProjectPicker';picker.className='modal asset-local-picker-modal';picker.dataset.closeOutside='true';picker.innerHTML=`<div class="modal-header"><div><h3>${esc(saved.name||'Local Project')} Assets</h3><p>Select assets to import into the current project.</p></div><button class="modal-close" type="button">×</button></div><div class="asset-local-picker-tabs"><button type="button" class="asset-local-picker-tab active" data-type="Sprite">Sprites</button><button type="button" class="asset-local-picker-tab" data-type="Audio">Audio</button><button type="button" class="asset-local-picker-tab" data-type="MIDI">MIDI</button><button type="button" class="asset-local-picker-tab" data-type="Font">Fonts</button></div><div class="asset-local-picker-grid"></div><div class="modal-actions"><button class="btn" type="button" data-local-back>Back</button><button class="btn" type="button" data-local-close>Cancel</button><button class="btn primary" type="button" data-local-import>Import Selected</button></div>`;document.body.append(picker);showModal(picker);
+    const picker=document.createElement('section');picker.id='assetLocalProjectPicker';picker.className='modal asset-local-picker-modal';picker.dataset.closeOutside='true';picker.innerHTML=`<div class="modal-header"><div><h3>${esc(saved.name||'Local Project')} Assets</h3><p>Select assets to import into the current project.</p></div><button class="modal-close" type="button"><i class="ui-svg" data-icon="close"></i></button></div><div class="asset-local-picker-tabs"><button type="button" class="asset-local-picker-tab active" data-type="Sprite">Sprites</button><button type="button" class="asset-local-picker-tab" data-type="Audio">Audio</button><button type="button" class="asset-local-picker-tab" data-type="MIDI">MIDI</button><button type="button" class="asset-local-picker-tab" data-type="Font">Fonts</button></div><div class="asset-local-picker-grid"></div><div class="modal-actions"><button class="btn" type="button" data-local-back>Back</button><button class="btn" type="button" data-local-close>Cancel</button><button class="btn primary" type="button" data-local-import>Import Selected</button></div>`;document.body.append(picker);showModal(picker);
     const selection=new Map([['Sprite',new Set()],['Audio',new Set()],['MIDI',new Set()],['Font',new Set()]]);
     const selectionAnchor=new Map([['Sprite',''],['Audio',''],['MIDI',''],['Font','']]);
     const selectionOrder=new Map();let nextSelectionOrder=1;let type='Sprite';
@@ -6758,7 +6896,7 @@
         const k=key(asset),sk=selectionKey(type,k),chosen=set.has(k),b=document.createElement('button');
         b.type='button';b.className=`asset-selector-item${chosen?' selected':''}`;b.dataset.assetKey=k;
         const p=document.createElement('div');p.className='asset-selector-preview';
-        if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value||'';p.append(img);}else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';p.append(sample);}else p.textContent=type==='MIDI'?'♫':'◉';
+        if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value||'';p.append(img);}else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';p.append(sample);}else UIXIcons.set(p,type==='MIDI'?'music':'camera');
         const order=document.createElement('span');order.className='selection-order-badge asset-selector-order';order.hidden=!chosen;order.textContent=chosen?String(selectionOrder.get(sk)||''):'';p.append(order);
         const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.filename||asset.name||type;b.append(p,n);
         const selectLocalAsset=(ev,targetAsset=asset,forceAdd=false,refresh=true)=>{
@@ -7014,7 +7152,7 @@
       const key=assetKey(asset);
       const b=document.createElement('button');b.type='button';b.className='asset-selector-item';b.dataset.assetKey=key;
       const p=document.createElement('div');p.className='asset-selector-preview';
-      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;p.append(img);}else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=fontFamilyCss(asset.fontFamily||asset.name||'sans-serif');sample.style.fontSize='28px';sample.style.lineHeight='1';p.append(sample);}else p.textContent='◉';
+      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;p.append(img);}else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=fontFamilyCss(asset.fontFamily||asset.name||'sans-serif');sample.style.fontSize='28px';sample.style.lineHeight='1';p.append(sample);}else UIXIcons.set(p,'camera');
       if(isMulti){const order=document.createElement('span');order.className='selection-order-badge asset-selector-order';order.hidden=true;p.append(order);}
       const n=document.createElement('div');n.className='asset-selector-name';n.textContent=asset.name;b.append(p,n);
       const updateSelectorUI=()=>{
@@ -7193,11 +7331,11 @@
     const body=document.createElement('div'); body.className='local-variable-body';
     const collapsed=!!state.ui.localVariablesCollapsed;
     body.classList.toggle('hidden',collapsed);
-    head.innerHTML=`<span>${collapsed?'+':'−'}</span>Local Variables`;
-    head.onclick=()=>{state.ui.localVariablesCollapsed=!state.ui.localVariablesCollapsed;body.classList.toggle('hidden',state.ui.localVariablesCollapsed);head.firstElementChild.textContent=state.ui.localVariablesCollapsed?'+':'−';};
+    head.innerHTML=`<span>${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span>Local Variables`;
+    head.onclick=()=>{state.ui.localVariablesCollapsed=!state.ui.localVariablesCollapsed;body.classList.toggle('hidden',state.ui.localVariablesCollapsed);UIXIcons.set(head.firstElementChild,state.ui.localVariablesCollapsed?'add':'minus');};
     if(!vars.length) body.append(empty('No local variables yet.'));
     vars.forEach(v=>body.append(variableEditor(v,'Local')));
-    const add=document.createElement('button'); add.className='add-component-button local-add-variable'; add.innerHTML='<span>＋</span>Add Variable'; add.onclick=()=>addVariable(false); body.append(add);
+    const add=document.createElement('button'); add.className='add-component-button local-add-variable'; add.innerHTML='<span><i class="ui-svg" data-icon="add"></i></span>Add Variable'; add.onclick=()=>addVariable(false); body.append(add);
     section.append(head,body); host.append(section);
   }
   function renderScriptScopeVariables(){
@@ -7219,7 +7357,7 @@
       const body=document.createElement('div'); body.className='library-group-body';
       const collapsed=!!state.ui.scriptGroupCollapsed[group];
       body.classList.toggle('hidden',collapsed);
-      head.innerHTML=`<span>${collapsed?'+':'−'}</span>${group}`;
+      head.innerHTML=`<span>${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span>${group}`;
       if(!nodes.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No ScriptNodes'}));
       nodes.forEach(def=>{
         const b=document.createElement('button'); b.className=`library-node script-group-${String(def.group||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`; b.dataset.scriptGroup=String(def.group||''); b.textContent=def.label||def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled; b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
@@ -7227,7 +7365,7 @@
         b.addEventListener('dragstart',e=>{if(!enabled){e.preventDefault();showScriptRequirementPrompt(def);return;}e.dataTransfer.setData('application/x-uix-script-node',def.name);e.dataTransfer.effectAllowed='copy';});
         body.append(b);
       });
-      head.onclick=()=>{state.ui.scriptGroupCollapsed[group]=!state.ui.scriptGroupCollapsed[group];body.classList.toggle('hidden',state.ui.scriptGroupCollapsed[group]);head.firstElementChild.textContent=state.ui.scriptGroupCollapsed[group]?'+':'−';};
+      head.onclick=()=>{state.ui.scriptGroupCollapsed[group]=!state.ui.scriptGroupCollapsed[group];body.classList.toggle('hidden',state.ui.scriptGroupCollapsed[group]);UIXIcons.set(head.firstElementChild,state.ui.scriptGroupCollapsed[group]?'add':'minus');};
       section.append(head,body); host.append(section);
     });
   }
@@ -7690,15 +7828,6 @@
     const def=scriptNodeDefinition(target.defName);
     askConfirm('Delete ScriptNode',`Delete “${def?.name||target.defName}”?`,()=>deleteScriptNodeNow(id));
   }
-  function iconSvg(name){
-    const map={
-      Snap:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v4M3 7h4M17 21v-4M21 17h-4M8 8l8 8M16 8l-8 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
-      Disconnect:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M9 7 6 4M15 17l3 3M5 7l2 2M17 15l2 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
-      Delete:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-    };
-    return map[name]||'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor"/></svg>';
-  }
-
   function scriptList(){return state.script.nodeId?(state.script.nodesByNode[state.script.nodeId]||[]):[];}
   function selectScriptNode(sn,e={}){
     const list=scriptList(),ids=list.map(x=>x.id);
@@ -7720,7 +7849,7 @@
   function requestDeleteScriptNodes(ids,action='Delete'){const set=new Set(ids||[]);if(!set.size)return;const targets=scriptList().filter(sn=>set.has(sn.id));if(!targets.length)return;const names=targets.map(sn=>{const d=scriptNodeDefinition(sn.defName);return d?.name||sn.defName||'ScriptNode';});const label=names.length===1?`“${names[0]}”`:`${names.length} selected ScriptNodes`;askConfirm(action==='Cut'?'Cut ScriptNodes':'Delete ScriptNodes',`${action==='Cut'?'Cut':'Delete'} ${label}?`,()=>deleteScriptNodesNow([...set]),action);}
   function disconnectScriptNode(id){const con=state.script.connectionsByNode[state.script.nodeId]||[];if(!con.some(c=>c.from===id||c.to===id))return;pushHistory('Disconnect ScriptNode');state.script.connectionsByNode[state.script.nodeId]=con.filter(c=>c.from!==id&&c.to!==id);renderScriptCanvas();status('ScriptNode disconnected');}
   function defForScriptDoc(sn){return scriptNodeDefinition(sn?.defName)?.name||sn?.defName||'ScriptNode';}
-  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'☷',disabled:!many},{label:'Cut',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>duplicateScriptNodes()},{label:'Snap',icon:'⌖',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'↔',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'? Documentation',icon:'',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
+  function scriptContextMenu(sn,x,y){selectScriptNode(sn,{shiftKey:false,ctrlKey:false,metaKey:false});renderScriptCanvas();const many=selectedScriptNodes().length>1;const selected=selectedScriptNodes();showContextMenu([{label:`${selected.length} selected`,icon:'selectall',disabled:!many},{label:'Cut',icon:'cut',shortcut:window.UIXKeyBinds?.shortcutFor('cut','script'),action:()=>cutScriptNodes()},{label:'Copy',icon:'copy',shortcut:window.UIXKeyBinds?.shortcutFor('copy','script'),action:()=>copyScriptNodes()},{label:'Paste',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Duplicate',icon:'duplicate',shortcut:window.UIXKeyBinds?.shortcutFor('duplicate','script'),action:()=>duplicateScriptNodes()},{label:'Snap',icon:'snap',shortcut:window.UIXKeyBinds?.shortcutFor('snap','script'),action:()=>snapScriptToNode(sn)},{label:'Disconnect',icon:'disconnect',action:()=>disconnectScriptNode(sn.id)},{label:'Delete',icon:'delete',shortcut:window.UIXKeyBinds?.shortcutFor('delete','script'),action:()=>requestDeleteScriptNodes(selectedScriptNodes().map(x=>x.id))},{label:'Select All',icon:'selectall',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'? Documentation',icon:'help',action:()=>openDocumentation(defForScriptDoc(sn))}],x,y);}
   function applyScriptPanelState(){
     const layout=$('#scriptModal .script-layout'),left=$('#scriptModal .script-left'),right=$('#scriptInspector');
     if(!layout||!left||!right)return;
@@ -7733,8 +7862,8 @@
     layout.style.setProperty('--script-left-width',`${lc?34:lw}px`);
     layout.style.setProperty('--script-right-width',`${rc?34:rw}px`);
     const lb=$('[data-script-panel-collapse="left"]',left),rb=$('[data-script-panel-collapse="right"]',right);
-    if(lb){lb.textContent=lc?'›':'‹';lb.title=lc?'Expand':'Collapse';}
-    if(rb){rb.textContent=rc?'‹':'›';rb.title=rc?'Expand':'Collapse';}
+    if(lb){UIXIcons.set(lb,lc?'next':'prev');lb.title=lc?'Expand':'Collapse';}
+    if(rb){UIXIcons.set(rb,rc?'prev':'next');rb.title=rc?'Expand':'Collapse';}
   }
   function enableScriptPanelControls(){
     const modal=$('#scriptModal');if(!modal||modal.dataset.scriptPanelControls==='1')return;
@@ -7765,7 +7894,7 @@
     heading.append(strong,sub);
     const collapse=document.createElement('button');
     collapse.type='button';collapse.className='script-panel-collapse';collapse.dataset.scriptPanelCollapse='right';
-    collapse.title=state.script.rightCollapsed?'Expand':'Collapse';collapse.textContent=state.script.rightCollapsed?'‹':'›';
+    collapse.title=state.script.rightCollapsed?'Expand':'Collapse';UIXIcons.set(collapse,state.script.rightCollapsed?'prev':'next');
     header.append(heading,collapse);
     host.append(resize,header);
     host.classList.toggle('script-panel-collapsed',!!state.script.rightCollapsed);
@@ -7804,16 +7933,18 @@
       name.addEventListener('click',e=>{selectScriptNode(sn,e);renderScriptCanvas();});
       const actions=document.createElement('div');
       actions.className='script-inspector-actions';
-      const makeIcon=(title,src,fn,cls='icon-action')=>{
+      const makeIcon=(title,key,fn,cls='icon-action')=>{
         const b=document.createElement('button'); b.type='button'; b.className=cls; b.title=title;
-        const img=document.createElement('img'); img.src=`./${src.replace(/^\.\//,'')}`; img.alt='';
-        img.onerror=()=>{ img.remove(); b.insertAdjacentHTML('afterbegin', iconSvg(title)); };
-        b.append(img); b.addEventListener('click',e=>{e.stopPropagation();fn();}); return b;
+        const markup=window.UIXIcons?.get(key)||'';
+        const holder=document.createElement('span'); holder.innerHTML=markup;
+        const svg=holder.querySelector('svg');
+        if(svg){svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');b.append(svg);}
+        b.addEventListener('click',e=>{e.stopPropagation();fn();}); return b;
       };
       actions.append(
-        makeIcon('Snap','svgIcons/snap.svg',()=>snapNode(sn)),
-        makeIcon('Disconnect','svgIcons/disconnect.svg',()=>disconnectNode(sn.id)),
-        makeIcon('Delete','svgIcons/delete.svg',()=>removeScriptNode(sn.id))
+        makeIcon('Snap','snap',()=>snapNode(sn)),
+        makeIcon('Disconnect','disconnect',()=>disconnectNode(sn.id)),
+        makeIcon('Delete','delete',()=>removeScriptNode(sn.id))
       );
       row.append(name,actions);
       row.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();scriptContextMenu(sn,e.clientX,e.clientY);});
@@ -8252,10 +8383,10 @@
       const body=document.createElement('div'); body.className='helper-body';
       const collapsed=!!state.ui.expressionGroupCollapsed[name];
       body.classList.toggle('hidden',collapsed);
-      h.innerHTML=`<span>${collapsed?'+':'−'}</span>${name}`;
+      h.innerHTML=`<span>${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span>${name}`;
       if(!items.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No items'}));
       items.forEach(item=>{const b=document.createElement('button');b.className='helper-item';b.textContent=item.label;b.title=item.title||`Insert ${item.label}`;b.onclick=e=>{e.stopPropagation();insertExpression(item.value);};body.append(b);});
-      h.onclick=e=>{e.stopPropagation();state.ui.expressionGroupCollapsed[name]=!state.ui.expressionGroupCollapsed[name];body.classList.toggle('hidden',state.ui.expressionGroupCollapsed[name]);h.firstElementChild.textContent=state.ui.expressionGroupCollapsed[name]?'+':'−';};
+      h.onclick=e=>{e.stopPropagation();state.ui.expressionGroupCollapsed[name]=!state.ui.expressionGroupCollapsed[name];body.classList.toggle('hidden',state.ui.expressionGroupCollapsed[name]);UIXIcons.set(h.firstElementChild,state.ui.expressionGroupCollapsed[name]?'add':'minus');};
       sec.append(h,body); host.append(sec);
     });
   }
@@ -8618,7 +8749,7 @@
     };
     canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);canvas.addEventListener('pointerleave',()=>{});
     canvas.addEventListener('lostpointercapture',()=>resetScriptCanvasInteraction?.());
-    canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'☷',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'Deselect All',icon:'○',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
+    canvas.addEventListener('contextmenu',e=>{if(e.target.closest('.script-node-card'))return;e.preventDefault();showContextMenu([{label:'Paste',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','script'),disabled:!state.script.clipboard,action:()=>pasteScriptNodes()},{label:'Select All',icon:'selectall',shortcut:window.UIXKeyBinds?.shortcutFor('selectAll','script'),action:()=>{const ids=scriptList().map(x=>x.id);if(JSON.stringify(state.script.selectedNodeIds||[])!==JSON.stringify(ids))pushHistory('Select All ScriptNodes');state.script.selectedNodeIds=ids;state.script.selectedNodeId=ids.at(-1)||null;state.script.selectionAnchorId=state.script.selectedNodeId;renderScriptCanvas();}},{label:'Deselect All',icon:'selectall',shortcut:window.UIXKeyBinds?.shortcutFor('deselectAll','script'),action:()=>{if((state.script.selectedNodeIds||[]).length)pushHistory('Deselect ScriptNodes');state.script.selectedNodeIds=[];state.script.selectedNodeId=null;state.script.selectionAnchorId=null;renderScriptCanvas();}}],e.clientX,e.clientY);});
     canvas.addEventListener('wheel',e=>{e.preventDefault();if(canvas.querySelector('.script-node-card[data-script-dragging="true"]'))return;const rect=canvas.getBoundingClientRect(),before=scriptClientToWorld(e.clientX,e.clientY),next=clamp(state.script.zoom*Math.exp(-e.deltaY*.0012),.25,4);state.script.zoom=next;state.script.pan.x=e.clientX-rect.left-rect.width/2-before.x*next;state.script.pan.y=e.clientY-rect.top-rect.height/2-before.y*next;applyScriptTransform();},{passive:false});
     canvas.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('application/x-uix-script-node'))e.preventDefault();});
     canvas.addEventListener('drop',e=>{const name=e.dataTransfer.getData('application/x-uix-script-node');if(!name)return;e.preventDefault();const def=scriptNodes.find(x=>x.name===name);if(!def)return;if(!scriptRequirementEnabled(def)){showScriptRequirementPrompt(def);return;}addScriptNodeAt(def,e.clientX,e.clientY);});
@@ -8705,7 +8836,7 @@
       const title=overlay?.querySelector('.runtime-toolbar strong');
       if(title)title.textContent=text;
       const stop=$('#runtimeStopButton',overlay);
-      if(stop){stop.textContent='■ Runtime Exit';stop.title='Runtime stopped because an error occurred. Check Output.';}
+      if(stop){stop.innerHTML='<i class="ui-svg" data-icon="stop"></i> Runtime Exit';stop.title='Runtime stopped because an error occurred. Check Output.';}
     }else{
       const root=$('#runtimeRoot')||document.body;
       let banner=$('#runtimeFatalStatus');
@@ -12474,7 +12605,7 @@ function updateRuntimeAnimations(dt){
     }
 
     $('#runtimeOverlay')?.remove();
-    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button">↻ Rerun</button><button id="runtimeStopButton" type="button">■ Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runtimeWarmParticleAssets();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
+    const overlay=document.createElement('div');overlay.id='runtimeOverlay';overlay.innerHTML=`<div class="runtime-toolbar"><strong>${debug?'Debug':'Play'} · ${esc(sceneClone.name)}</strong><div class="runtime-toolbar-status"><span id="runtimeFpsLabel">FPS: 0</span><button id="runtimeOutputButton" type="button">Output</button><button id="runtimeRerunButton" type="button"><i class="ui-svg" data-icon="rotate"></i> Rerun</button><button id="runtimeStopButton" type="button"><i class="ui-svg" data-icon="stop"></i> Stop</button></div></div><div class="runtime-viewport"><canvas id="runtimeCanvas" width="1280" height="720"></canvas></div><div id="runtimeDebug" class="runtime-debug"></div><aside id="runtimeOutputPanel" class="runtime-output-panel" hidden><div class="runtime-output-head"><strong>Output</strong><button id="runtimeOutputClear" type="button">Clear</button></div><div id="runtimeOutputList" class="runtime-output-list"></div></aside>`;document.body.append(overlay);$('#runtimeStopButton',overlay).onclick=stopRuntime;$('#runtimeRerunButton',overlay)?.addEventListener('click',()=>{const debugMode=!!state.runtime.debug,sceneId=String(state.runtime.sceneId||'');stopRuntime();startRuntime(debugMode,sceneId);});$('#runtimeOutputButton',overlay)?.addEventListener('click',()=>setRuntimeOutputOpen(!state.runtime.outputOpen));$('#runtimeOutputClear',overlay)?.addEventListener('click',()=>{state.runtime.output=[];renderRuntimeOutput();});installRuntimeOutputCapture();const overlayCanvas=$('#runtimeCanvas',overlay);applyRuntimeScreenType($('#runtimeOverlay .runtime-viewport',overlay),overlayCanvas,state.game.screenType);installRuntimeInputHandlers(overlay);renderRuntimeOutput();runtimeWarmParticleAssets();runRuntimeSceneScripts();runtimeWarmAudioAssets();runtimeLast=performance.now();state.runtime.fpsWindowStart=runtimeLast;runtimeFrame=requestAnimationFrame(runtimeTick);
   }
   function stopRuntime(){const rt=state.runtime;window.UIXNetwork?.leave?.();closeRuntimeTextInput();closeRuntimeColorInputs();rt.running=false;rt.runtimeFailed=false;runtimeOutputRestore?.();runtimeOutputRestore=null;if(runtimeFrame){cancelAnimationFrame(runtimeFrame);runtimeFrame=0;}runtimeCloseAudio();cleanupRuntimeMic();rt.bodies=[];rt.physicsBodies=[];rt.renderBodies=[];rt.nodeEntries=[];rt.nodeList=[];rt.nodeById?.clear?.();rt.bodyById?.clear?.();rt.bodyByNumericId?.clear?.();rt.bodiesByName?.clear?.();rt.parentById?.clear?.();rt.numericIds?.clear?.();rt.scriptById?.clear?.();rt.scriptOwnerById?.clear?.();rt.eventScriptsByName?.clear?.();rt.defByName?.clear?.();rt.eventScriptsByNode?.clear?.();rt.routesByScriptOutput?.clear?.();rt.shared=null;rt.pendingOnLoad=[];rt.frameCounter=0;rt.fixedTickCounter=0;rt.nextValueTickSessionId=1;rt.particles=[];rt.particleGroups=[];rt.nextParticleRenderSerial=1;rt.animationStates=Object.create(null);rt.dynamicScriptsByNode=Object.create(null);rt.dynamicConnectionsByNode=Object.create(null);rt.followTargets=Object.create(null);rt.aiTargets=Object.create(null);rt.timers=[];rt.intervalStates=Object.create(null);rt.activeCollisionPairs=new Set();rt.activeCollisionPairMap=new Map();rt.frameCollisionPairs=new Map();rt.activeInputPointers?.clear?.();rt.joints=[];rt.renderCtx=null;rt.renderCanvas=null;rt.renderSurface=null;rt.reactiveBindings?.clear?.();$('#runtimeOverlay')?.remove();if(!window.__UIX_STANDALONE__)drawWorkplace();}
   function runtimeTick(now){
@@ -13010,6 +13141,7 @@ function updateRuntimeAnimations(dt){
       importAssets(files);
     });
     $('#projectFileInput')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectFile(file);e.target.value='';});
+    $('#projectJsonFileInput')?.addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectJSONFile(file);e.target.value='';});
     $('#ndcTransferCancel')?.addEventListener('click',()=>closeNdcTransferModal());
     document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault();},{passive:false});
     document.addEventListener('gesturestart',e=>e.preventDefault());document.addEventListener('gesturechange',e=>e.preventDefault());document.addEventListener('gestureend',e=>e.preventDefault());

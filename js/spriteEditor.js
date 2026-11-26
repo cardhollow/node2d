@@ -14,12 +14,8 @@
   const midpoint = (a,b) => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
   const EXT = /\.[^.]+$/;
 
-  const glyphs = {
-    pencil:'✎', specialpen:'✥', smudge:'≋', eraser:'⌫', line:'／', point:'•', rect:'□', circle:'○', triangle:'△',
-    undo:'↶', redo:'↷', grid:'⊞', center:'⊙', flipx:'↔', flipy:'↕', rotate:'↻', texture:'▧',
-    copy:'⧉', add:'＋', save:'⇩', play:'▶', pause:'Ⅱ', prev:'‹', next:'›', delete:'×', lasso:'⌁', cut:'✂', paste:'▣', bucket:'▰', eyedropper:'⌕'
-  };
-  const glyph = name => `<span class="ui-glyph" aria-hidden="true">${glyphs[name] || '·'}</span>`;
+  const glyphKeys = {rect:'box', bucket:'fill', box:'box'};
+  const glyph = name => `<span class="ui-glyph" aria-hidden="true">${window.UIXIcons?.get(glyphKeys[name]||name)||''}</span>`;
 
   let modalSeq = 0;
   let activeEditor = null;
@@ -93,7 +89,7 @@
 
   function openCreate() {
     const modal = makeModal('sprite-create-modal', `
-      <div class="modal-header"><div><h3>New Sprite</h3><p>Create a sprite with one or more animation frames.</p></div><button class="modal-close" type="button" data-close-sprite>×</button></div>
+      <div class="modal-header"><div><h3>New Sprite</h3><p>Create a sprite with one or more animation frames.</p></div><button class="modal-close" type="button" data-close-sprite><i class="ui-svg" data-icon="close"></i></button></div>
       <div class="sprite-create-form">
         <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input data-create-name type="text" value="Sprite" autocomplete="off"></div></div>
         <div class="sprite-create-pixel"><label><span class="property-label">Width</span><input data-create-width type="number" min="1" max="4096" value="32"></label><label><span class="property-label">Height</span><input data-create-height type="number" min="1" max="4096" value="32"></label></div>
@@ -200,11 +196,11 @@
     const modal=makeModal('sprite-paint-modal',`
       <div class="sprite-editor-header">
         <div class="sprite-editor-heading"><strong>Sprite Editor</strong><span data-editor-subtitle>Width and Height are pixel dimensions.</span></div>
-        <div class="sprite-editor-header-actions"><button class="btn active" type="button" data-sprite-toggle-preview>▧ Preview</button><button class="btn" type="button" data-sprite-toggle-inspector>▤ Layers</button><button class="btn" type="button" data-sprite-action="undo" title="Undo" aria-label="Undo">${glyph('undo')}Undo</button><button class="btn" type="button" data-sprite-action="redo" title="Redo" aria-label="Redo">${glyph('redo')}Redo</button><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
+        <div class="sprite-editor-header-actions"><button class="btn active" type="button" data-sprite-toggle-preview><i class="ui-svg" data-icon="sprite"></i> Preview</button><button class="btn" type="button" data-sprite-toggle-inspector><i class="ui-svg" data-icon="layers"></i> Layers</button><button class="btn" type="button" data-sprite-action="undo" title="Undo" aria-label="Undo">${glyph('undo')}Undo</button><button class="btn" type="button" data-sprite-action="redo" title="Redo" aria-label="Redo">${glyph('redo')}Redo</button><button class="btn" type="button" data-sprite-cancel>Cancel</button><button class="btn primary" type="button" data-sprite-save>${glyph('save')}Save PNG</button></div>
       </div>
       <div class="sprite-editor-layout">
         <aside class="sprite-tool-panel" data-sprite-panel="left">
-          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Tools</strong><span>Sprite editing tools</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="left" title="Collapse">‹</button></div>
+          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Tools</strong><span>Sprite editing tools</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="left" title="Collapse"><i class="ui-svg" data-icon="prev"></i></button></div>
           <div class="sprite-panel-resize sprite-panel-resize-left" data-resize-sprite-panel="left"></div>
           <section class="sprite-tool-section sprite-tool-first-section">
             <div class="sprite-section-title">Tools</div>
@@ -319,20 +315,20 @@
         <main class="sprite-canvas-wrap" data-sprite-canvas-wrap>
           <canvas class="sprite-paint-canvas" data-sprite-paint></canvas>
           <div class="sprite-preview-card" data-preview-card>
-            <div class="sprite-preview-header"><strong>Preview</strong><button type="button" class="icon-button" data-preview-close title="Hide Preview">×</button></div>
+            <div class="sprite-preview-header"><strong>Preview</strong><button type="button" class="icon-button" data-preview-close title="Hide Preview"><i class="ui-svg" data-icon="close"></i></button></div>
             <canvas data-sprite-preview></canvas>
           </div>
           <div class="sprite-editor-status"><span data-sprite-coord>—, —</span><span>Zoom <b data-sprite-zoom>100%</b></span></div>
         </main>
 
         <aside class="sprite-inspector-panel" data-sprite-panel="right">
-          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Inspector</strong><span>Sprite and frame settings</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="right" title="Collapse">›</button></div>
+          <div class="sprite-side-header"><div class="sprite-side-heading"><strong>Inspector</strong><span>Sprite and frame settings</span></div><button type="button" class="sprite-side-collapse" data-sprite-panel-collapse="right" title="Collapse"><i class="ui-svg" data-icon="next"></i></button></div>
           <div class="sprite-panel-resize sprite-panel-resize-right" data-resize-sprite-panel="right"></div>
           <section class="sprite-inspector-section sprite-layers-section" data-layer-section>
             <div class="sprite-frames-heading"><strong>Layers <span data-layer-frame-label>· Frame 1</span></strong><span data-layer-count>1</span></div>
             <div class="sprite-layer-list" data-layer-list></div>
             <div class="sprite-layer-actions">
-              <button class="btn" type="button" data-layer-action="add">＋ Layer</button><button class="btn" type="button" data-layer-action="duplicate">Duplicate</button>
+              <button class="btn" type="button" data-layer-action="add"><i class="ui-svg" data-icon="add"></i> Layer</button><button class="btn" type="button" data-layer-action="duplicate">Duplicate</button>
               <button class="btn" type="button" data-layer-action="copy">Copy</button><button class="btn" type="button" data-layer-action="paste">Paste</button>
               <button class="btn" type="button" data-layer-action="merge">Merge Down</button><button class="btn danger" type="button" data-layer-action="delete">Delete</button>
             </div>
@@ -347,7 +343,7 @@
             <div class="sprite-frames-heading"><strong>Frames</strong><span data-frame-count>1</span></div>
             <label class="sprite-frame-name-row"><span class="property-label">Frame Name</span><input data-frame-name type="text" autocomplete="off" spellcheck="false"></label>
             <div class="sprite-frame-list" data-frame-list></div>
-            <div class="sprite-frame-actions"><button class="btn" data-frame-action="duplicate" type="button">${glyph('copy')}Duplicate</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Frame</button><button class="btn" data-frame-action="merge-down" type="button" title="Merge the selected frame with the frame below it as separate editable layers">Merge Down</button><button class="btn" data-frame-action="import" type="button">＋ Import Sprite</button></div>
+            <div class="sprite-frame-actions"><button class="btn" data-frame-action="duplicate" type="button">${glyph('copy')}Duplicate</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Frame</button><button class="btn" data-frame-action="merge-down" type="button" title="Merge the selected frame with the frame below it as separate editable layers">Merge Down</button><button class="btn" data-frame-action="import" type="button"><i class="ui-svg" data-icon="add"></i> Import Sprite</button></div>
             <div class="sprite-play-row"><button class="btn" data-frame-action="prev" type="button" aria-label="Previous frame">${glyph('prev')}</button><button class="btn" data-frame-action="play" type="button">${glyph('play')}Play</button><button class="btn" data-frame-action="next" type="button" aria-label="Next frame">${glyph('next')}</button><label><span>FPS</span><input data-sprite-fps type="number" min="1" max="120" value="8"></label></div>
             <div class="sprite-frame-hint">Drag frames to reorder. PNGs show the composite; layer stacks remain editable in the project.</div>
           </section>
@@ -417,8 +413,8 @@
     layout.style.setProperty('--sprite-left-width',`${ed.leftCollapsed?34:lw}px`);
     layout.style.setProperty('--sprite-right-width',`${ed.rightCollapsed?34:rw}px`);
     const lb=left.querySelector('[data-sprite-panel-collapse="left"]'),rb=right.querySelector('[data-sprite-panel-collapse="right"]');
-    if(lb){lb.textContent=ed.leftCollapsed?'›':'‹';lb.title=ed.leftCollapsed?'Expand':'Collapse';}
-    if(rb){rb.textContent=ed.rightCollapsed?'‹':'›';rb.title=ed.rightCollapsed?'Expand':'Collapse';}
+    if(lb){UIXIcons.set(lb,ed.leftCollapsed?'next':'prev');lb.title=ed.leftCollapsed?'Expand':'Collapse';}
+    if(rb){UIXIcons.set(rb,ed.rightCollapsed?'prev':'next');rb.title=ed.rightCollapsed?'Expand':'Collapse';}
     requestAnimationFrame(()=>render(ed));
   }
   function enablePanelControls(ed){
@@ -434,15 +430,15 @@
   function bindEditor(ed){
     const q=s=>ed.modal.querySelector(s),canvas=q('[data-sprite-paint]');
     canvas.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();window.UIXApp?.showContextMenu?.([
-      {label:'Copy Selection',icon:'⧉',shortcut:window.UIXKeyBinds?.shortcutFor('copy','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'copy')},
-      {label:'Cut Selection',icon:'✂',shortcut:window.UIXKeyBinds?.shortcutFor('cut','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'cut')},
-      {label:'Paste Selection',icon:'▣',shortcut:window.UIXKeyBinds?.shortcutFor('paste','sprite'),disabled:!ed.clipboard,action:()=>selectionAction(ed,'paste')},
-      {label:'Delete Selection',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('delete','sprite'),disabled:!ed.selection,action:()=>requestDeleteSelection(ed)},
-      {label:'Cancel Selection',icon:'×',shortcut:'',disabled:!ed.selection&&!ed.lassoDrawing&&!ed.lassoPoints.length&&!ed.selectionRect,action:()=>selectionAction(ed,'cancel')},
-      {label:'Undo',icon:'↶',shortcut:window.UIXKeyBinds?.shortcutFor('undo','sprite'),disabled:!ed.undo.length,action:()=>spriteAction(ed,'undo')},
-      {label:'Redo',icon:'↷',shortcut:window.UIXKeyBinds?.shortcutFor('redo','sprite'),disabled:!ed.redo.length,action:()=>spriteAction(ed,'redo')},
-      {label:'Save PNG',icon:'▣',action:()=>saveEditor(ed)},
-      {label:'Close',icon:'×',shortcut:window.UIXKeyBinds?.shortcutFor('escape','sprite'),action:()=>closeEditor(ed)}
+      {label:'Copy Selection',icon:'copy',shortcut:window.UIXKeyBinds?.shortcutFor('copy','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'copy')},
+      {label:'Cut Selection',icon:'cut',shortcut:window.UIXKeyBinds?.shortcutFor('cut','sprite'),disabled:!ed.selection,action:()=>selectionAction(ed,'cut')},
+      {label:'Paste Selection',icon:'paste',shortcut:window.UIXKeyBinds?.shortcutFor('paste','sprite'),disabled:!ed.clipboard,action:()=>selectionAction(ed,'paste')},
+      {label:'Delete Selection',icon:'delete',shortcut:window.UIXKeyBinds?.shortcutFor('delete','sprite'),disabled:!ed.selection,action:()=>requestDeleteSelection(ed)},
+      {label:'Cancel Selection',icon:'clear',shortcut:'',disabled:!ed.selection&&!ed.lassoDrawing&&!ed.lassoPoints.length&&!ed.selectionRect,action:()=>selectionAction(ed,'cancel')},
+      {label:'Undo',icon:'undo',shortcut:window.UIXKeyBinds?.shortcutFor('undo','sprite'),disabled:!ed.undo.length,action:()=>spriteAction(ed,'undo')},
+      {label:'Redo',icon:'redo',shortcut:window.UIXKeyBinds?.shortcutFor('redo','sprite'),disabled:!ed.redo.length,action:()=>spriteAction(ed,'redo')},
+      {label:'Save PNG',icon:'save',action:()=>saveEditor(ed)},
+      {label:'Close',icon:'close',shortcut:window.UIXKeyBinds?.shortcutFor('escape','sprite'),action:()=>closeEditor(ed)}
     ],e.clientX,e.clientY);});
     q('[data-sprite-name]').value=ed.name;
     q('[data-sprite-size]').value=ed.brushSize;
@@ -472,7 +468,7 @@
     q('[data-modulate-strength]').addEventListener('input',e=>{ed.modulateStrength=clamp(Number(e.target.value)||0,0,100);const lab=q('[data-modulate-strength-label]');if(lab)lab.textContent=`${ed.modulateStrength}%`;});
     q('[data-preview-close]').addEventListener('click',()=>setPreviewVisibility(ed,false));
     q('[data-sprite-toggle-preview]').addEventListener('click',()=>setPreviewVisibility(ed,!ed.showPreview));
-    q('[data-sprite-toggle-inspector]').addEventListener('click',()=>{const panel=q('.sprite-inspector-panel');if(window.matchMedia('(max-width: 900px)').matches){const opened=panel.classList.toggle('mobile-visible');if(opened)q('[data-layer-section]')?.scrollIntoView({block:'start',behavior:'smooth'});q('[data-sprite-toggle-inspector]').textContent=opened?'Hide Inspector':'▤ Layers';}else{q('[data-layer-section]')?.scrollIntoView({block:'nearest',behavior:'smooth'});}});
+    q('[data-sprite-toggle-inspector]').addEventListener('click',()=>{const panel=q('.sprite-inspector-panel');if(window.matchMedia('(max-width: 900px)').matches){const opened=panel.classList.toggle('mobile-visible');if(opened)q('[data-layer-section]')?.scrollIntoView({block:'start',behavior:'smooth'});q('[data-sprite-toggle-inspector]').innerHTML=opened?'Hide Inspector':'<i class="ui-svg" data-icon="layers"></i> Layers';}else{q('[data-layer-section]')?.scrollIntoView({block:'nearest',behavior:'smooth'});}});
     q('[data-layer-list]').addEventListener('click',e=>{const b=e.target.closest('[data-layer-select]');if(b){selectLayer(ed,Number(b.dataset.layerSelect));return;}const action=e.target.closest('[data-layer-row-action]');if(action){e.preventDefault();e.stopPropagation();layerAction(ed,action.dataset.layerRowAction,Number(action.dataset.layerIndex));}});
     q('[data-layer-list]').addEventListener('input',e=>{const input=e.target.closest('[data-layer-opacity]');if(!input)return;const f=currentFrame(ed),i=Number(input.dataset.layerOpacity),layer=f.layers[i];if(!layer)return;if(!input.dataset.undoPushed){pushUndo(ed,true);input.dataset.undoPushed='1';}layer.opacity=clamp(Number(input.value)/100,0,1);const row=input.closest('.sprite-layer-row'),value=row?.querySelector('[data-layer-opacity-value]');if(value)value.textContent=`${Math.round(layer.opacity*100)}%`;if(f.activeLayer!==i){f.activeLayer=i;ed.selection=null;q('[data-layer-list]').querySelectorAll('.sprite-layer-row').forEach(r=>r.classList.toggle('selected',Number(r.dataset.layerIndex)===i));const merge=ed.modal.querySelector('[data-layer-action="merge"]');if(merge)merge.disabled=i===0;}renderCanvasOnly(ed);renderPreview(ed);renderFrameList(ed);});
     q('[data-layer-list]').addEventListener('change',e=>{const opacity=e.target.closest('[data-layer-opacity]');if(opacity){renderLayerList(ed);return;}const input=e.target.closest('[data-layer-name]');if(!input)return;const l=currentFrame(ed).layers[Number(input.dataset.layerName)];if(l){const next=input.value.trim()||`Layer ${Number(input.dataset.layerName)+1}`;if(next!==l.name){pushUndo(ed,true);l.name=next;}input.value=l.name;renderLayerList(ed);}});
@@ -1044,7 +1040,7 @@
 
   function chooseImportMode(width,height,baseW,baseH){
     return new Promise(resolve=>{
-      const modal=makeModal('sprite-import-choice-modal',`<div class="modal-header"><div><h3>Sprite is larger</h3><p>${width}×${height} is larger than the current ${baseW}×${baseH} frame.</p></div><button class="modal-close" type="button" data-import-choice-close>×</button></div><div class="modal-actions sprite-import-choice-actions"><button class="btn" type="button" data-import-choice="cancel">Cancel</button><button class="btn" type="button" data-import-choice="crop">Crop</button><button class="btn" type="button" data-import-choice="expand">Expand Canvas</button><button class="btn primary" type="button" data-import-choice="shrink">Shrink (Keep Aspect Ratio)</button></div>`);
+      const modal=makeModal('sprite-import-choice-modal',`<div class="modal-header"><div><h3>Sprite is larger</h3><p>${width}×${height} is larger than the current ${baseW}×${baseH} frame.</p></div><button class="modal-close" type="button" data-import-choice-close><i class="ui-svg" data-icon="close"></i></button></div><div class="modal-actions sprite-import-choice-actions"><button class="btn" type="button" data-import-choice="cancel">Cancel</button><button class="btn" type="button" data-import-choice="crop">Crop</button><button class="btn" type="button" data-import-choice="expand">Expand Canvas</button><button class="btn primary" type="button" data-import-choice="shrink">Shrink (Keep Aspect Ratio)</button></div>`);
       const done=value=>{window.UIXApp?.closeModal?.(modal);modal.remove();resolve(value);};modal.querySelectorAll('[data-import-choice]').forEach(b=>b.onclick=()=>done(b.dataset.importChoice));modal.querySelector('[data-import-choice-close]').onclick=()=>done('cancel');
     });
   }
@@ -1134,10 +1130,10 @@
     f.layers.map((_,i)=>i).reverse().forEach(i=>{
       const layer=f.layers[i];const row=document.createElement('div');row.className=`sprite-layer-row${i===f.activeLayer?' selected':''}${layer.visible===false?' layer-hidden':''}`;row.draggable=true;row.dataset.layerIndex=String(i);
       const thumb=document.createElement('canvas');thumb.className='sprite-layer-thumb';thumb.width=44;thumb.height=44;thumb.setAttribute('aria-label',`${layer.name||`Layer ${i+1}`} preview`);drawLayerThumbnail(thumb,layer,f);
-      const select=document.createElement('button');select.type='button';select.className='sprite-layer-eye';select.dataset.layerRowAction='toggle';select.dataset.layerIndex=String(i);select.title=layer.visible===false?'Show layer':'Hide layer';select.textContent=layer.visible===false?'○':'◉';
+      const select=document.createElement('button');select.type='button';select.className='sprite-layer-eye';select.dataset.layerRowAction='toggle';select.dataset.layerIndex=String(i);select.title=layer.visible===false?'Show layer':'Hide layer';select.innerHTML=window.UIXIcons?.get(layer.visible===false?'circle':'point','ui-svg')||'';
       const name=document.createElement('input');name.type='text';name.className='sprite-layer-name';name.value=layer.name||`Layer ${i+1}`;name.dataset.layerName=String(i);name.setAttribute('aria-label',`Layer ${i+1} name`);name.title='Rename layer';name.addEventListener('focus',()=>{if(f.activeLayer!==i){f.activeLayer=i;ed.selection=null;q('[data-layer-list]').querySelectorAll('.sprite-layer-row').forEach(r=>r.classList.toggle('selected',Number(r.dataset.layerIndex)===i));const merge=ed.modal.querySelector('[data-layer-action=\"merge\"]');if(merge)merge.disabled=i===0;}});
-      const up=document.createElement('button');up.type='button';up.className='sprite-layer-move';up.textContent='↑';up.title='Move layer up';up.disabled=i===f.layers.length-1;up.dataset.layerRowAction='up';up.dataset.layerIndex=String(i);
-      const down=document.createElement('button');down.type='button';down.className='sprite-layer-move';down.textContent='↓';down.title='Move layer down';down.disabled=i===0;down.dataset.layerRowAction='down';down.dataset.layerIndex=String(i);
+      const up=document.createElement('button');up.type='button';up.className='sprite-layer-move';up.innerHTML=window.UIXIcons?.get('up','ui-svg')||'';up.title='Move layer up';up.disabled=i===f.layers.length-1;up.dataset.layerRowAction='up';up.dataset.layerIndex=String(i);
+      const down=document.createElement('button');down.type='button';down.className='sprite-layer-move';down.innerHTML=window.UIXIcons?.get('down','ui-svg')||'';down.title='Move layer down';down.disabled=i===0;down.dataset.layerRowAction='down';down.dataset.layerIndex=String(i);
       const opacityWrap=document.createElement('label');opacityWrap.className='sprite-layer-opacity';opacityWrap.title='Layer opacity';
       const opacityLabel=document.createElement('span');opacityLabel.textContent='Opacity';
       const opacity=document.createElement('input');opacity.type='range';opacity.min='0';opacity.max='100';opacity.value=String(Math.round(clamp(Number(layer.opacity??1),0,1)*100));opacity.dataset.layerOpacity=String(i);opacity.setAttribute('aria-label',`${layer.name||`Layer ${i+1}`} opacity`);
@@ -1445,8 +1441,8 @@
     ed.modal.querySelectorAll('[data-sprite-selection]').forEach(b=>{if(b.dataset.spriteSelection==='paste')b.disabled=!ed.clipboard;else if(b.dataset.spriteSelection==='cancel')b.disabled=!ed.selection&&!ed.lassoDrawing&&!ed.lassoPoints.length&&!ed.selectionRect;else b.disabled=!ed.selection;});ed.modal.querySelectorAll('[data-lasso-mode]').forEach(b=>b.classList.toggle('active',b.dataset.lassoMode===(ed.selectionMode||'set')));
     const play=q('[data-frame-action="play"]');if(play)play.innerHTML=`${glyph(ed.playing?'pause':'play')}${ed.playing?'Pause':'Play'}`;
     const mq=q('[data-modulate-color]');if(mq)mq.value=rgbaToHex(ed.modulateColor);const ms=q('[data-modulate-color-swatch]');if(ms)ms.style.background=cssRgba(ed.modulateColor);const strength=q('[data-modulate-strength]');if(strength)strength.value=String(ed.modulateStrength);const sl=q('[data-modulate-strength-label]');if(sl)sl.textContent=`${ed.modulateStrength}%`;
-    const previewToggle=q('[data-sprite-toggle-preview]');if(previewToggle){previewToggle.textContent=ed.showPreview?'▧ Preview':'▧ Preview Off';previewToggle.classList.toggle('active',!!ed.showPreview);}const mergeFrame=q('[data-frame-action="merge-down"]');if(mergeFrame)mergeFrame.disabled=frameBelowIndex(ed,ed.frameIndex)<0;
-    const inspectorToggle=q('[data-sprite-toggle-inspector]');if(inspectorToggle)inspectorToggle.textContent=ed.modal.querySelector('.sprite-inspector-panel')?.classList.contains('mobile-visible')?'Hide Inspector':'▤ Layers';
+    const previewToggle=q('[data-sprite-toggle-preview]');if(previewToggle){previewToggle.innerHTML=ed.showPreview?'<i class="ui-svg" data-icon="sprite"></i> Preview':'<i class="ui-svg" data-icon="sprite"></i> Preview Off';previewToggle.classList.toggle('active',!!ed.showPreview);}const mergeFrame=q('[data-frame-action="merge-down"]');if(mergeFrame)mergeFrame.disabled=frameBelowIndex(ed,ed.frameIndex)<0;
+    const inspectorToggle=q('[data-sprite-toggle-inspector]');if(inspectorToggle)inspectorToggle.innerHTML=ed.modal.querySelector('.sprite-inspector-panel')?.classList.contains('mobile-visible')?'Hide Inspector':'<i class="ui-svg" data-icon="layers"></i> Layers';
     renderPreview(ed);renderFrameList(ed);renderLayerList(ed);
   }
   function syncFrameFields(ed){const f=currentFrame(ed),q=s=>ed.modal.querySelector(s);q('[data-sprite-width]').value=f.width;q('[data-sprite-height]').value=f.height;q('[data-sprite-fps]').value=ed.fps;q('[data-frame-count]').textContent=String(visibleFrameIndices(ed).length);}
@@ -1454,11 +1450,11 @@
     const host=ed.modal.querySelector('[data-frame-list]');if(!host)return;const savedScrollTop=host.scrollTop;host.innerHTML='';
     const indices=visibleFrameIndices(ed);
     if(!indices.length){const note=document.createElement('div');note.className='sprite-frame-hint';note.textContent=`No frames match “${ed.groupBaseName}”. Rename this frame back to the sequence name or Undo to restore it; it remains available to save as its own asset.`;host.append(note);host.scrollTop=savedScrollTop;return;}
-    indices.forEach((i,visiblePosition)=>{const f=ed.frames[i];const row=document.createElement('div');row.className=`sprite-frame-row${i===ed.frameIndex?' selected':''}`;row.draggable=true;row.dataset.frameIndex=i;const thumb=document.createElement('canvas');thumb.width=56;thumb.height=56;thumb.className='sprite-frame-thumb';drawPreview(thumb,f);const info=document.createElement('div');info.className='sprite-frame-info';info.innerHTML=`<strong>Frame ${visiblePosition+1}</strong><span>${esc(f.name||ed.name)}</span>`;const del=document.createElement('button');del.type='button';del.className='mini-action danger sprite-frame-delete';del.title='Delete frame';del.textContent='×';del.disabled=ed.frames.length===1;del.addEventListener('click',e=>{e.stopPropagation();deleteFrame(ed,i);});row.append(thumb,info,del);row.addEventListener('click',()=>selectFrame(ed,i));row.addEventListener('dragstart',e=>e.dataTransfer.setData('text/plain',String(i)));row.addEventListener('dragover',e=>e.preventDefault());row.addEventListener('drop',e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(Number.isInteger(from))moveFrame(ed,from,i);});host.append(row);});
+    indices.forEach((i,visiblePosition)=>{const f=ed.frames[i];const row=document.createElement('div');row.className=`sprite-frame-row${i===ed.frameIndex?' selected':''}`;row.draggable=true;row.dataset.frameIndex=i;const thumb=document.createElement('canvas');thumb.width=56;thumb.height=56;thumb.className='sprite-frame-thumb';drawPreview(thumb,f);const info=document.createElement('div');info.className='sprite-frame-info';info.innerHTML=`<strong>Frame ${visiblePosition+1}</strong><span>${esc(f.name||ed.name)}</span>`;const del=document.createElement('button');del.type='button';del.className='mini-action danger sprite-frame-delete';del.title='Delete frame';UIXIcons.set(del,'close');del.disabled=ed.frames.length===1;del.addEventListener('click',e=>{e.stopPropagation();deleteFrame(ed,i);});row.append(thumb,info,del);row.addEventListener('click',()=>selectFrame(ed,i));row.addEventListener('dragstart',e=>e.dataTransfer.setData('text/plain',String(i)));row.addEventListener('dragover',e=>e.preventDefault());row.addEventListener('drop',e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(Number.isInteger(from))moveFrame(ed,from,i);});host.append(row);});
     host.scrollTop=savedScrollTop;
   }
   function drawPreview(canvas,f){const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;drawChecker(ctx,w,h,8);const s=Math.min((w-8)/Math.max(1,f.width),(h-8)/Math.max(1,f.height));ctx.imageSmoothingEnabled=false;ctx.save();ctx.translate((w-f.width*s)/2,(h-f.height*s)/2);ctx.scale(s,s);drawLayerStack(ctx,f,0,0);ctx.restore();}
-  function setPreviewVisibility(ed,visible){ed.showPreview=!!visible;const card=ed.modal.querySelector('[data-preview-card]');if(card)card.classList.toggle('hidden-preview',!ed.showPreview);const button=ed.modal.querySelector('[data-sprite-toggle-preview]');if(button){button.textContent=ed.showPreview?'▧ Preview':'▧ Preview Off';button.classList.toggle('active',ed.showPreview);}}
+  function setPreviewVisibility(ed,visible){ed.showPreview=!!visible;const card=ed.modal.querySelector('[data-preview-card]');if(card)card.classList.toggle('hidden-preview',!ed.showPreview);const button=ed.modal.querySelector('[data-sprite-toggle-preview]');if(button){button.innerHTML=ed.showPreview?'<i class="ui-svg" data-icon="sprite"></i> Preview':'<i class="ui-svg" data-icon="sprite"></i> Preview Off';button.classList.toggle('active',ed.showPreview);}}
   function renderPreview(ed){
     const c=ed.modal.querySelector('[data-sprite-preview]');
     if(!c)return;

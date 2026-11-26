@@ -67,7 +67,7 @@
     modal.innerHTML=`
       <div class="modal-header">
         <div><h3>Share NDC</h3><p>Send a Node2D project directly to another editor.</p></div>
-        <button class="modal-close" id="shareNdcClose" type="button">×</button>
+        <button class="modal-close" id="shareNdcClose" type="button"><i class="ui-svg" data-icon="close"></i></button>
       </div>
       <div class="share-ndc-topbar">
         <button class="share-ndc-tab active" id="shareNdcSendTab" type="button">Send</button>
