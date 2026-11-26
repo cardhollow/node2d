@@ -1,5 +1,40 @@
 [
   {
+    "title": "Version 42.0.0",
+    "items": [
+      {
+        "id": "v42-particle-states",
+        "subtitle": "createParticles Particle selector and Transitions",
+        "contents": "<h2>createParticles particles and transitions</h2><p>createParticles now keeps <strong>Lifetime</strong>, <strong>Count</strong> and <strong>Index</strong> as global inputs. Below them, the <strong>Particle</strong> selector chooses which particle you edit (<strong>Particle1</strong>, <strong>Particle2</strong>, …, <strong>+ Add Particle</strong>, <strong>Delete Particle</strong>). Every other input is independent per particle. Particles after the first have a <strong>Transition</strong> (ms) that blends from the previous particle: position, velocity, acceleration, scale, angle, strength and color blend gradually; Type/Sprite/Animation switch halfway. Older projects are converted automatically to Particle1.</p>"
+      },
+      {
+        "id": "v42-ontick-per-call",
+        "subtitle": "ctx.ontick values are no longer shared between createParticles calls",
+        "contents": "<p>Each execution of createParticles now owns its live <code>ctx.ontick.exec()</code> values. Previously every call shared one live value, so a new particle continued from the previous particle's value and all particles changed together.</p>"
+      },
+      {
+        "id": "v42-sprite-particles",
+        "subtitle": "Sprite particles draw the sprite again",
+        "contents": "<p>Modulating a Sprite particle no longer paints a solid rectangle. The sprite is tinted offscreen, so only its opaque pixels are colored and transparency is kept.</p>"
+      },
+      {
+        "id": "v42-performance",
+        "subtitle": "Particle and live-value performance",
+        "contents": "<p>Particles of one execution are simulated and drawn once regardless of Count. Live-value bindings no longer pile up on every ScriptNode run, finished particles release their live values, node contexts are refreshed once per tick, the draw order is no longer sorted every frame, and particle sprites are decoded when play starts.</p>"
+      },
+      {
+        "id": "v42-sprite-particle-color",
+        "subtitle": "Sprite particles keep their colors when Color is empty",
+        "contents": "<p>An empty Color on a Sprite particle no longer modulates the sprite. When set, the color modulates it exactly like the Sprite component (per-channel, blended by Strength).</p>"
+      },
+      {
+        "id": "v42-setvariable-list",
+        "subtitle": "setVariable list operations",
+        "contents": "<p>setVariable detects List variables and shows an Operation selector: Set, Push, Pop, Shift, Unshift, Insert, Set At, Remove At, Remove Value, Clear, Reverse, Sort, plus an Index input where needed. Older setVariable nodes keep working as Set.</p>"
+      }
+    ]
+  },
+  {
     "title": "Version 41.6.0",
     "items": [
       {
