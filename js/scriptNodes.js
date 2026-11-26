@@ -23,6 +23,14 @@
   ];
 
   const scriptNodes = [
+    {
+      name:'pushOutput', receiver:true, group:'Actions', output:[{id:'out'}],
+      editor:[
+        {name:'Type',type:'selector',value:()=>['Log','Warn','Err','Debug','Info'],selected:'Log'},
+        {name:'Output',type:'str',value:''}
+      ],
+      func:(ctx,v)=>{ctx.pushOutput?.(v.Type,v.Output);return {out:true};}
+    },
     { name:'onLoad', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onTick', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onKeybind', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Keybind',type:'selector',value:ctx=>(ctx?.keybinds||['Enter',...Array.from({length:10},(_,i)=>String(i)),...Array.from({length:26},(_,i)=>String.fromCharCode(65+i))]),selected:'Enter'}], func:()=>({out:true}) },
@@ -260,7 +268,11 @@
     });
   });
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
-  scriptNodes.splice(0,scriptNodes.length,...scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean));
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','pushOutput','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
+  const orderedScriptNodes=scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean);
+  const orderedScriptNodeNames=new Set(orderedScriptNodes.map(n=>n.name));
+  // Never silently drop a newly registered ScriptNode just because it has not
+  // yet been added to this preferred-order list.
+  scriptNodes.splice(0,scriptNodes.length,...orderedScriptNodes,...scriptNodes.filter(n=>!orderedScriptNodeNames.has(n.name)));
   window.UIXScriptNodes={scriptNodes,particleStateBase:PARTICLE_STATE_BASE,particleStateFields:PARTICLE_STATE_FIELDS,particleStateTemplate:PARTICLE_STATE_TEMPLATE};
 })();

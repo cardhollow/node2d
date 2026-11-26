@@ -66,6 +66,9 @@
       sceneVariablesCollapsed: true,
       localVariablesCollapsed: true,
       scriptGroupCollapsed: Object.create(null),
+      scriptLibraryFilter: '',
+      scriptLibrarySortBy: 'Group',
+      scriptLibrarySortDirection: 'Ascending',
       expressionGroupCollapsed: Object.create(null),
       variableCollapsed: Object.create(null),
       selectedComponentKey: '',
@@ -7350,12 +7353,66 @@
     renderVariableSection(host,'Scene Variables','Scene','sceneVariablesCollapsed');
   }
 
+  function applyScriptLibraryFilter(host){
+    if(!host)return;
+    const query=String(state.ui.scriptLibraryFilter||'').trim().toLocaleLowerCase();
+    let visible=0;
+    host.querySelectorAll('.library-node').forEach(button=>{
+      const match=!query||String(button.dataset.librarySearch||'').includes(query);
+      button.hidden=!match;
+      if(match)visible++;
+    });
+    host.querySelectorAll('.script-library-group').forEach(section=>{
+      const hasVisible=!!section.querySelector('.library-node:not([hidden])');
+      section.hidden=!hasVisible;
+    });
+    const empty=host.querySelector('.script-library-no-results');
+    if(empty)empty.hidden=visible!==0;
+  }
+
   function renderScriptLibrary(){
     const host=$('#scriptNodeLibrary'); if(!host)return; host.innerHTML='';
     const groups={}; scriptNodes.forEach(n=>(groups[n.group] ||= []).push(n));
+
+    // Keep the search/sort controls fixed above the scrollable library sections.
+    const toolbar=document.createElement('div'); toolbar.className='script-library-toolbar';
+    const search=document.createElement('input'); search.type='search'; search.className='script-library-search';
+    search.placeholder='Filter / Search ScriptNodes'; search.setAttribute('aria-label','Filter or search ScriptNodes');
+    search.value=String(state.ui.scriptLibraryFilter||'');
+    search.addEventListener('input',()=>{state.ui.scriptLibraryFilter=search.value;applyScriptLibraryFilter(host);});
+
+    const sortBy=state.ui.scriptLibrarySortBy==='Name'?'Name':'Group';
+    const sortDirection=state.ui.scriptLibrarySortDirection==='Descending'?'Descending':'Ascending';
+    const sort=document.createElement('details'); sort.className='script-library-sort';
+    const sortSummary=document.createElement('summary'); sortSummary.className='script-library-sort-summary';
+    const sortTitle=document.createElement('span'); sortTitle.textContent='Sort';
+    const sortValue=document.createElement('span'); sortValue.className='script-library-sort-value';
+    sortValue.textContent=`${sortBy} · ${sortDirection}`;
+    sortSummary.append(sortTitle,sortValue); sort.append(sortSummary);
+    const sortMenu=document.createElement('div'); sortMenu.className='script-library-sort-menu';
+    sortMenu.setAttribute('role','group'); sortMenu.setAttribute('aria-label','ScriptNode sort options');
+    const addSortOption=(label,kind,value,active)=>{
+      const option=document.createElement('button'); option.type='button'; option.className='script-library-sort-option';
+      option.textContent=label; option.setAttribute('aria-pressed',active?'true':'false');
+      option.addEventListener('click',()=>{
+        if(kind==='by')state.ui.scriptLibrarySortBy=value;
+        else state.ui.scriptLibrarySortDirection=value;
+        renderScriptLibrary();
+      });
+      sortMenu.append(option);
+    };
+    addSortOption('Name','by','Name',sortBy==='Name');
+    addSortOption('Group','by','Group',sortBy==='Group');
+    const sortDivider=document.createElement('hr'); sortDivider.className='script-library-sort-divider'; sortMenu.append(sortDivider);
+    addSortOption('Ascending','direction','Ascending',sortDirection==='Ascending');
+    addSortOption('Descending','direction','Descending',sortDirection==='Descending');
+    sort.append(sortMenu); toolbar.append(search,sort); host.append(toolbar);
+
     ['Events','Actions','Controls'].forEach(group=>{
-      const nodes=groups[group]||[];
-      const section=document.createElement('section'); section.className='script-library-group';
+      const nodes=(groups[group]||[]).slice();
+      if(sortBy==='Name')nodes.sort((a,b)=>String(a.label||a.name).localeCompare(String(b.label||b.name),undefined,{numeric:true,sensitivity:'base'}));
+      if(sortDirection==='Descending')nodes.reverse();
+      const section=document.createElement('section'); section.className='script-library-group'; section.dataset.libraryGroup=group;
       const head=document.createElement('button'); head.className='library-group-header';
       const body=document.createElement('div'); body.className='library-group-body';
       const collapsed=!!state.ui.scriptGroupCollapsed[group];
@@ -7363,7 +7420,11 @@
       head.innerHTML=`<span>${UIXIcons.get(collapsed?'add':'minus','ui-svg')}</span>${group}`;
       if(!nodes.length) body.append(Object.assign(document.createElement('div'),{className:'library-empty',textContent:'No ScriptNodes'}));
       nodes.forEach(def=>{
-        const b=document.createElement('button'); b.className=`library-node script-group-${String(def.group||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`; b.dataset.scriptGroup=String(def.group||''); b.textContent=def.label||def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled; b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
+        const b=document.createElement('button'); b.className=`library-node script-group-${String(def.group||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+        b.dataset.scriptGroup=String(def.group||'');
+        b.dataset.librarySearch=`${def.name||''} ${def.label||''} ${def.group||''}`.toLocaleLowerCase();
+        b.textContent=def.label||def.name; const enabled=scriptRequirementEnabled(def); b.draggable=enabled;
+        b.classList.toggle('script-node-require-disabled',!enabled); b.setAttribute('aria-disabled',enabled?'false':'true'); b.title=enabled?def.name:`Requires ${def.require}`;
         b.addEventListener('click',()=>enabled?addScriptNode(def):showScriptRequirementPrompt(def));
         b.addEventListener('dragstart',e=>{if(!enabled){e.preventDefault();showScriptRequirementPrompt(def);return;}e.dataTransfer.setData('application/x-uix-script-node',def.name);e.dataTransfer.effectAllowed='copy';});
         body.append(b);
@@ -7371,6 +7432,9 @@
       head.onclick=()=>{state.ui.scriptGroupCollapsed[group]=!state.ui.scriptGroupCollapsed[group];body.classList.toggle('hidden',state.ui.scriptGroupCollapsed[group]);UIXIcons.set(head.firstElementChild,state.ui.scriptGroupCollapsed[group]?'add':'minus');};
       section.append(head,body); host.append(section);
     });
+    const noResults=document.createElement('div'); noResults.className='script-library-no-results library-empty';
+    noResults.textContent='No ScriptNodes match your search.'; noResults.hidden=true; host.append(noResults);
+    applyScriptLibraryFilter(host);
   }
 
   function normalizeEditor(entry){
@@ -10400,6 +10464,12 @@
       runtimeDeactivateValueTickSlotsForNode(nodeId);
       return true;
     };
+    try{Object.defineProperty(ctx,'pushOutput',{configurable:true,enumerable:false,writable:true,value:(type,message)=>{
+      const levels={Log:'log',Warn:'warn',Err:'error',Debug:'debug',Info:'info'};
+      const level=levels[String(type||'Log')]||'log';
+      runtimeOutput(level,runtimeOutputValue(message));
+      return true;
+    }});}catch{ctx.pushOutput=(type,message)=>{const levels={Log:'log',Warn:'warn',Err:'error',Debug:'debug',Info:'info'};runtimeOutput(levels[String(type||'Log')]||'log',runtimeOutputValue(message));return true;};}
     try{Object.defineProperty(ctx,'scriptStart',{configurable:true,enumerable:true,get:()=>Number(rt.scriptStartById?.get(String(ctx.__scriptId||''))||0)});}catch{}
     try{Object.defineProperty(ctx,'scriptHere',{configurable:true,enumerable:false,get:getScriptHere});}catch{}
     try{Object.defineProperty(ctx,'ontick',{configurable:true,enumerable:false,value:ontick,writable:false});}catch{}
