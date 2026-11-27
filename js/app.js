@@ -7474,6 +7474,25 @@
     for(const oldPath of Object.keys(oldExpressions)){const nextPath=pathMap.get(oldPath);if(nextPath!==undefined)nextExpressions[nextPath]=oldExpressions[oldPath];}
     sn.values=nextValues;sn.expressions=nextExpressions;
   }
+  function migrateSetSpriteScriptNode(sn,def){
+    if(!sn||sn.defName!=='setSprite'||!def)return;
+    const oldFlat=flattenEditor(Array.isArray(sn.values)?sn.values:[]),oldByName=new Map();
+    oldFlat.forEach(item=>{const name=String(item?.entry?.name||'');if(name&&!oldByName.has(name))oldByName.set(name,item);});
+    const aliases={'Texture Size X':'Texture Width','Texture Size Y':'Texture Height'};
+    const nextValues=cloneEditorDefinition(def.editor||[]).map(normalizeEditor),nextFlat=flattenEditor(nextValues),pathMap=new Map();
+    for(const item of nextFlat){
+      const name=String(item.entry?.name||''),old=oldByName.get(name)||oldByName.get(aliases[name]);
+      if(!old)continue;
+      if(item.entry.type==='selector'){
+        if(Object.prototype.hasOwnProperty.call(old.entry,'selected'))item.entry.selected=clone(old.entry.selected);
+        if((name==='Type'||name==='Scale Type')&&item.entry.selected==='Keep')item.entry.selected=null;
+      }else if(Object.prototype.hasOwnProperty.call(old.entry,'value'))item.entry.value=clone(old.entry.value);
+      pathMap.set(old.path,item.path);
+    }
+    const oldExpressions=sn.expressions&&typeof sn.expressions==='object'?sn.expressions:{},nextExpressions={};
+    for(const oldPath of Object.keys(oldExpressions)){const nextPath=pathMap.get(oldPath);if(nextPath!==undefined)nextExpressions[nextPath]=oldExpressions[oldPath];}
+    sn.values=nextValues;sn.expressions=nextExpressions;
+  }
 
   // ---- createParticles: Particle1..N editor state ----------------------------------------------------------------
   function particleStateBase(){return window.UIXScriptNodes?.particleStateBase??4;}
@@ -7542,6 +7561,7 @@
         const def=scriptNodeDefinition(sn?.defName);
         if(def&&Array.isArray(sn.values)) sn.values=restoreSelectorDefinition(sn.values,def.editor||[]);
         if(def?.name==='createParticles'){migrateCreateParticlesScriptNode(sn,def);restoreParticleStateDefinitions(sn,def);}
+        if(def?.name==='setSprite')migrateSetSpriteScriptNode(sn,def);
         if(def?.name==='setVariable'&&Array.isArray(sn.values)){
           // Older setVariable nodes have no list Operation/Index inputs: append them (paths of existing inputs stay valid).
           for(const template of def.editor||[])if(!sn.values.some(e=>e?.name===template.name))sn.values.push(cloneEditorDefinition(template));
@@ -7848,6 +7868,17 @@
           if(n==='Index'&&!['Insert','Set At','Remove At'].includes(op))return;
           if(n==='Value'&&['Pop','Shift','Clear','Reverse','Sort','Remove At'].includes(op))return;
         }
+      }
+      if(sn.defName==='setSprite'){
+        const spriteOwner=findNode(state.script.nodeId),currentSprite=component(spriteOwner,'sprite');
+        const typeItem=cardItems.find(x=>x.entry.name==='Type'),sourceItem=cardItems.find(x=>x.entry.name==='Source');
+        const isDynamic=item=>!!item&&Object.prototype.hasOwnProperty.call(sn.expressions||{},item.path);
+        const typeDynamic=isDynamic(typeItem),sourceDynamic=isDynamic(sourceItem);
+        const typeValue=typeItem&&!typeDynamic?scriptEditorValue(sn,typeItem):(currentSprite?.renderType||'Image');
+        const sourceValue=sourceItem&&!sourceDynamic?scriptEditorValue(sn,sourceItem):(currentSprite?.sourceType||'Sprite');
+        if(['Texture Size X','Texture Size Y'].includes(item.entry.name)&&!typeDynamic&&typeValue!=='Texture')return;
+        if(item.entry.name==='Sprite'&&!sourceDynamic&&sourceValue!=='Sprite')return;
+        if(item.entry.name==='Animation'&&!sourceDynamic&&sourceValue!=='Animation')return;
       }
       if(sn.defName==='createParticles'){
         // Global inputs and the Particle selector are always shown; below them only the selected particle's inputs.
@@ -11599,7 +11630,31 @@ function updateRuntimeAnimations(dt){
       if(v?.AngularVelocity!==null&&v?.AngularVelocity!==undefined)b.omega=num(v.AngularVelocity,Number(b.omega||0)*180/Math.PI)*Math.PI/180;
     };
     const applySetText=v=>runtimeSetComponent(node,'text',c=>{Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Text':'txt','FG Color':'fgcol','BG Color':'bg','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','PosX':'positionX','PosY':'positionY','Border':'border','Border Color':'borderColor','Border Width':'borderWidth'};const dest=map[k];if(dest==='positionX')c.position[0]=Number(v[k]);else if(dest==='positionY')c.position[1]=Number(v[k]);else if(dest==='borderColor'){c.border=c.border||{};c.border.color=v[k];}else if(dest==='borderWidth'){c.border=c.border||{};c.border.width=Number(v[k]);}else if(dest)c[dest]=v[k];});});
-    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{if(v?.Type!==null&&v?.Type!==undefined&&v.Type!=='Keep'){if(v.Type==='Sprite'||v.Type==='Animation')c.sourceType=v.Type;else c.renderType=v.Type==='Texture'?'Texture':'Image';}if(v?.Source!==null&&v?.Source!==undefined)c.sourceType=v.Source==='Animation'?'Animation':'Sprite';if(v?.Sprite!==null&&v?.Sprite!==undefined){c.name=v.Sprite;c.src=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite)?.value||c.src;}if(v?.Animation!==null&&v?.Animation!==undefined)c.animation=v.Animation;if(v?.['Scale Type']!==null&&v?.['Scale Type']!==undefined&&v['Scale Type']!=='Keep')c.scaleType=v['Scale Type']==='Crop'?'Crop':'Stretch';if(v?.Modulate!==null&&v?.Modulate!==undefined)c.modulate=v.Modulate;if(v?.Strength!==null&&v?.Strength!==undefined)c.strength=clamp(Number(v.Strength)/100,0,1);{const cur=Array.isArray(c.textureSize)?c.textureSize:[0,0],tw=Number(v?.['Texture Width']),th=Number(v?.['Texture Height']);if(tw>0||th>0)c.textureSize=[tw>0?tw:(Number(cur[0])||0),th>0?th:(Number(cur[1])||0)];}if(v?.TextureSize!==null&&v?.TextureSize!==undefined){const ts=Array.isArray(v.TextureSize)?v.TextureSize:[v.TextureSize,v.TextureSize];c.textureSize=[Math.max(0,Number(ts[0])||0),Math.max(0,Number(ts[1])||0)];}if(v?.Pixelated!==null&&v?.Pixelated!==undefined)c.pixelated=!!v.Pixelated;if(v?.Opacity!==null&&v?.Opacity!==undefined)c.opacity=clamp(Number(v.Opacity)/100,0,1);});
+    const applySetSprite=v=>runtimeSetComponent(node,'sprite',c=>{
+      const has=(key)=>Object.prototype.hasOwnProperty.call(v||{},key)&&v[key]!==null&&v[key]!==undefined&&v[key]!=='';
+      const setAxis=(key,property,index,minimum=-Infinity)=>{
+        if(!has(key))return;
+        const number=Number(v[key]);if(!Number.isFinite(number))return;
+        if(!Array.isArray(c[property]))c[property]=[0,0];
+        c[property][index]=Math.max(minimum,number);
+      };
+      if(has('Type')&&['Image','Texture'].includes(v.Type))c.renderType=v.Type;
+      if(has('Source')&&['Sprite','Animation'].includes(v.Source))c.sourceType=v.Source;
+      if(has('Scale Type')&&['Stretch','Crop'].includes(v['Scale Type']))c.scaleType=v['Scale Type'];
+      if(has('Modulate'))c.modulate=v.Modulate;
+      if(has('Strength')){const strength=Number(v.Strength);if(Number.isFinite(strength))c.strength=clamp(strength/100,0,1);}
+      if(has('Opacity')){const opacity=Number(v.Opacity);if(Number.isFinite(opacity))c.opacity=clamp(opacity/100,0,1);}
+      if(has('Pixelated'))c.pixelated=!!v.Pixelated;
+      setAxis('Position X','position',0);setAxis('Position Y','position',1);
+      setAxis('Size X','size',0,0);setAxis('Size Y','size',1,0);
+      setAxis('Texture Size X','textureSize',0,0);setAxis('Texture Size Y','textureSize',1,0);
+      const source=has('Source')?v.Source:null;
+      if(source!=='Animation'&&has('Sprite')){
+        const asset=(state.assets.Sprite||[]).find(a=>a.name===v.Sprite);
+        if(asset){c.name=asset.name;c.src=asset.value;c.sourceType='Sprite';}
+      }
+      if(source!=='Sprite'&&has('Animation')){c.animation=v.Animation;c.sourceType='Animation';}
+    });
     const applySetInputComponent=v=>runtimeSetComponent(node,'input',c=>{const map={'Text':'txt','Placeholder':'placeholder','Width':'width','Height':'height','Multiline':'multiline','FG Color':'fgCol','BG Color':'bgCol','Outline Color':'outlineCol','Font Size':'fontSize','Font Family':'fontFamily','Align':'align','Justify':'justify','Padding':'padding','Outline Width':'outlineWidth','Border Radius':'borderRadius','Max Length':'maxLength','PosX':'positionX','PosY':'positionY','ScaleX':'scaleX','ScaleY':'scaleY'};Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d==='scaleX')c.scale[0]=Number(v[k]);else if(d==='scaleY')c.scale[1]=Number(v[k]);else if(d)c[d]=d==='multiline'?!!v[k]:d==='width'||d==='height'||d==='fontSize'||d==='padding'||d==='outlineWidth'||d==='borderRadius'||d==='maxLength'?Number(v[k]):v[k];});});
     const applySetPhysics=v=>{
       if(!node)return;

@@ -153,7 +153,24 @@
     },
     {
       name:'setSprite', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Type',type:'selector',value:()=>['Keep','Image','Texture'],selected:'Keep'},{name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:'Sprite'},{name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},{name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null},{name:'Scale Type',type:'selector',value:()=>['Keep','Stretch','Crop'],selected:'Keep'},{name:'Texture Width',type:'int',value:0},{name:'Texture Height',type:'int',value:0},{name:'Modulate',type:'col',value:null},{name:'Strength',type:'int',value:100},{name:'Pixelated',type:'bool',value:null},{name:'Opacity',type:'int',value:100}],
+      // Mirrors the Sprite component's editable properties. Null inputs are left unchanged.
+      editor:[
+        {name:'Type',type:'selector',value:()=>['Image','Texture'],selected:null},
+        {name:'Source',type:'selector',value:()=>['Sprite','Animation'],selected:null},
+        {name:'Scale Type',type:'selector',value:()=>['Stretch','Crop'],selected:null},
+        {name:'Modulate',type:'col',value:null},
+        {name:'Strength',type:'int',value:null},
+        {name:'Opacity',type:'int',value:null},
+        {name:'Pixelated',type:'bool',value:null},
+        {name:'Position X',type:'number',value:null},
+        {name:'Position Y',type:'number',value:null},
+        {name:'Size X',type:'number',value:null},
+        {name:'Size Y',type:'number',value:null},
+        {name:'Texture Size X',type:'number',value:null},
+        {name:'Texture Size Y',type:'number',value:null},
+        {name:'Sprite',type:'selector',value:ctx=>(ctx?.spriteAssets||[]).map(a=>a.name),selected:null},
+        {name:'Animation',type:'selector',value:ctx=>(ctx?.animations||[]).map(a=>a.name),selected:null}
+      ],
       func:(ctx,v)=>{ctx.setSprite?.(v);return {out:true};}
     },
     {name:'stopAnimation',receiver:true,group:'Actions',output:[{id:'out'}],editor:[],func:(ctx)=>{ctx.stopAnimation?.();return {out:true};}},
