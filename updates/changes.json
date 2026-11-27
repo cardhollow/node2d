@@ -1,5 +1,45 @@
 [
   {
+    "title": "Version 44.0.1",
+    "items": [
+      {
+        "id": "v44-0-1-screen-relative-input-priority",
+        "subtitle": "Screen-relative Nodes receive pointer priority",
+        "contents": "Corrected runtime pointer hit-testing so Screen-relative Nodes are checked before World-relative Nodes. A Screen-relative Node remains clickable when a World-relative Node overlaps or visually covers it. If no Screen-relative Node is hit, World-relative hit-testing runs as the fallback. Within each relative mode, the higher Node Index is checked first. Rendering order, render passes, and visual layering are unchanged."
+      }
+    ]
+  },
+  {
+    "title": "Version 44.0.0",
+    "items": [
+      {
+        "id": "v44-relative-input-priority",
+        "subtitle": "World and Screen input hit priority",
+        "contents": "Input hit-testing now gives World-relative Nodes priority over Screen-relative Nodes, without changing the World and Screen render passes. Within each relative group, the higher Node Index is checked first, matching the existing topmost render order."
+      },
+      {
+        "id": "v44-sprite-editor-transform",
+        "subtitle": "Sprite Editor Transform controls",
+        "contents": "Added Transform controls for the active layer: X and Y position in pixels (ranges follow the current frame width and height), Zoom from -100% to 100%, and Angle from 0° to 360°. When a lasso selection is active, the transform affects only the selected pixels instead of the whole active layer."
+      },
+      {
+        "id": "v44-joint-physics-override",
+        "subtitle": "Joint Override Physics",
+        "contents": "Each Joint now has an Override Physics option. When enabled, the joint target receives runtime copies of the joining Node’s Physics and Collider components. Missing source components also override the corresponding target component to absent. This override is runtime-only and does not rewrite the saved target components."
+      },
+      {
+        "id": "v44-collision-filter",
+        "subtitle": "Collider Collision Filter",
+        "contents": "Collider components now support an optional comma-separated list of integer filter values. If two colliders share at least one value, their collision pair is excluded from physical response, collision events, and isCollidedWith checks. An empty list applies no additional filtering. The setCollider ScriptNode includes Collision Filter as a List input."
+      },
+      {
+        "id": "v44-tag-component",
+        "subtitle": "Tag component and tag-based collision targets",
+        "contents": "Added a Tag component for adding and removing tags. onCollideWith and isCollidedWith now have a Type selector for Tag or Name; the Target options switch between available tags and Node names. Added addTag and removeTag ScriptNode Actions, each with a string value input."
+      }
+    ]
+  },
+  {
     "title": "Version 43.0.1",
     "items": [
       {
