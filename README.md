@@ -1,6 +1,22 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.5). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v43.0.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 43.0.1 — setVariable List Replace At
+
+- Added **Replace At** to the `setVariable` List operations.
+- Replace At shows an **Index**, **Value Type**, and **Value** input. The Value Type selector lists the supported variable types: Int, String, Bool, Color, and List; the Value editor follows the selected type.
+- Replace At changes one existing list element. Negative indexes count from the end; an index outside the list does not expand the list or add a new item.
+- Existing **Set At** behavior is preserved, and older `setVariable` nodes are migrated by input name without changing their saved settings.
+
+## Version 43.0.0 — Addon support
+
+- Added Addon ZIP import and **File → Addon Management** for installing, activating, deactivating, inspecting, and ordering Addons.
+- Addon packages use `manifest.json`, an IIFE `main.js` registry, optional `Addon.png` and description, and one or more ScriptNode bundle files. A bundle can return multiple definitions.
+- Installed packages are stored globally by UUID and exact version. Multiple versions of one UUID can coexist; a project selects one version per UUID and stores its own activation order.
+- Node2D built-in ScriptNodes always win name conflicts. Among active Addons, the first Addon in project order wins; skipped definitions are reported in the package log.
+- `.ndc` files embed the exact active Addon ZIP bytes in a separate binary section and restore the saved UUID/version selections when loaded. Older NDC files remain readable.
+- Addon Management can download a starter package template. Custom Component registration is reserved for a later API and is not part of v43.0.0.
 
 ## Version 42.2.5
 - `setSprite` now mirrors the Sprite Component properties: Image/Texture type, Sprite/Animation source, Stretch/Crop scale type, Modulate, Strength, Opacity, Pixelated, Position X/Y, Size X/Y, Texture Size X/Y, Sprite asset, and Animation.

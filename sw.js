@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v42-2-5-set-sprite-component-parity';
+const CACHE_NAME='uix-node2d-v43-0-1-setvariable-replace-at';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[
@@ -8,6 +8,8 @@ const STATIC_ASSETS=[
   './icon-192.png',
   './icon-512.png',
   './index.html',
+  './js/addons.js',
+  './js/Clipboard.js',
   './js/app.js',
   './js/assets.js',
   './js/engineDecoder.js',
