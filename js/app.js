@@ -8414,10 +8414,14 @@
     else if(literalFallback)messages.push('The value will be treated as a string literal.');
     else if(!messages.length)messages.push('No error.');
     const valid=!fatalMessage&&!typeMessage;
-    error.textContent=messages.join('\n');error.classList.toggle('valid',valid&&!warnings.length);error.classList.toggle('has-warnings',!!warnings.length);if(save)save.disabled=!valid;return valid;
+    error.textContent=messages.join('\n');error.classList.toggle('valid',valid&&!warnings.length);error.classList.toggle('has-warnings',!!warnings.length);
+    // Validation is diagnostic only: users may save an expression before it is valid.
+    if(save)save.disabled=false;
+    return valid;
   }
   function applyExpression(){
-    if(!validateExpression())return status('Fix the expression error first');
+    // Keep the validation result for feedback, but never use it to block saving.
+    const expressionValid=validateExpression();
     const edit=state.script.editingInput;if(!edit)return;
     const value=$('#expressionInput').value.trim(),hasStoredExpression=Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path);
     const oldExpression=hasStoredExpression?String(edit.sn.expressions[edit.path]??''):'';
@@ -8437,6 +8441,7 @@
       if(state.script.nodeId){renderLocalVariables();renderScriptScopeVariables();}
     }
     state.script.editingInput=null;closeModal($('#expressionModal'));renderScriptCanvas();
+    if(!expressionValid)status('Expression saved with errors. Review the expression diagnostics before running the project.');
   }
   function clearExpression(){
     const edit=state.script.editingInput;if(edit&&Object.prototype.hasOwnProperty.call(edit.sn.expressions,edit.path)){pushHistory(`Clear ${edit.entry.name||'ScriptNode input'}`);delete edit.sn.expressions[edit.path];}
