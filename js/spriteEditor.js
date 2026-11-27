@@ -334,6 +334,14 @@
             </div>
             <div class="sprite-frame-hint">Each frame has its own layers. Copy a layer, switch frames, then paste it there. Drag or use ↑ ↓ to reorder.</div>
           </section>
+          <section class="sprite-inspector-section sprite-transform-section" data-transform-section>
+            <div class="sprite-section-title">Transform</div>
+            <label class="sprite-transform-row"><span>X <small>px</small></span><input type="range" min="-32" max="32" value="0" step="1" data-sprite-transform="x"><output data-transform-value="x">0 px</output></label>
+            <label class="sprite-transform-row"><span>Y <small>px</small></span><input type="range" min="-32" max="32" value="0" step="1" data-sprite-transform="y"><output data-transform-value="y">0 px</output></label>
+            <label class="sprite-transform-row"><span>Zoom</span><input type="range" min="-100" max="100" value="0" step="1" data-sprite-transform="zoom"><output data-transform-value="zoom">0%</output></label>
+            <label class="sprite-transform-row"><span>Angle</span><input type="range" min="0" max="360" value="0" step="1" data-sprite-transform="angle"><output data-transform-value="angle">0°</output></label>
+            <div class="sprite-frame-hint" data-transform-target-hint>Transforms the active layer. A lasso selection takes priority when one is active.</div>
+          </section>
           <section class="sprite-inspector-section">
             <div class="sprite-section-title">Sprite</div>
             <div class="property-row"><span class="property-label">Name</span><div class="property-control"><input data-sprite-name type="text"></div></div>
@@ -364,6 +372,81 @@
     setPreviewVisibility(ed,true);
     activeEditor=ed;
     requestAnimationFrame(()=>{modal.focus?.({preventScroll:true});fitEditor(ed);render(ed);});
+  }
+
+  function syncTransformValue(ed,key,value){
+    const output=ed.modal.querySelector(`[data-transform-value="${key}"]`);
+    if(output)output.textContent=key==='x'||key==='y'?`${Math.round(value)} px`:key==='angle'?`${Math.round(value)}°`:`${Math.round(value)}%`;
+    const hint=ed.modal.querySelector('[data-transform-target-hint]');
+    if(hint)hint.textContent=ed.selection?.mask?.size?'Transforms the active lasso selection.':'Transforms the active layer.';
+  }
+  function syncTransformControls(ed){
+    const f=currentFrame(ed);if(!f)return;
+    const ranges={x:{min:0,max:f.width},y:{min:0,max:f.height},zoom:{min:-100,max:100},angle:{min:0,max:360}};
+    const selection=ed.selection?.mask?.size?ed.selection:null;
+    const defaults={x:Math.round(selection?selection.x+selection.width/2:f.width/2),y:Math.round(selection?selection.y+selection.height/2:f.height/2),zoom:0,angle:0};
+    Object.entries(ranges).forEach(([key,range])=>{
+      const input=ed.modal.querySelector(`[data-sprite-transform="${key}"]`);if(!input)return;
+      input.min=String(range.min);input.max=String(range.max);
+      if(!ed.transformSession)input.value=String(defaults[key]);
+      syncTransformValue(ed,key,Number(input.value)||0);
+    });
+  }
+  function transformPoint(x,y,cx,cy,scale,angle,dx,dy){
+    const px=x-cx,py=y-cy,c=Math.cos(angle),s=Math.sin(angle);
+    return {x:cx+px*scale*c-py*scale*s+dx,y:cy+px*scale*s+py*scale*c+dy};
+  }
+  function ensureTransformSession(ed){
+    if(ed.transformSession)return ed.transformSession;
+    const f=currentFrame(ed),layer=currentLayer(ed),selection=ed.selection?.mask?.size?ed.selection:null;
+    if(!layer)return null;
+    pushUndo(ed);
+    if(selection){
+      ed.transformSession={kind:'selection',basePixels:clonePixels(f.pixels),layer,selection:{x:selection.x,y:selection.y,width:selection.width,height:selection.height,mask:new Set(selection.mask),pixels:clonePixels(selection.pixels||makePixels(selection.width,selection.height)),floating:!!selection.floating}};
+    }else{
+      ed.transformSession={kind:'layer',basePixels:clonePixels(layer.pixels),layer};
+    }
+    return ed.transformSession;
+  }
+  function applyTransformPreview(ed){
+    const session=ensureTransformSession(ed);if(!session)return;
+    const f=currentFrame(ed),read=key=>Number(ed.modal.querySelector(`[data-sprite-transform="${key}"]`)?.value)||0;
+    const scale=Math.max(0,1+read('zoom')/100),angle=read('angle')*Math.PI/180;
+    if(session.kind==='selection'){
+      const source=session.selection,cx=source.x+source.width/2,cy=source.y+source.height/2,dx=read('x')-Math.round(cx),dy=read('y')-Math.round(cy);
+      const nextMask=new Set(),entries=[];let minX=f.width,minY=f.height,maxX=-1,maxY=-1;
+      for(const key of source.mask){
+        const [x,y]=key.split(',').map(Number),px=source.pixels?.[y-source.y]?.[x-source.x]||session.basePixels[y]?.[x]||transparent();
+        const point=transformPoint(x+.5,y+.5,cx,cy,scale,angle,dx,dy),tx=Math.floor(point.x),ty=Math.floor(point.y);
+        if(tx<0||ty<0||tx>=f.width||ty>=f.height)continue;
+        const dest=`${tx},${ty}`;nextMask.add(dest);entries.push({x:tx,y:ty,pixel:[...px]});minX=Math.min(minX,tx);maxX=Math.max(maxX,tx);minY=Math.min(minY,ty);maxY=Math.max(maxY,ty);
+      }
+      const output=clonePixels(session.basePixels);
+      if(!source.floating){
+        for(const key of source.mask){const [x,y]=key.split(',').map(Number);if(x>=0&&y>=0&&x<f.width&&y<f.height)output[y][x]=transparent();}
+      }
+      if(maxX>=minX&&maxY>=minY){
+        if(!source.floating)for(const item of entries)output[item.y][item.x]=[...item.pixel];
+        const pixels=makePixels(maxX-minX+1,maxY-minY+1);
+        for(const item of entries)pixels[item.y-minY][item.x-minX]=[...item.pixel];
+        ed.selection={x:minX,y:minY,width:maxX-minX+1,height:maxY-minY+1,mask:nextMask,pixels,floating:source.floating};
+      }else ed.selection=null;
+      f.pixels=output;
+    }else{
+      const output=makePixels(f.width,f.height),cx=f.width/2,cy=f.height/2,dx=read('x')-Math.round(cx),dy=read('y')-Math.round(cy);
+      for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
+        const px=session.basePixels[y]?.[x]||transparent();if(!px[3])continue;
+        const point=transformPoint(x+.5,y+.5,cx,cy,scale,angle,dx,dy),tx=Math.floor(point.x),ty=Math.floor(point.y);
+        if(tx>=0&&ty>=0&&tx<f.width&&ty<f.height)output[ty][tx]=[...px];
+      }
+      session.layer.pixels=output;session.layer.__cache=null;f.pixels=output;
+    }
+    session.layer.__cache=null;invalidateCache(f);ensureFrameCache(f);renderCanvasOnly(ed);renderPreview(ed);
+  }
+  function finishTransformSession(ed){
+    if(!ed.transformSession)return;
+    ed.transformSession=null;
+    render(ed);
   }
 
   const currentFrame = ed => ed.frames[ed.frameIndex];
@@ -447,6 +530,10 @@
 
     q('[data-sprite-size]').addEventListener('input',e=>{ed.brushSize=clamp(Number(e.target.value)||1,1,32);render(ed);});
     q('[data-sprite-brush-strength]').addEventListener('input',e=>{ed.brushStrength=clamp(Number(e.target.value)||0,0,100);q('[data-sprite-brush-strength-label]').textContent=`${ed.brushStrength}%`;});
+    ed.modal.querySelectorAll('[data-sprite-transform]').forEach(input=>{
+      input.addEventListener('input',()=>{const key=input.dataset.spriteTransform,value=Number(input.value)||0;syncTransformValue(ed,key,value);applyTransformPreview(ed);});
+      input.addEventListener('change',()=>finishTransformSession(ed));
+    });
     q('[data-pencil-shape]').addEventListener('change',e=>{ed.brushShape=e.target.value==='Circle'?'Circle':'Box';render(ed);});
     q('[data-special-pen-mode]').addEventListener('change',e=>{ed.specialPenMode=['Drag','Expand','Shrink','Smoothen','Revert'].includes(e.target.value)?e.target.value:'Drag';});
     q('[data-reposition-position]').value='Center';
@@ -1432,6 +1519,7 @@
     renderCanvasOnly(ed);
     const q=s=>ed.modal.querySelector(s); if(!q('[data-sprite-paint]'))return;
     const f=currentFrame(ed);
+    syncTransformControls(ed);
     q('[data-editor-subtitle]').textContent=`${ed.name} · ${f.width}×${f.height}`;
     q('[data-sprite-zoom]').textContent=`${Math.round(ed.zoom*100)}%`;q('[data-sprite-coord]').textContent=ed.lastCell?`${ed.lastCell.x}, ${ed.lastCell.y}`:'—, —';q('[data-sprite-size-label]').textContent=String(ed.brushSize);q('[data-sprite-brush-strength]').value=String(ed.brushStrength);q('[data-sprite-brush-strength-label]').textContent=`${ed.brushStrength}%`;q('[data-pencil-shape]').value=ed.brushShape;const pencilSettings=q('[data-pencil-settings]');if(pencilSettings)pencilSettings.hidden=!['pencil','specialpen','smudge'].includes(ed.tool);const specialSettings=q('[data-special-pen-settings]'),smudgeSettings=q('[data-smudge-settings]'),specialMode=q('[data-special-pen-mode]');if(specialSettings)specialSettings.hidden=ed.tool!=='specialpen';if(smudgeSettings)smudgeSettings.hidden=ed.tool!=='smudge';if(specialMode)specialMode.value=ed.specialPenMode||'Drag';
     const colorLabel=q('[data-sprite-color-label]');if(colorLabel)colorLabel.textContent=rgbaToHex(ed.color);q('[data-sprite-color-swatch]').style.background=cssRgba(ed.color);

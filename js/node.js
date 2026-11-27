@@ -35,8 +35,9 @@
     },
     collider: {
       default: false, removable: true,
-      transform: { position: [0, 0], scale: [1, 1], angle: [0] }, type: 'Rect', collidable: true
+      transform: { position: [0, 0], scale: [1, 1], angle: [0] }, type: 'Rect', collidable: true, collisionFilter: []
     },
+    tag: { default: false, removable: true, tags: [] },
     joints: {
       default: false, removable: true, joints: []
     },
@@ -71,7 +72,7 @@
 
   const COMPONENT_LABELS = {
     node: 'Node', script: 'Script', transform: 'Transform', text: 'Text', colorinput: 'Color Input', input: 'Input Component',
-    sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', joints: 'Joints', subcamera: 'Sub Camera', canvas: 'Canvas', progressbar: 'Progress Bar'
+    sprite: 'Sprite', animationsprite: 'Animation Sprite', physics: 'Physics', collider: 'Collider', tag: 'Tag', joints: 'Joints', subcamera: 'Sub Camera', canvas: 'Canvas', progressbar: 'Progress Bar'
   };
 
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -160,6 +161,13 @@
         component.transform.angle = Array.isArray(component.transform.angle) ? component.transform.angle : [0];
         component.shapeType = ['Rect', 'Circle', 'Triangle'].includes(component.shapeType) ? component.shapeType : (['Rect', 'Circle', 'Triangle'].includes(component.type) ? component.type : 'Rect');
         component.collidable = component.collidable !== false;
+        const filter=Array.isArray(component.collisionFilter)?component.collisionFilter:[];
+        component.collisionFilter=[...new Set(filter.map(Number).filter(Number.isInteger))];
+      }
+      if (component.type === 'tag') {
+        const tags=Array.isArray(component.tags)?component.tags:[];
+        const seen=new Set();
+        component.tags=tags.map(value=>String(value??'').trim()).filter(value=>{const key=value.toLocaleLowerCase();if(!value||seen.has(key))return false;seen.add(key);return true;});
       }
       if (component.type === 'text') {
         component.position = Array.isArray(component.position) ? component.position : [0, 0];
@@ -214,6 +222,7 @@
             id: String(j?.id || `joint-${i+1}`),
             type,
             object: String(j?.object || ''),
+            overridePhysics: !!j?.overridePhysics,
             anchorA: vec2(j?.anchorA),
             anchorB: vec2(j?.anchorB),
             parent: vec2(j?.parent),

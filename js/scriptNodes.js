@@ -45,7 +45,7 @@
     { name:'onColorChange', label:'OnColorChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onInputBlur', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onConnectionChange', receiver:false, group:'Events', output:[{id:'out'}], editor:[{name:'Connection',type:'selector',value:()=>['Online','Offline'],selected:navigator.onLine?'Online':'Offline'}], func:()=>({out:true}) },
-    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'},{id:'falsy'}], editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}], func:()=>({next:true,truth:true}) },
+    { name:'onCollideWith', receiver:false, group:'Events', output:[{id:'next'},{id:'truth'},{id:'falsy'}], editor:[{name:'Type',type:'selector',value:()=>['Tag','Name'],selected:'Name'},{name:'Target',type:'selector',value:ctx=>ctx?.allNodeNames||[],selected:''}], func:()=>({next:true,truth:true}) },
     { name:'onUnload', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onClientJoined', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
     { name:'onClientLeft', receiver:false, group:'Events', output:[{id:'out'}], editor:[], func:()=>({out:true}) },
@@ -188,9 +188,11 @@
       editor:[{name:'Body',type:'selector',value:()=>['Static','Kinematic','Dynamic'],selected:null},{name:'Mass',type:'number',value:null},{name:'Gravity',type:'number',value:null},{name:'Friction',type:'number',value:null},{name:'Bounciness',type:'number',value:null},{name:'Fixed Rotation',type:'bool',value:null},{name:'isCollider',type:'bool',value:null}],
       func:(ctx,v)=>{ctx.setPhysics?.(v);return {out:true};}
     },
+    {name:'addTag',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'value',type:'str',value:''}],func:(ctx,v)=>{ctx.addTag?.(v.value);return {out:true};}},
+    {name:'removeTag',receiver:true,group:'Actions',output:[{id:'out'}],editor:[{name:'value',type:'str',value:''}],func:(ctx,v)=>{ctx.removeTag?.(v.value);return {out:true};}},
     {
       name:'setCollider', receiver:true, group:'Actions', output:[{id:'out'}],
-      editor:[{name:'Collider',type:'bool',value:null},{name:'Type',type:'selector',value:()=>['Rect','Circle','Triangle'],selected:null},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null},{name:'Angle',type:'int',value:null}],
+      editor:[{name:'Collider',type:'bool',value:null},{name:'Type',type:'selector',value:()=>['Rect','Circle','Triangle'],selected:null},{name:'PosX',type:'int',value:null},{name:'PosY',type:'int',value:null},{name:'ScaleX',type:'int',value:null},{name:'ScaleY',type:'int',value:null},{name:'Angle',type:'int',value:null},{name:'Collision Filter',type:'list',value:[]}],
       func:(ctx,v)=>{ctx.setCollider?.(v);return {out:true};}
     },
     {
@@ -272,7 +274,7 @@
     {name:'Interval',receiver:true,group:'Controls',output:[{id:'next'},{id:'out',col:'#d56cff'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
     {name:'Timeout',receiver:true,group:'Controls',output:[{id:'next'},{id:'out',col:'#d56cff'}],editor:[{name:'Milliseconds',type:'int',value:1000},{name:'cancellable',type:'bool',value:false}],func:()=>({out:true})},
     {name:'isVisible',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[],func:ctx=>{const yes=!!ctx.isVisible?.();return {next:true,truth:yes,falsy:!yes};}},
-    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Target',type:'selector',value:ctx=>(ctx?.allNodes||[]).filter(n=>n?.type==='node').map(n=>`${n.name} [${n.numericId}]`),selected:''},{name:'applyByName',type:'bool',value:false}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,!!(v.applyByName??v['Apply By Name']));return {next:true,truth:yes,falsy:!yes};}}
+    {name:'isCollidedWith',receiver:true,group:'Controls',output:[{id:'next'},{id:'truth'},{id:'falsy'}],editor:[{name:'Type',type:'selector',value:()=>['Tag','Name'],selected:'Name'},{name:'Target',type:'selector',value:ctx=>ctx?.allNodeNames||[],selected:''}],func:(ctx,v)=>{const yes=!!ctx.isCollidedWith?.(v.Target,v.Type||'Name');return {next:true,truth:yes,falsy:!yes};}}
   ];
   const SCRIPT_OUTPUT_DEFAULT_COLORS={truth:'#3c9cff',falsy:'#ff4d4d',false:'#ff4d4d',success:'#4cd97b',err:'#ff9d45',error:'#ff9d45'};
   scriptNodes.forEach(def=>{
@@ -287,7 +289,7 @@
     });
   });
   scriptNodes.forEach(n=>{if(!Object.prototype.hasOwnProperty.call(n,'require'))n.require='';});
-  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','pushOutput','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
+  const scriptNodeOrder=['onLoad','onTick','onKeybind','onTouch','onMouse','onPointer','onScreenInput','onJoystick','onAudioPickup','onInputFocus','onInputChange','onColorChange','onInputBlur','onConnectionChange','onCollideWith','onUnload','onClientJoined','onClientLeft','pushOutput','saveState','loadState','removeState','clearState','setVariable','saveVariable','loadVariable','createRoom','joinRoom','setVisible','createParticles','setTransform','setText','stopAnimation','startAnimation','stepAnimation','setSprite','setInputComponent','setVelocity','setProgressBar','setPhysics','setCollider','addTag','removeTag','setSubCam','setCanvas','setCamera','Follow Object','Chase','Avoid','Create Object','duplicateFolder','setTransformFolder','Destroy Object','focusInput','blurInput','playAudio','startSpeechRecognition','stopSpeechRecognition','stopAudio','clearAudio','loadScene','Boolean','isVisible','isCollidedWith','Interval','Timeout'];
   const orderedScriptNodes=scriptNodeOrder.map(name=>scriptNodes.find(n=>n.name===name)).filter(Boolean);
   const orderedScriptNodeNames=new Set(orderedScriptNodes.map(n=>n.name));
   // Never silently drop a newly registered ScriptNode just because it has not

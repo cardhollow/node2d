@@ -2578,7 +2578,8 @@
         rows=[field('Width',comp.width,'number',v=>{comp.width=Math.max(1,Number(v)||1);drawWorkplace();}),field('Height',comp.height,'number',v=>{comp.height=Math.max(1,Number(v)||1);drawWorkplace();}),field('Value',comp.value,'number',v=>{comp.value=Number(v)||0;drawWorkplace();}),field('Min',comp.min,'number',v=>{comp.min=Number(v)||0;drawWorkplace();}),field('Max',comp.max,'number',v=>{comp.max=Number(v)||0;drawWorkplace();}),axisVectorField('Position',comp.position,(x,y)=>{comp.position=[x,y];drawWorkplace();}),colorField('BG Color',comp.bgCol,v=>{comp.bgCol=v;drawWorkplace();}),colorField('Fill Color',comp.fillCol,v=>{comp.fillCol=v;drawWorkplace();}),cornerRadiusFields(radius,v=>{comp.cornerRadius=v;drawWorkplace();}),colorField('Outline Color',comp.outline?.color||'#000000FF',v=>{comp.outline.color=v;drawWorkplace();}),field('Outline Size',comp.outline?.size??0,'number',v=>{comp.outline.size=Math.max(0,Number(v)||0);drawWorkplace();}),field('Direction',comp.direction,'custom-select',v=>{comp.direction=v;drawWorkplace();},['left','right'],()=>comp.direction)];
         break; }
       case 'physics': rows = [field('Body', comp.body, 'custom-select', v => { comp.body=v; drawWorkplace(); }, ['Static','Kinematic','Dynamic'], ()=>comp.body), field('Mass', comp.mass??1, 'number', v => { const n=Number(v); comp.mass=Number.isFinite(n)?Math.max(0,n):1; normalizeNode(node); drawWorkplace(); }), field('Gravity', comp.gravity, 'number', v => comp.gravity=Number(v)||0), field('Friction', comp.friction, 'number', v => comp.friction=Math.max(0, Number(v)||0),), field('Bounciness', comp.bounciness, 'number', v => comp.bounciness=clamp(Number(v)||0,0,1)), checkboxField('Fixed Rotation', !!comp.fixedRotation, v => { comp.fixedRotation=!!v; drawWorkplace(); }), checkboxField('isCollider', !!comp.isCollider, v => { comp.isCollider=!!v; drawWorkplace(); })]; break;
-      case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'], ()=>comp.shapeType||'Rect')]; break;
+      case 'collider': rows = [checkboxField('Collider', comp.collidable !== false, v => { comp.collidable=!!v; drawWorkplace(); }), axisVectorField('Position', comp.transform.position, (x,y) => { comp.transform.position=[Number(x)||0,Number(y)||0]; drawWorkplace(); }), axisVectorField('Scale', comp.transform.scale, (x,y) => { comp.transform.scale=[Number(x),Number(y)]; drawWorkplace(); }), field('Angle', comp.transform.angle[0], 'number', v => { comp.transform.angle=[Number(v)||0]; drawWorkplace(); }), field('Type', comp.shapeType || 'Rect', 'custom-select', v => { comp.shapeType=v; drawWorkplace(); }, ['Rect','Circle','Triangle'], ()=>comp.shapeType||'Rect'), field('Collision Filter',(comp.collisionFilter||[]).join(', '),'text',v=>{comp.collisionFilter=[...new Set(String(v??'').split(',').map(x=>x.trim()).filter(x=>/^[-+]?\d+$/.test(x)).map(Number).filter(Number.isInteger))];drawWorkplace();})]; break;
+      case 'tag': rows = renderTagRows(node,comp); break;
       case 'joints': rows = renderJointsRows(node, comp); break;
       case 'canvas': {
         const cameraOptions=[['None',''],['Main Cam','main']];
@@ -2640,13 +2641,28 @@
     return rows;
   }
 
+
+  function renderTagRows(node,comp){
+    comp.tags=Array.isArray(comp.tags)?comp.tags:[];
+    const wrap=document.createElement('div');wrap.className='tag-component-editor';
+    const list=document.createElement('div');list.className='tag-component-list';
+    const render=()=>{
+      list.innerHTML='';
+      if(!comp.tags.length){const empty=document.createElement('div');empty.className='sprite-mini-hint';empty.textContent='No tags added yet.';list.append(empty);}
+      comp.tags.forEach((tag,index)=>{const row=document.createElement('div');row.className='tag-component-row';const label=document.createElement('span');label.textContent=tag;const remove=document.createElement('button');remove.type='button';remove.className='mini-action danger';remove.title=`Remove ${tag}`;UIXIcons.set(remove,'close');remove.addEventListener('click',()=>{pushHistory('Remove Tag');comp.tags.splice(index,1);render();drawWorkplace();});row.append(label,remove);list.append(row);});
+    };
+    const entry=document.createElement('div');entry.className='tag-component-add';const input=document.createElement('input');input.type='text';input.placeholder='New tag';input.maxLength=80;const add=document.createElement('button');add.type='button';add.className='btn';add.textContent='Add Tag';
+    const addTag=()=>{const value=input.value.trim();if(!value)return;if(comp.tags.some(t=>String(t).toLocaleLowerCase()===value.toLocaleLowerCase()))return status('Tag already exists');pushHistory('Add Tag');comp.tags.push(value);input.value='';render();drawWorkplace();};
+    add.addEventListener('click',addTag);input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTag();}});entry.append(input,add);wrap.append(list,entry);render();return [wrap];
+  }
+
   function jointNodeOptions(node){
     return allNodes().filter(x=>x.node?.type==='node'&&x.node!==node).map(x=>({label:`${x.node.name||'Node'} [${x.node.numericId}]`,value:x.node.id}));
   }
   const JOINT_TYPE_LABELS={Distance:'Distance Joint',Rope:'Rope Joint',Revolute:'Revolute Joint',Prismatic:'Prismatic Joint',Weld:'Weld Joint',Wheel:'Wheel Joint',Motor:'Motor Joint',Gear:'Gear Joint',Pulley:'Pulley Joint',Friction:'Friction Joint'};
   function makeJoint(type){
     const id=`joint-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-    return {id,type,object:'',anchorA:[0,0],anchorB:[0,0],parent:[0,0],child:[0,0],axis:[1,0],target:[0,0],groundA:[-100,0],groundB:[100,0],linearOffset:[0,0],joint1:'',joint2:'',distance:100,maxLength:100,ratio:1,constant:0,referenceAngle:0,angularOffset:0,dampingRatio:.1,frequency:5,maxForce:1000,maxTorque:1000,correctionFactor:.3};
+    return {id,type,object:'',overridePhysics:false,anchorA:[0,0],anchorB:[0,0],parent:[0,0],child:[0,0],axis:[1,0],target:[0,0],groundA:[-100,0],groundB:[100,0],linearOffset:[0,0],joint1:'',joint2:'',distance:100,maxLength:100,ratio:1,constant:0,referenceAngle:0,angularOffset:0,dampingRatio:.1,frequency:5,maxForce:1000,maxTorque:1000,correctionFactor:.3};
   }
   function ensureJointAtNode(node,index,template){
     if(!node)return null;
@@ -2724,6 +2740,7 @@
         {label:'Delete Joint',icon:'delete',action:()=>{askConfirm('Delete Joint',`Delete ${JOINT_TYPE_LABELS[joint.type]||'Joint'} #${index+1}?`,()=>{if(multiDeleteJoint(index,'Delete Joint'))return;pushHistory('Delete Joint');comp.joints.splice(index,1);renderComponentPanel();drawWorkplace();},'Delete');}}
       ],r.left,r.bottom+4);});
       head.append(titleWrap,menuBtn);card.append(head);
+      const overrideRow=checkboxField('Override Physics',!!joint.overridePhysics,v=>{if(multiEditJoint(index,'Override Joint Physics',j=>{j.overridePhysics=!!v;}))return;joint.overridePhysics=!!v;drawWorkplace();});card.append(overrideRow);
       const objectWrap=document.createElement('div');objectWrap.className='joint-object-row';const objectLabel=document.createElement('span');objectLabel.className='property-label';objectLabel.textContent='Object';const objectControl=document.createElement('div');objectControl.className='joint-object-control';
       const objectButton=document.createElement('button');objectButton.type='button';objectButton.className='script-button joint-object-button';objectButton.textContent=objectLabelFor(joint);
       objectButton.addEventListener('click',e=>{e.stopPropagation();const r=objectButton.getBoundingClientRect();const items=opts.length?opts.map(o=>({label:o.label,icon:'tag',action:()=>{if(multiEditJoint(index,'Set Joint Object',j=>{j.object=o.value;}))return;pushHistory('Set Joint Object');joint.object=o.value;if(joint.type==='Pulley'&&!joint.constant){const target=allNodes().find(x=>x.node?.id===o.value)?.node;const pa=jointWorldAnchor(node,joint.anchorA||[0,0]),pb=target?jointWorldAnchor(target,joint.anchorB||[0,0]):{x:0,y:0};const ga=joint.groundA||[-100,0],gb=joint.groundB||[100,0];joint.constant=Math.hypot(pa.x-ga[0],pa.y-ga[1])+(Number(joint.ratio)||1)*Math.hypot(pb.x-gb[0],pb.y-gb[1]);}renderComponentPanel();drawWorkplace();}})):[{label:'No other Nodes available',icon:'circle',disabled:true}];showContextMenu(items,r.left,r.bottom+4);});
@@ -3947,7 +3964,7 @@
     const node=selectedNodes[0]||selectedNode();
     if(!node)return status('Select a Node first');
     const grid=$('#componentGrid');if(!grid)return;grid.innerHTML='';
-    const icons={text:'text',sprite:'sprite',animationsprite:'film',physics:'physics',collider:'rectangle',joints:'link',subcamera:'camera',canvas:'layers',colorinput:'picker',input:'input',progressbar:'progress'};
+    const icons={text:'text',sprite:'sprite',animationsprite:'film',physics:'physics',collider:'rectangle',tag:'tag',joints:'link',subcamera:'camera',canvas:'layers',colorinput:'picker',input:'input',progressbar:'progress'};
     Object.keys(NodeSettings).filter(type=>!['node','script','transform'].includes(type)).forEach(type=>{
       const existsAll=selectedNodes.length>1?selectedNodes.every(n=>!!component(n,type)):!!component(node,type);
       const existsSome=selectedNodes.length>1?selectedNodes.some(n=>!!component(n,type)):existsAll;
@@ -7717,10 +7734,18 @@
       },null,null,item.name||'Font Family');
     }
     if(type==='selector'){
-      const options=evaluateSelector(entry.value);const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{
+      let options=evaluateSelector(entry.value);
+      if(['onCollideWith','isCollidedWith'].includes(sn.defName)&&entry.name==='Target'){
+        const typeItem=flattenEditor(sn.values).find(x=>x.entry.name==='Type'),ctx=expressionContext();
+        options=String(typeItem?scriptEditorValue(sn,typeItem):'Name')==='Tag'?(ctx.tagNames||[]):(ctx.allNodeNames||[]);
+      }
+      const select=customSelect(String(scriptEditorValue(sn,item)??''),options,v=>{
         if(String(scriptEditorValue(sn,item)??'')===String(v??''))return;
         pushHistory(`Edit ${item.name||'ScriptNode input'}`);
         entry.selected=v;delete sn.expressions[item.path];
+        if(['onCollideWith','isCollidedWith'].includes(sn.defName)&&entry.name==='Type'){
+          const targetItem=flattenEditor(sn.values).find(x=>x.entry.name==='Target');if(targetItem)targetItem.entry.selected='';
+        }
         if(sn.defName==='setVariable'&&['Type','Name','Operation','Value Type'].includes(entry.name))syncSetVariableValueEditor(sn);
         renderScriptCanvas();
       });return select;
@@ -7775,6 +7800,12 @@
         const selectedType=String(typeItem?scriptEditorValue(sn,typeItem):'Global');
         options=variableList(selectedType).map(v=>v.name);
       }
+      if(['onCollideWith','isCollidedWith'].includes(sn.defName)&&entry.name==='Target'){
+        const typeItem=flattenEditor(sn.values).find(x=>x.entry.name==='Type');
+        const targetType=String(typeItem?scriptEditorValue(sn,typeItem):'Name');
+        const ctx=expressionContext();
+        options=targetType==='Tag'?(ctx.tagNames||[]):(ctx.allNodeNames||[]);
+      }
       if((sn.defName==='saveVariable'||sn.defName==='loadVariable')&&entry.name==='Name'){
         const scopeItem=flattenEditor(sn.values).find(x=>x.entry.name==='Scope');
         const selectedScope=String(scopeItem?scriptEditorValue(sn,scopeItem):'Global');
@@ -7789,6 +7820,9 @@
         entry.selected=choice;delete sn.expressions[item.path];
         if(sn.defName==='setVariable'&&entry.name==='Type'){
           const nameItem=flattenEditor(sn.values).find(x=>x.entry.name==='Name');if(nameItem)nameItem.entry.selected='';
+        }
+        if(['onCollideWith','isCollidedWith'].includes(sn.defName)&&entry.name==='Type'){
+          const targetItem=flattenEditor(sn.values).find(x=>x.entry.name==='Target');if(targetItem)targetItem.entry.selected='';
         }
         if(sn.defName==='setVariable'&&['Type','Name','Operation','Value Type'].includes(entry.name)) syncSetVariableValueEditor(sn);
         if((sn.defName==='saveVariable'||sn.defName==='loadVariable')&&entry.name==='Scope'){
@@ -8604,6 +8638,8 @@
       sceneData:currentScene(),sceneList:state.scenes,
       audioAssets:[...(state.assets.Audio||[]), ...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],spriteAssets:state.assets.Sprite||[],
       allNodes:allNodes().map(x=>x.node),
+      allNodeNames:[...new Set(allNodes().filter(x=>x.node?.type==='node').map(x=>String(x.node.name||'').trim()).filter(Boolean))],
+      tagNames:[...new Set(allNodes().filter(x=>x.node?.type==='node').flatMap(x=>component(x.node,'tag')?.tags||[]).map(tag=>String(tag||'').trim()).filter(Boolean))],
       folderOptions:allNodes().filter(x=>x.node?.type==='folder').map(x=>`${x.node.name} [${x.node.folderId}]`),
       animations:(component(node,'animationsprite')?.animations||[]),
       inputs:state.runtime?.inputs||{},keybinds,events:{key:Object.fromEntries(keybindOptions().map(k=>[k,false]))},mic:{decibel:-100,speech:'',active:false,speechActive:false},get isVisible(){return !!node&&component(node,'node')?.visible!==false;},node,
@@ -9060,8 +9096,14 @@
     const walk=(items,parent=null)=>{for(const node of (Array.isArray(items)?items:[])){if(!node||typeof node!=='object'||node.id===null||node.id===undefined)continue;entries.push({node,parent});runtimeSetIdMap(parentById,node.id,parent||null);if(node.type==='node'){nodes.push(node);runtimeSetIdMap(nodeById,node.id,node);}else if(node.type==='folder'){normalizeFolder(node);folderByLabel.set(`${node.name} [${node.folderId}]`,node);walk(node.children,node);}}};
     walk(rt.scene?.nodes);
     const bodyById=new Map(),bodyByNumericId=new Map(),bodiesByName=new Map(),physicsBodies=[],joints=[];
+    const originalPhysics=new Map(),originalColliders=new Map();
     for(const body of (rt.bodies||[])){
       if(body?.node?.id===null||body?.node?.id===undefined)continue;
+      // Start from each Node's own components every rebuild; joint overrides are runtime-only.
+      const ownPhysics=component(body.node,'physics'),ownCollider=component(body.node,'collider');
+      body.physics=ownPhysics?clone(ownPhysics):null;body.collider=ownCollider?clone(ownCollider):null;
+      originalPhysics.set(body,body.physics?clone(body.physics):null);originalColliders.set(body,body.collider?clone(body.collider):null);
+      body._scriptShapeCache=null;body._scriptShapeKey='';
       runtimeSetIdMap(bodyById,body.node.id,body);
       const numericId=Number(body.node.numericId);
       if(Number.isFinite(numericId))bodyByNumericId.set(numericId,body);
@@ -9077,6 +9119,12 @@
         if(!target||target===owner)continue;
         const entry={owner,def:j,bodyA:owner,bodyB:target,targetId};
         joints.push(entry);
+        if(j.overridePhysics){
+          const ownerPhysics=originalPhysics.get(owner),ownerCollider=originalColliders.get(owner);
+          target.physics=ownerPhysics?clone(ownerPhysics):null;
+          target.collider=ownerCollider?clone(ownerCollider):null;
+          target._scriptShapeCache=null;target._scriptShapeKey='';target._massCache=null;target._massKey='';
+        }
         if(!physicsBodies.includes(owner))physicsBodies.push(owner);
         if(!physicsBodies.includes(target))physicsBodies.push(target);
       }
@@ -9133,7 +9181,9 @@
     rt.eventScriptsByNode=eventScriptsByNode;
     rt.routesByScriptOutput=routesByScriptOutput;
     rt.defByName=defByName;
-    rt.shared={allNodes:nodes,folderOptions:[...folderByLabel.keys()],folderByLabel,spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]),...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],joysticksList:joyList,joystickObject};
+    const allNodeNames=[...new Set(nodes.map(n=>String(n.name||'').trim()).filter(Boolean))];
+    const tagNames=[...new Set(nodes.flatMap(n=>component(n,'tag')?.tags||[]).map(tag=>String(tag||'').trim()).filter(Boolean))];
+    rt.shared={allNodes:nodes,allNodeNames,tagNames,folderOptions:[...folderByLabel.keys()],folderByLabel,spriteAssets:state.assets.Sprite||[],audioAssets:[...(state.assets.Audio||[]),...(state.assets.MIDI||[])],midiAssets:state.assets.MIDI||[],joysticksList:joyList,joystickObject};
     runtimeBuildExecutionCaches();
   }
 
@@ -9554,10 +9604,14 @@
     }
   }
   function solvePositionContacts(contacts){for(let iter=0;iter<6;iter++){let changed=false;for(const c of contacts){const fresh=collideShapes(runtimeColliderShape(c.A),runtimeColliderShape(c.B));if(!fresh)continue;c.hit=fresh;c.n=normV(fresh.normal);const total=c.ap.invMass+c.bp.invMass;if(total<=0)continue;const correction=Math.min(1.0,Math.max(fresh.penetration-0.25,0)*0.22);if(correction<=0)continue;const move=mulV(c.n,correction/total);if(c.ap.invMass){c.A.t.position[0]-=move.x*c.ap.invMass;c.A.t.position[1]-=move.y*c.ap.invMass;}if(c.bp.invMass){c.B.t.position[0]+=move.x*c.bp.invMass;c.B.t.position[1]+=move.y*c.bp.invMass;}changed=true;}if(!changed)break;}}
-  function updateRuntimeCollisions(dt=1/120){const bodies=(state.runtime.bodies||[]).filter(b=>runtimeNodeVisible(b?.node));bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if((bodies[i].physics?.isCollider===false)||(bodies[j].physics?.isCollider===false))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
-  function runtimeIsCollided(aNode,targetLabel){
-    const bodies=state.runtime.bodies||[];const a=bodies.find(b=>b.node?.id===aNode.id);if(!a)return false;const target=bodies.find(b=>b.node?.id===targetLabel)||bodies.find(b=>`${b.node?.name} [${b.node?.numericId}]`===String(targetLabel||''));if(!target||target===a)return false;return !!collideShapes(runtimeColliderShape(a),runtimeColliderShape(target));
+  function runtimeCollisionFiltersOverlap(a,b){
+    const left=Array.isArray(a?.collider?.collisionFilter)?a.collider.collisionFilter:[];
+    const right=Array.isArray(b?.collider?.collisionFilter)?b.collider.collisionFilter:[];
+    if(!left.length||!right.length)return false;
+    const set=new Set(left.map(Number).filter(Number.isInteger));
+    return right.some(value=>Number.isInteger(Number(value))&&set.has(Number(value)));
   }
+  function updateRuntimeCollisions(dt=1/120){const bodies=(state.runtime.bodies||[]).filter(b=>runtimeNodeVisible(b?.node));bodies.forEach(b=>b.colliding=false);const contacts=[],detected=[];const entries=[];const shapes=new Array(bodies.length),aabbs=new Array(bodies.length),props=new Array(bodies.length);for(let i=0;i<bodies.length;i++){const shape=runtimeColliderShape(bodies[i]);shapes[i]=shape;if(!shape)continue;const box=shapeAABB(shape);aabbs[i]=box;entries.push(i);}entries.sort((i,j)=>aabbs[i].l-aabbs[j].l);for(let ai=0;ai<entries.length;ai++){const i=entries[ai],A=shapes[i],aa=aabbs[i];for(let aj=ai+1;aj<entries.length;aj++){const j=entries[aj],bb=aabbs[j];if(bb.l>aa.r)break;if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;if(runtimeCollisionFiltersOverlap(bodies[i],bodies[j]))continue;const hit=collideShapes(A,shapes[j]);if(!hit)continue;bodies[i].colliding=true;bodies[j].colliding=true;detected.push([bodies[i],bodies[j]]);if((bodies[i].physics?.isCollider===false)||(bodies[j].physics?.isCollider===false))continue;const c=contactState(bodies[i],bodies[j],hit);if(c)contacts.push(c);}}for(let iter=0;iter<6;iter++)for(const c of contacts)solveVelocityContact(c);solvePositionContacts(contacts);for(const body of bodies){if(!Number.isFinite(body.vx))body.vx=0;if(!Number.isFinite(body.vy))body.vy=0;if(!Number.isFinite(body.omega))body.omega=0;if(Math.abs(body.vx)>100000||Math.abs(body.vy)>100000){body.vx=clamp(body.vx,-100000,100000);body.vy=clamp(body.vy,-100000,100000);}if(Math.abs(body.omega)>10000)body.omega=clamp(body.omega,-10000,10000);}return detected;}
   function drawRuntimeColliders(ctx){if(!state.runtime.debug||getEditorSettings().showCollider===false)return;for(const b of state.runtime.bodies||[]){if(!runtimeNodeVisible(b?.node))continue;const g=runtimeColliderShape(b);if(!g)continue;ctx.save();ctx.strokeStyle=b.colliding?'#ff4d4d':'#4b8dff';ctx.fillStyle=b.colliding?'rgba(255,77,77,.08)':'rgba(75,141,255,.08)';ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();if(g.type==='Circle'){ctx.arc(g.x,g.y,g.radius,0,Math.PI*2);}else{g.vertices.forEach((v,i)=>{if(i===0)ctx.moveTo(v.x,v.y);else ctx.lineTo(v.x,v.y);});ctx.closePath();}ctx.fill();ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
   function runtimeFindFolderByLabel(label){return state.runtime?.shared?.folderByLabel?.get(String(label||''))||null;}
   function runtimeFolderColliderBodies(label,bodyById=null){
@@ -10579,8 +10633,8 @@
     live('sprite',()=>component(node,'sprite')||{});
     live('animations',()=>component(node,'animationsprite')?.animations||[]);
     live('progressBar',()=>component(node,'progressbar')||{});
-    live('physics',()=>component(node,'physics')||{});
-    live('collider',()=>component(node,'collider')||{});
+    live('physics',()=>{const current=runtimeBodyForNode(node);return current?(current.physics||{}):(component(node,'physics')||{});});
+    live('collider',()=>{const current=runtimeBodyForNode(node);return current?(current.collider||{}):(component(node,'collider')||{});});
     live('runtime',()=>state.runtime);
   }
   function runtimeVariableRecord(scope,name,node){
@@ -11632,7 +11686,7 @@ function updateRuntimeAnimations(dt){
   }
 
   function runtimeContext(node){
-    const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,input=node?component(node,'input'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=node?component(node,'physics'):null,collider=node?component(node,'collider'):null;
+    const body=runtimeBodyForNode(node),text=node?component(node,'text'):null,input=node?component(node,'input'):null,sprite=node?component(node,'sprite'):null,anim=node?component(node,'animationsprite'):null,progress=node?component(node,'progressbar'):null,physics=body?(body.physics||{}):(node?component(node,'physics'):null),collider=body?(body.collider||{}):(node?component(node,'collider'):null);
     const locals=runtimeVariableProxy('Local',node),globals=runtimeVariableProxy('Global',node),serverVars=runtimeVariableProxy('Server',node),sceneVars=runtimeVariableProxy('Scene',node);
     const joy=state.runtime.shared?.joystickObject||Object.create(null);
     const expressionColorHelpers={
@@ -11740,7 +11794,7 @@ function updateRuntimeAnimations(dt){
       if(should&&!inList)list.push(body);
       if(!should&&inList)list.splice(list.indexOf(body),1);
     };
-    const applySetCollider=v=>runtimeSetComponent(node,'collider',c=>{if(v?.Collider!==null&&v?.Collider!==undefined)c.collidable=!!v.Collider;if(v?.Type!==null&&v?.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v?.PosX!==null&&v?.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v?.PosY!==null&&v?.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v?.ScaleX!==null&&v?.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v?.ScaleY!==null&&v?.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v?.Angle!==null&&v?.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);});
+    const applySetCollider=v=>runtimeSetComponent(node,'collider',c=>{if(v?.Collider!==null&&v?.Collider!==undefined)c.collidable=!!v.Collider;if(v?.Type!==null&&v?.Type!==undefined)c.shapeType=v.Type;c.transform=c.transform||{position:[0,0],scale:[1,1],angle:[0]};if(v?.PosX!==null&&v?.PosX!==undefined)c.transform.position[0]=Number(v.PosX);if(v?.PosY!==null&&v?.PosY!==undefined)c.transform.position[1]=Number(v.PosY);if(v?.ScaleX!==null&&v?.ScaleX!==undefined)c.transform.scale[0]=Number(v.ScaleX);if(v?.ScaleY!==null&&v?.ScaleY!==undefined)c.transform.scale[1]=Number(v.ScaleY);if(v?.Angle!==null&&v?.Angle!==undefined)c.transform.angle[0]=Number(v.Angle);if(v?.['Collision Filter']!==null&&v?.['Collision Filter']!==undefined){const raw=v['Collision Filter'];const values=Array.isArray(raw)?raw:(typeof raw==='string'?(()=>{const text=raw.trim();if(!text)return [];try{const parsed=JSON.parse(text);return Array.isArray(parsed)?parsed:text.split(',');}catch{return text.replace(/^\s*\[|\]\s*$/g,'').split(',');}})():[]);c.collisionFilter=[...new Set(values.map(Number).filter(Number.isInteger))];}});
     const applySetProgressBar=v=>runtimeSetComponent(node,'progressbar',c=>Object.keys(v||{}).forEach(k=>{if(v[k]===null||v[k]===undefined)return;const map={'Width':'width','Height':'height','Value':'value','Min':'min','Max':'max','PosX':'positionX','PosY':'positionY','BG Color':'bgCol','Fill Color':'fillCol','TL':'tl','TR':'tr','BR':'br','BL':'bl','Outline Color':'outlineColor','Outline Size':'outlineSize','Direction':'direction'};const d=map[k];if(d==='positionX')c.position[0]=Number(v[k]);else if(d==='positionY')c.position[1]=Number(v[k]);else if(d)c[d]=v[k];if(d==='tl'||d==='tr'||d==='br'||d==='bl')c.cornerRadius[['tl','tr','br','bl'].indexOf(d)]=Number(v[k]);}));
     const applySetCamera=v=>{const c=state.runtime.camera||{};if(v?.Enabled!==null&&v?.Enabled!==undefined)c.enabled=!!v.Enabled;if(v?.PosX!==null&&v?.PosX!==undefined)c.x=Number(v.PosX),c.baseX=c.x;if(v?.PosY!==null&&v?.PosY!==undefined)c.y=Number(v.PosY),c.baseY=c.y;if(v?.Angle!==null&&v?.Angle!==undefined)c.angle=Number(v.Angle),c.baseAngle=c.angle;if(v?.Horizontal!==null&&v?.Horizontal!==undefined)c.horizontal=Number(v.Horizontal);if(v?.Vertical!==null&&v?.Vertical!==undefined)c.vertical=Number(v.Vertical);if(v?.Animation!==null&&v?.Animation!==undefined)c.followAnimation=v.Animation;if(v?.Speed!==null&&v?.Speed!==undefined)c.speed=Number(v.Speed);if(v?.Scale!==null&&v?.Scale!==undefined)c.scale=Math.max(.01,Number(v.Scale));if(v?.['BG Color']!==null&&v?.['BG Color']!==undefined)c.bgColor=v['BG Color'];if(v?.Follow!==null&&v?.Follow!==undefined){const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v.Follow));c.followId=t?.node.id||((String(v.Follow).toLowerCase()==='this')?node?.id:'this');}};
     const applyFollowObject=v=>{const t=runtimeAllNodes().find(({node:n})=>`${n.name} [${n.numericId}]`===String(v?.Target));if(t)state.runtime.followTargets[node.id]={targetId:t.node.id,speed:Math.max(0,Number(v?.Speed)||0)};};
@@ -11749,9 +11803,10 @@ function updateRuntimeAnimations(dt){
     const applySetSubCam=v=>runtimeSetSubCamera(node,{Name:v?.Name,camX:v?.['Cam X'],camY:v?.['Cam Y'],camSizeX:v?.['Cam Size X'],camSizeY:v?.['Cam Size Y'],camAngle:v?.['Cam Angle']});
     const applySetCanvas=v=>runtimeSetCanvas(node,v||{});
     const applySetNode=v=>{if(node){if(v?.Name!==null&&v?.Name!==undefined)node.name=String(v.Name);if(v?.Id!==null&&v?.Id!==undefined){const n=Number(v.Id);if(Number.isFinite(n))node.numericId=n;}}};
+    const applyTag=(value,remove=false)=>{const tag=String(value??'').trim();if(!tag)return false;const c=runtimeSetComponent(node,'tag',comp=>{comp.tags=Array.isArray(comp.tags)?comp.tags:[];const index=comp.tags.findIndex(x=>String(x).toLocaleLowerCase()===tag.toLocaleLowerCase());if(remove){if(index>=0)comp.tags.splice(index,1);}else if(index<0)comp.tags.push(tag);});if(c&&state.runtime.shared){state.runtime.shared.tagNames=[...new Set((state.runtime.nodeList||[]).flatMap(n=>component(n,'tag')?.tags||[]).map(x=>String(x||'').trim()).filter(Boolean))];}return !!c;};
     const ctx={
       local:locals,global:globals,server:serverVars,serverClient:(window.UIXNetwork?.getClients?.()||[]),network:window.UIXNetwork||null,scene:sceneVars,sceneVariables:sceneVars,
-      transform:body?.t||component(node,'transform')||{},camera:expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),screen:runtimeExpressionScreenSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
+      transform:body?.t||component(node,'transform')||{},camera:expressionCameraSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),screen:runtimeExpressionScreenSnapshot($('#runtimeCanvas'),state.runtime.camera||state.camera),col:expressionColorHelpers,list:{pickRandom:arr=>{const values=Array.isArray(arr)?arr:[];return values.length?values[Math.floor(Math.random()*values.length)]:null;}},velocity,events:state.runtime.events||{key:createRuntimeKeyEventState(),lastKey:''},velocityX:Number(body?.vx)||0,velocityY:Number(body?.vy)||0,angularVelocity:Number(body?.omega||0)*180/Math.PI,angularX:Number(body?.omega||0)*180/Math.PI,text:text||{},input:{get value(){return String(input?.txt??'');},get align(){return input?.align||'Center';},get justify(){return input?.justify||'Left';}},get color_value(){const raw=String(colorInput?.color||'#FFFFFF');try{return rgbaToHex(parseColor(raw)).slice(0,7).toUpperCase();}catch{return raw;}},colorInput:colorInput||{},inputComponent:input||{},sprite:sprite||{},animations:anim?.animations||[],progressBar:progress||{},physics:physics||{},collider:collider||{},get isVisible(){return runtimeNodeVisible(node);},node,scene:state.runtime.scene,sceneList:state.scenes,keybinds:keybindOptions(),inputs:state.runtime.inputs||{},joystick:joy,joysticksList:state.runtime.shared?.joysticksList||[],mic:{get decibel(){return Number(state.runtime.mic?.decibel)||-100;},get speech(){return String(state.runtime.mic?.speech||'');},get active(){return !!state.runtime.mic?.enabled;},get speechActive(){return !!state.runtime.mic?.speechActive;}},startSpeechRecognition:runtimeStartSpeechRecognition,stopSpeechRecognition:runtimeStopSpeechRecognition,allNodes:state.runtime.shared?.allNodes||[],allNodeNames:state.runtime.shared?.allNodeNames||[],tagNames:state.runtime.shared?.tagNames||[],folderOptions:state.runtime.shared?.folderOptions||[],spriteAssets:state.runtime.shared?.spriteAssets||[],audioAssets:state.runtime.shared?.audioAssets||[],midiAssets:state.runtime.shared?.midiAssets||[],
       TouchUpX:Number(state.runtime.inputs?.TouchUpX)||0,TouchUpY:Number(state.runtime.inputs?.TouchUpY)||0,TouchDownX:Number(state.runtime.inputs?.TouchDownX)||0,TouchDownY:Number(state.runtime.inputs?.TouchDownY)||0,TouchMoveX:Number(state.runtime.inputs?.TouchMoveX)||0,TouchMoveY:Number(state.runtime.inputs?.TouchMoveY)||0,
       MouseUpX:Number(state.runtime.inputs?.MouseUpX)||0,MouseUpY:Number(state.runtime.inputs?.MouseUpY)||0,MouseDownX:Number(state.runtime.inputs?.MouseDownX)||0,MouseDownY:Number(state.runtime.inputs?.MouseDownY)||0,MouseMoveX:Number(state.runtime.inputs?.MouseMoveX)||0,MouseMoveY:Number(state.runtime.inputs?.MouseMoveY)||0,
       PointerUpX:Number(state.runtime.inputs?.PointerUpX)||0,PointerUpY:Number(state.runtime.inputs?.PointerUpY)||0,PointerDownX:Number(state.runtime.inputs?.PointerDownX)||0,PointerDownY:Number(state.runtime.inputs?.PointerDownY)||0,PointerMoveX:Number(state.runtime.inputs?.PointerMoveX)||0,PointerMoveY:Number(state.runtime.inputs?.PointerMoveY)||0,PointerId:Number(state.runtime.inputs?.PointerId)||0,PointerType:String(state.runtime.inputs?.PointerType||'mouse'),
@@ -11771,6 +11826,8 @@ function updateRuntimeAnimations(dt){
       blurInput:()=>{const ed=state.runtime?.textInputEditor;if(ed?.nodeId===node?.id)ed.el?.blur?.();},
       setPhysics:(v)=>applySetPhysics(v),
       setCollider:(v)=>applySetCollider(v),
+      addTag:value=>applyTag(value,false),
+      removeTag:value=>applyTag(value,true),
       setProgressBar:(v)=>applySetProgressBar(v),
       setVelocity:(x,y,angular)=>{applySetVelocity({VelocityX:x,VelocityY:y,AngularVelocity:angular});return true;},
       setCamera:(v)=>{applySetCamera(v);return true;},
@@ -11784,7 +11841,7 @@ function updateRuntimeAnimations(dt){
       duplicateFolder:(label,x,y,sx,sy,angle,mue)=>runtimeDuplicateFolder(label||node?.id||'',x,y,sx,sy,angle,mue!==false),
       setTransformFolder:(label,x,y,sx,sy,angle,mue)=>{const rt=state.runtime;let folder=null;const wanted=String(label??'').trim();if(wanted){folder=(rt?.nodeEntries||[]).map(e=>e?.node).find(n=>n?.type==='folder'&&(String(n.folderId)===wanted||String(n.id)===wanted||`${n.name} [${n.folderId}]`===wanted))||null;}if(!folder)folder=rt?.parentById?.get(node?.id)||null;if(!folder?.type||folder.type!=='folder')return false;runtimeTransformFolder(folder,x,y,sx,sy,angle,mue!==false);return true;},
       playAudio:(v)=>runtimePlayAudio(v),stopAudio:()=>runtimeStopAudio(),clearAudio:()=>runtimeClearAudio(),
-      isCollidedWith:(label,applyByName)=>runtimeIsCollided(node,label,!!applyByName),
+      isCollidedWith:(label,targetType)=>runtimeIsCollided(node,label,targetType),
       saveState:(name)=>runtimeSaveState(name),loadState:(name)=>{const ok=runtimeLoadState(name);if(ok)runtimeTerminateCurrentScript(ctx);return ok;},removeState:(name)=>runtimeRemoveState(name),clearState:()=>runtimeClearState(),
       runtime:state.runtime,
       loadScene:(name)=>{const ok=requestRuntimeSceneLoad(name);if(ok)runtimeTerminateCurrentScript(ctx);return ok;},
@@ -12002,49 +12059,46 @@ function updateRuntimeAnimations(dt){
     if(!applyByName)return String(`${target.name} [${target.numericId}]`)===String(label||'');
     return String(target.name||'').trim()===String(label||'').replace(/\s*\[\d+\]\s*$/,'').trim();
   }
-  function runtimeIsCollided(node,targetLabel,applyByName=false){
+  function runtimeIsCollided(node,targetLabel,targetType='Name'){
     const rt=state.runtime;if(!node?.id)return false;
     const body=runtimeBodyForNode(node);if(!body)return false;
     const aShape=runtimeColliderShape(body);if(!aShape)return false;
-    const raw=String(targetLabel||'').trim();
-    if(!raw)return false;
+    const raw=String(targetLabel||'').trim();if(!raw)return false;
     let candidates=[];
-    if(applyByName){
-      const clean=raw.replace(/\s*\[\d+\]\s*$/,'').trim();
-      candidates=rt.bodiesByName?.get(clean)||[];
+    if(typeof targetType==='boolean'){
+      if(targetType)candidates=rt.bodiesByName?.get(raw.replace(/\s*\[\d+\]\s*$/,'').trim())||[];
+      else {const idBody=rt.bodyById?.get(raw);if(idBody)candidates=[idBody];else{const match=raw.match(/\[(\d+)\]\s*$/);if(match){const target=rt.bodyByNumericId?.get(Number(match[1]));if(target)candidates=[target];}else candidates=(rt.bodies||[]).filter(other=>other!==body&&runtimeTargetMatches(other.node,raw,false));}}
+    }else if(String(targetType||'Name').toLowerCase()==='tag'){
+      candidates=(rt.bodies||[]).filter(other=>other!==body&&(component(other.node,'tag')?.tags||[]).some(tag=>String(tag).toLocaleLowerCase()===raw.toLocaleLowerCase()));
     }else{
-      const idBody=rt.bodyById?.get(raw);
-      if(idBody) candidates=[idBody];
-      else {
-        const match=raw.match(/\[(\d+)\]\s*$/);
-        if(match){const target=rt.bodyByNumericId?.get(Number(match[1]));if(target)candidates=[target];}
-        else {
-          const exact=rt.bodies?.find(other=>other!==body&&runtimeTargetMatches(other.node,raw,false));
-          if(exact)candidates=[exact];
-        }
-      }
+      candidates=rt.bodiesByName?.get(raw.replace(/\s*\[\d+\]\s*$/,'').trim())||[];
     }
-    for(let i=0;i<candidates.length;i++){
-      const other=candidates[i];
-      if(!other||other===body)continue;
-      if(!applyByName && raw.includes('[') && !runtimeTargetMatches(other.node,raw,false) && other.node?.id!==raw)continue;
-      const bShape=runtimeColliderShape(other);
-      if(bShape&&collideShapes(aShape,bShape))return true;
+    for(const other of candidates){
+      if(!other||other===body||runtimeCollisionFiltersOverlap(body,other))continue;
+      const bShape=runtimeColliderShape(other);if(bShape&&collideShapes(aShape,bShape))return true;
     }
     return false;
   }
   function runtimeScriptHasTargetCollision(item,pairs){
     const node=item?.node,sn=item?.sn;if(!node?.id||!sn)return false;
     const values=runtimeValuesForScript(sn,node)||{},entries=flattenEditor(sn.values);
-    const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry||entries[0]?.entry;
+    const targetEntry=entries.find(x=>x.entry?.name==='Target')?.entry;
+    const typeEntry=entries.find(x=>x.entry?.name==='Type')?.entry;
     const byNameEntry=entries.find(x=>x.entry?.name==='applyByName'||x.entry?.name==='Apply By Name')?.entry;
-    const targetLabel=String(values.Target??targetEntry?.selected??'').trim(),applyByName=!!(values.applyByName??values['Apply By Name']??byNameEntry?.value);
+    const targetLabel=String(values.Target??targetEntry?.selected??'').trim();
+    const selectedType=String(values.Type??typeEntry?.selected??(byNameEntry?(values.applyByName??values['Apply By Name']??byNameEntry.value?'Name':'Id'):'Name'));
+    const matches=other=>{
+      if(!other?.node)return false;
+      if(selectedType.toLowerCase()==='tag')return (component(other.node,'tag')?.tags||[]).some(tag=>String(tag).toLocaleLowerCase()===targetLabel.toLocaleLowerCase());
+      if(byNameEntry&&!typeEntry){const applyByName=!!(values.applyByName??values['Apply By Name']??byNameEntry.value);return runtimeTargetMatches(other.node,targetLabel,applyByName);}
+      return String(other.node.name||'').trim()===targetLabel.replace(/\s*\[\d+\]\s*$/,'').trim();
+    };
     if(!targetLabel)return false;
     for(const pair of (pairs instanceof Map?pairs.values():[])){
       const [a,b]=pair||[];let other=null;
       if(String(a?.node?.id??'')===String(node.id))other=b;
       else if(String(b?.node?.id??'')===String(node.id))other=a;
-      if(other?.node&&runtimeTargetMatches(other.node,targetLabel,applyByName))return true;
+      if(matches(other))return true;
     }
     return false;
   }
@@ -12311,53 +12365,11 @@ function updateRuntimeAnimations(dt){
     if(body?.t)return body.t;
     return component(node,'transform')||{position:[0,0],scale:[1,1],angle:[0]};
   }
-  function runtimeInteractiveNodesDesc(){return runtimeAllNodes().map(entry=>entry?.node).filter(node=>node?.type==='node').sort((a,b)=>nodeIndex(b)-nodeIndex(a));}
-  function runtimeColorInputNodeAtPoint(x,y,screen=false){
-    const canvas=$('#runtimeCanvas');
-    const m=canvas?runtimeProjection(canvas):null;
-    for(const node of runtimeInteractiveNodesDesc()){
-      if(node?.type!=='node'||!runtimeNodeVisible(node))continue;
-      if(screen ? nodeRelativeMode(node)!=='Screen' : nodeRelativeMode(node)==='Screen')continue;
-      const t=runtimeEffectiveTransform(node);
-      let dx,dy;
-      if(screen){
-        const pos=runtimeScreenNodePosition(node,t,m);
-        dx=x-pos.x;dy=y-pos.y;
-      }else{
-        dx=x-Number(t.position?.[0]||0);dy=y-Number(t.position?.[1]||0);
-      }
-      const a=Number(t.angle?.[0]||0)*Math.PI/180;
-      ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
-      const nsx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),nsy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-      dx/=nsx;dy/=nsy;
-      const c=component(node,'colorinput');if(!c)continue;
-      const p=c.position||[0,0],isx=Math.max(1e-6,Math.abs(Number(c.scale?.[0]??1)||1)),isy=Math.max(1e-6,Math.abs(Number(c.scale?.[1]??1)||1));
-      dx=(dx-Number(p[0]||0))/isx;dy=(dy-Number(p[1]||0))/isy;
-      const w=Math.max(1,Number(c.width)||72),h=Math.max(1,Number(c.height)||42);
-      if(Math.abs(dx)<=w/2&&Math.abs(dy)<=h/2)return node;
-    }
-    return null;
-  }
-  function runtimeNodeAtPoint(x,y){
-    const ctx=$('#runtimeCanvas')?.getContext?.('2d');
-    for(const node of runtimeInteractiveNodesDesc()){
-      if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)==='Screen')continue;
-      const t=runtimeEffectiveTransform(node);
-      const nx=Number(t.position?.[0]||0),ny=Number(t.position?.[1]||0);
-      let dx=x-nx,dy=y-ny;
-      const a=Number(t.angle?.[0]||0)*Math.PI/180;
-      ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
-      const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-      dx/=sx;dy/=sy;
-      const geo=spriteLocalGeometry(node);
-      if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}
-      const input=component(node,'input');
-      if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}
-      let size={w:90,h:54};
-      const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}
-      if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;
-    }
-    return null;
+  function runtimeInteractiveNodesDesc(relative=null){
+    const nodes=runtimeAllNodes().map(entry=>entry?.node).filter(node=>node?.type==='node'&&(relative===null||nodeRelativeMode(node)===relative));
+    // A greater Node index is rendered above a lower one; event hit-testing mirrors
+    // that order without changing the render list or the World/Screen render passes.
+    return nodes.sort((a,b)=>nodeIndex(b)-nodeIndex(a));
   }
   function runtimeScreenNodePosition(node,t,m){
     // Position values use a canonical 1280×720 screen space centered at the
@@ -12373,22 +12385,37 @@ function updateRuntimeAnimations(dt){
     const viewW=Math.max(1,Number(view.w)||1280),viewH=Math.max(1,Number(view.h)||720);
     return {x:Number(t.position?.[0]||0)*(viewW/1280),y:Number(t.position?.[1]||0)*(viewH/720)};
   }
-  function runtimeScreenNodeAtPoint(x,y){const ctx=$('#runtimeCanvas')?.getContext?.('2d'),canvas=$('#runtimeCanvas'),m=canvas?runtimeProjection(canvas):null;for(const node of runtimeInteractiveNodesDesc()){if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)!=='Screen')continue;const t=runtimeEffectiveTransform(node);const pos=runtimeScreenNodePosition(node,t,m);let dx=x-pos.x,dy=y-pos.y;({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));const sx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),sy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));dx/=sx;dy/=sy;const geo=spriteLocalGeometry(node);if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return node;continue;}const colorInput=component(node,'colorinput');if(colorInput){const p=colorInput.position||[0,0],w=Math.max(1,Number(colorInput.width)||72),h=Math.max(1,Number(colorInput.height)||42),isx=Math.abs(Number(colorInput.scale?.[0]??1)||1),isy=Math.abs(Number(colorInput.scale?.[1]??1)||1);if(Math.abs(dx-Number(p[0]||0))<=w*isx/2&&Math.abs(dy-Number(p[1]||0))<=h*isy/2)return node;}const input=component(node,'input');if(input){const p=input.position||[0,0],w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);if(Math.abs(dx-Number(p[0]||0))<=w/2&&Math.abs(dy-Number(p[1]||0))<=h/2)return node;}let size={w:90,h:54};const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return node;}return null;}
-  function runtimeInputNodeAtPoint(x,y){
-    for(const node of runtimeInteractiveNodesDesc()){
-      if(node.type!=='node'||!runtimeNodeVisible(node)||nodeRelativeMode(node)==='Screen')continue;
-      const input=component(node,'input');
-      if(!input)continue;
+  function runtimeInteractiveHitAtPoint(x,y,relative='World'){
+    const screen=relative==='Screen',canvas=$('#runtimeCanvas'),ctx=canvas?.getContext?.('2d'),projection=screen&&canvas?runtimeProjection(canvas):null;
+    for(const node of runtimeInteractiveNodesDesc(screen?'Screen':'World')){
+      if(node.type!=='node'||!runtimeNodeVisible(node))continue;
       const t=runtimeEffectiveTransform(node);
-      let dx=x-Number(t.position?.[0]||0),dy=y-Number(t.position?.[1]||0);
-      const a=Number(t.angle?.[0]||0)*Math.PI/180;
-      ({x:dx,y:dy}=rotatePoint(dx,dy,-a));
-      const nsx=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1))),nsy=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
-      dx/=nsx;dy/=nsy;
-      const p=input.position||[0,0],isx=Math.max(1e-6,Math.abs(Number(input.scale?.[0]??1)||1)),isy=Math.max(1e-6,Math.abs(Number(input.scale?.[1]??1)||1));
-      dx=(dx-Number(p[0]||0))/isx;dy=(dy-Number(p[1]||0))/isy;
-      const w=Math.max(1,Number(input.width)||260),h=Math.max(1,Number(input.height)||48);
-      if(Math.abs(dx)<=w/2&&Math.abs(dy)<=h/2)return node;
+      const origin=screen?runtimeScreenNodePosition(node,t,projection):{x:Number(t.position?.[0]||0),y:Number(t.position?.[1]||0)};
+      let dx=x-origin.x,dy=y-origin.y;
+      ({x:dx,y:dy}=rotatePoint(dx,dy,-Number(t.angle?.[0]||0)*Math.PI/180));
+      dx/=Math.max(1e-6,Math.abs(Number(t.scale?.[0]||1)));
+      dy/=Math.max(1e-6,Math.abs(Number(t.scale?.[1]||1)));
+
+      // Resolve interactive component areas per Node, in Node Index order. This
+      // keeps an input or colour picker from a lower-index Node from taking
+      // priority over a higher-index Node of the same relative mode.
+      const colorInput=component(node,'colorinput');
+      if(colorInput){
+        const p=colorInput.position||[0,0],sx=Math.max(1e-6,Math.abs(Number(colorInput.scale?.[0]??1)||1)),sy=Math.max(1e-6,Math.abs(Number(colorInput.scale?.[1]??1)||1));
+        const cx=(dx-Number(p[0]||0))/sx,cy=(dy-Number(p[1]||0))/sy;
+        if(Math.abs(cx)<=Math.max(1,Number(colorInput.width)||72)/2&&Math.abs(cy)<=Math.max(1,Number(colorInput.height)||42)/2)return {node,kind:'colorinput'};
+      }
+      const input=component(node,'input');
+      if(input){
+        const p=input.position||[0,0],sx=Math.max(1e-6,Math.abs(Number(input.scale?.[0]??1)||1)),sy=Math.max(1e-6,Math.abs(Number(input.scale?.[1]??1)||1));
+        const ix=(dx-Number(p[0]||0))/sx,iy=(dy-Number(p[1]||0))/sy;
+        if(Math.abs(ix)<=Math.max(1,Number(input.width)||260)/2&&Math.abs(iy)<=Math.max(1,Number(input.height)||48)/2)return {node,kind:'input'};
+      }
+      const geo=spriteLocalGeometry(node);
+      if(geo){if(Math.abs(dx-geo.x)<=geo.w/2&&Math.abs(dy-geo.y)<=geo.h/2)return {node,kind:'node'};continue;}
+      let size={w:90,h:54};
+      const text=component(node,'text');if(text){const c=ctx||document.createElement('canvas').getContext('2d');size=getTextMetrics(node,text,c);}
+      if(Math.abs(dx)<=size.w/2&&Math.abs(dy)<=size.h/2)return {node,kind:'node'};
     }
     return null;
   }
@@ -12627,30 +12654,34 @@ function updateRuntimeAnimations(dt){
       canvas.setPointerCapture?.(e.pointerId);
       const screen=screenPoint(e), world=worldPoint(e);
       updateRuntimeJoystick(e,'down');
-      const hitColorNode=runtimeColorInputNodeAtPoint(world.x,world.y,false)||runtimeColorInputNodeAtPoint(screen.x,screen.y,true);
-      if(hitColorNode){
-        const colorComp=component(hitColorNode,'colorinput');
+      // Screen-relative Nodes are UI and always receive pointer priority over
+      // World-relative Nodes, regardless of which group is visually on top.
+      // Within each group, runtimeInteractiveNodesDesc keeps higher Node Index first.
+      const screenHit=runtimeInteractiveHitAtPoint(screen.x,screen.y,'Screen');
+      const worldHit=screenHit?null:runtimeInteractiveHitAtPoint(world.x,world.y,'World');
+      const hit=screenHit||worldHit,hitNode=hit?.node||null;
+      if(hit?.kind==='colorinput'){
+        const colorComp=component(hitNode,'colorinput');
         if(colorComp){
           state.runtime._colorInputLiveDispatch=false;
           openColorModal(colorComp.color||'#FFFFFFFF',(next)=>{
-            const nodeNow=runtimeFindNode(hitColorNode.id),compNow=nodeNow?component(nodeNow,'colorinput'):null;
+            const nodeNow=runtimeFindNode(hitNode.id),compNow=nodeNow?component(nodeNow,'colorinput'):null;
             if(!compNow)return;
             let hex='#FFFFFFFF';try{hex=rgbaToHex(parseColor(next));}catch{}
             compNow.color=hex;
             state.runtime.inputs=Object.assign(state.runtime.inputs||{},{color_value:hex.slice(0,7),colorValue:hex.slice(0,7)});
-            state.runtime.contextByNode?.delete?.(hitColorNode.id);
+            state.runtime.contextByNode?.delete?.(hitNode.id);
             drawRuntime();
-            if(state.runtime._colorInputLiveDispatch!==false){dispatchRuntimeEvent('onColorChange','change',{color:hex,color_value:hex.slice(0,7),value:hex.slice(0,7)},hitColorNode.id);}
+            if(state.runtime._colorInputLiveDispatch!==false){dispatchRuntimeEvent('onColorChange','change',{color:hex,color_value:hex.slice(0,7),value:hex.slice(0,7)},hitNode.id);}
             state.runtime._colorInputLiveDispatch=false;
           },'Color Input',{live:true});
           state.runtime._colorInputLiveDispatch=true;
         }
+      }else if(hit?.kind==='input'){
+        openRuntimeTextInput(hitNode,canvas);
       }else{
-        const hitInputNode=runtimeInputNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
-        if(hitInputNode)openRuntimeTextInput(hitInputNode,canvas);
-        else{const ed=state.runtime.textInputEditor;if(ed?.el)try{ed.el.blur();}catch{}}
+        const ed=state.runtime.textInputEditor;if(ed?.el)try{ed.el.blur();}catch{}
       }
-      const hitNode=runtimeNodeAtPoint(world.x,world.y)||runtimeScreenNodeAtPoint(screen.x,screen.y);
       const pointerType=e.pointerType||'mouse';
       activeInputPointers.set(e.pointerId,{pointerId:e.pointerId,pointerType,nodeId:hitNode?.id??null,worldX:world.x,worldY:world.y,screenX:screen.x,screenY:screen.y,clientX:e.clientX,clientY:e.clientY,startClientX:e.clientX,startClientY:e.clientY,startedAt:performance.now()});
       if(e.pointerType==='touch'){
