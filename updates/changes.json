@@ -1,5 +1,65 @@
 [
   {
+    "title": "Version 43.0.1",
+    "items": [
+      {
+        "id": "v43-0-1-setvariable-list-replace-at",
+        "subtitle": "setVariable Replace At for List variables",
+        "contents": "Added Replace At to the setVariable List operations. It displays an Index input, a Value Type selector populated from the supported variable data types (Int, String, Bool, Color, and List), and a Value input that changes to match the selected type. Replace At updates only an existing List element; negative indexes count backward from the end. Existing Set At operations and older saved setVariable nodes remain supported."
+      }
+    ]
+  },
+  {
+    "title": "Version 43.0.0",
+    "items": [
+      {
+        "id": "v43-addon-packages",
+        "subtitle": "Addon packages and Addon Management",
+        "contents": "Added installable Addon ZIP packages with manifest.json, main.js, optional description and icon, and bundled ScriptNode definition files. Addons are stored in a separate IndexedDB package library. Import validates the package and reuses an existing UUID/version instead of storing a duplicate. Different UUIDs remain separate even when their display names match; multiple versions of one UUID can remain installed."
+      },
+      {
+        "id": "v43-addon-scriptnode-registry",
+        "subtitle": "Addon ScriptNodes and collision handling",
+        "contents": "Active Addons register real ScriptNode definitions into the existing ScriptNode library. Built-in definitions always take priority. Addons are processed in project activation order, so the first active Addon wins a duplicate name; later duplicates are skipped and shown in the Addon registration log. A single bundle file can return multiple ScriptNode definitions."
+      },
+      {
+        "id": "v43-project-addon-selection",
+        "subtitle": "Project-specific Addon versions and order",
+        "contents": "Each project stores its active Addon UUID/version selections and their priority order. Installed packages are global to the device, while activation is project-specific. Different versions of the same Addon can remain installed; a project activates one version for a UUID at a time."
+      },
+      {
+        "id": "v43-ndc-addon-binary-section",
+        "subtitle": "NDC embeds active Addon ZIP packages",
+        "contents": "Exported NDC files now include the exact active Addon ZIP packages in a separate binary section, not as Base64 text in the project manifest. Import routes embedded packages through the same installation and UUID/version reuse rules. Older NDC files without an Addon section remain readable."
+      },
+      {
+        "id": "v43-addon-template",
+        "subtitle": "Downloadable Addon template",
+        "contents": "Addon Management includes a Download Template action that generates a new package with a fresh UUID, manifest, main.js registry and a ScriptNode bundle containing multiple definitions."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.2.5",
+    "items": [
+      {
+        "id": "v42-2-5-set-sprite-component-parity",
+        "subtitle": "Match setSprite inputs to the Sprite Component",
+        "contents": "setSprite now mirrors the Sprite Component editable properties: Image/Texture type, Sprite/Animation source, Stretch/Crop scale type, Modulate, Strength, Opacity, Pixelated, Position X/Y, Size X/Y, Texture Size X/Y, Sprite asset, and Animation. Inputs are optional, so blank values leave the existing property unchanged. Size and Texture Size accept zero to restore automatic sizing or the default texture tile dimensions. Existing setSprite ScriptNodes are migrated by input name, preserving values and expressions; old Texture Width/Height values migrate to Texture Size X/Y."
+      }
+    ]
+  },
+  {
+    "title": "Version 42.2.4",
+    "items": [
+      {
+        "id": "v42-2-4-save-expression-with-errors",
+        "subtitle": "Save expressions even when validation reports errors",
+        "contents": "The Expression editor Save button stays enabled when syntax or result-type validation reports an error. Saving stores the expression as entered instead of blocking the edit. Diagnostics remain visible while editing, and saving an expression with errors displays a notice so it can be corrected before runtime testing."
+      }
+    ]
+  },
+  {
     "title": "Version 42.2.3",
     "items": [
       {
