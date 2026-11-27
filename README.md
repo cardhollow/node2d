@@ -1,6 +1,11 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.4). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.5). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 42.2.5
+- `setSprite` now mirrors the Sprite Component properties: Image/Texture type, Sprite/Animation source, Stretch/Crop scale type, Modulate, Strength, Opacity, Pixelated, Position X/Y, Size X/Y, Texture Size X/Y, Sprite asset, and Animation.
+- All `setSprite` inputs are optional; blank inputs leave the existing Sprite property unchanged. Size and Texture Size accept zero to restore automatic sizing or texture tile dimensions.
+- Existing `setSprite` ScriptNodes are migrated by input name, preserving values and expressions. Legacy Texture Width/Height inputs migrate to Texture Size X/Y, and legacy Keep selections become unset.
 
 ## Version 42.2.4
 - Expression Save is no longer blocked by syntax or result-type errors. The expression is stored as entered, validation messages remain visible while editing, and a saved expression with errors produces a notice so it can be corrected before runtime testing.

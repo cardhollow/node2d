@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v42-2-4-expression-save-with-errors';
+const CACHE_NAME='uix-node2d-v42-2-5-set-sprite-component-parity';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[
