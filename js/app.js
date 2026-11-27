@@ -1644,6 +1644,7 @@
     state.uiComponentsByScene = Object.create(null);
     state.pan = { x: 0, y: 0 }; state.zoom = 1;
     state.script = { nodeId: null, selectedNodeId: null, pan: { x: 0, y: 0 }, zoom: 1, nodesByNode: Object.create(null), connectionsByNode: Object.create(null), editingInput: null };
+    void window.UIXAddons?.restoreProject?.({active:[]},[]);
     state.history={root:null,currentId:null,nodes:Object.create(null),busy:false,pending:null,pendingSeq:0}; state.nodeClipboard=null; state.componentClipboard=null; state.ui.selectedComponentKey='';
     hideAllModals(); renderAll(); rememberCurrentProjectSession(); resetAutoSaveTimer(); status('New Node2D project created');
   }
@@ -3660,6 +3661,7 @@
     state.sceneVariablesByScene[key]=scene.variables;
     return scene.variables;
   }
+  const VARIABLE_DATA_TYPES=['String','Bool','Int','List','Color'];
   function variableList(scope){
     if(scope==='Local') return (state.localVarsByNode[state.script.nodeId] ||= []);
     if(scope==='Scene') return sceneVariableList();
@@ -3872,7 +3874,7 @@
     applyVariableNameInputRules(nameRow.querySelector('input'));
     body.append(nameRow);
     body.append(field('Data Type',v.dataType,'custom-select',x=>{
-      const next=String(x); if(!['String','Bool','Int','List','Color'].includes(next))return;
+      const next=String(x); if(!VARIABLE_DATA_TYPES.includes(next))return;
       const oldType=String(v.dataType||'String'), oldValue=v.value;
       if(next!==oldType){
         if(next==='String') v.value=Array.isArray(oldValue)?formatListValue(oldValue):String(oldValue??'');
@@ -3892,7 +3894,7 @@
       if(scope==='Local') renderLocalVariables(); else if(state.script.nodeId) renderScriptScopeVariables(); else renderComponentPanel();
       if(state.script.nodeId) renderScriptCanvas();
       scheduleInspectorRefresh();
-    },['String','Bool','Int','List','Color'],()=>String(v.dataType||'String')));
+    },VARIABLE_DATA_TYPES,()=>String(v.dataType||'String')));
     if(v.dataType==='Color'){
       body.append(colorField('Value',normalizeVariableColor(v.value),value=>{
         v.value=normalizeVariableColor(value);
@@ -5654,6 +5656,7 @@
       case 'import-json': openProjectJSONImport(); break;
       case 'export-json': exportProjectJSON(); break;
       case 'view-json': openProjectJSONViewer(); break;
+      case 'addon-management': window.UIXAddons?.openManagement?.(); break;
       case 'save-project': saveProjectToProjectStorage(); break;
       case 'export-project': openExportProjectModal(); break;
       case 'open-history': openHistory(); break;
@@ -5755,6 +5758,7 @@
       script:{nodesByNode:state.script.nodesByNode,connectionsByNode:state.script.connectionsByNode,viewsByNode:state.script.viewsByNode},
       game:state.game,
       camera:state.camera,
+      addons:window.UIXAddons?.getProjectConfig?.()||{active:[]},
       assets:state.assets
     };
   }
@@ -5788,8 +5792,10 @@
     });
   }
 
-  function applyProjectData(data,meta={}){
+  async function applyProjectData(data,meta={}){
     if(!data || !Array.isArray(data.scenes) || !data.scenes.length) throw new Error('NDC project contains no scenes');
+    try{await window.UIXAddons?.restoreProject?.(data.addons||{active:[]},data.__addonPackages||[]);}
+    catch(addonError){console.error('[Node2D Addons] Could not restore project Addons:',addonError);status(`Project Addons could not be restored: ${addonError.message||addonError}`);}
     projectMutationRevision++;
     projectGeneration++;
     stopRuntime();
@@ -5855,7 +5861,8 @@
     if(!window.UIXNDCCodec) throw new Error('NDC codec is not loaded');
     flushPendingValueEditors();
     flushPendingHistory();
-    return window.UIXNDCCodec.encode(collectProjectData());
+    const addonPackages=await window.UIXAddons?.getActivePackages?.()||[];
+    return window.UIXNDCCodec.encode(collectProjectData(),addonPackages);
   }
 
   function hasLoadedProject(){return !!state.project.created&&Array.isArray(state.scenes)&&state.scenes.length>0;}
@@ -5904,7 +5911,7 @@
     const apply=()=>{
       if(ndcTransferCancelled)return;
       setNdcTransferProgress(96,'Applying project…');
-      setTimeout(()=>{if(ndcTransferCancelled)return;try{applyProjectData(data,meta);setNdcTransferProgress(100,'Import complete.');status(`${label||'Project'} imported`);setTimeout(closeNdcTransferModal,300);}catch(err){closeNdcTransferModal();status(`Import failed: ${err.message||err}`);}},0);
+      setTimeout(async()=>{if(ndcTransferCancelled)return;try{await applyProjectData(data,meta);setNdcTransferProgress(100,'Import complete.');status(`${label||'Project'} imported`);setTimeout(closeNdcTransferModal,300);}catch(err){closeNdcTransferModal();status(`Import failed: ${err.message||err}`);}},0);
     };
     if(hasLoadedProject()&&!meta.force&&!window.__UIX_STANDALONE__){
       closeNdcTransferModal();
@@ -5931,7 +5938,7 @@
           ['project',data.project],['scenes',data.scenes],['currentSceneId',data.currentSceneId],['selectedId',data.selectedId],['mode',data.mode],
           ['nextNodeId',data.nextNodeId],['nextFolderId',data.nextFolderId],['nextVariableId',data.nextVariableId],['globalVariables',data.globalVariables],['serverVariables',data.serverVariables],
           ['sceneVariablesByScene',data.sceneVariablesByScene],['localVarsByNode',data.localVarsByNode],['uiComponentsByScene',data.uiComponentsByScene],
-          ['game',data.game],['camera',data.camera]
+          ['game',data.game],['camera',data.camera],['addons',data.addons||{active:[]} ]
         ];
         for(let i=0;i<parts.length;i++){
           const [key,value]=parts[i];
@@ -5944,6 +5951,10 @@
         if(ndcTransferCancelled)throw Error('Transfer cancelled');
         worker.postMessage({id,type:'part',key:'script',value:cloneSaveValue(data.script,true)});
         onProgress?.(66,'Preparing scripts…');
+        const addonPackages=await window.UIXAddons?.getActivePackages?.()||[];
+        await saveBackgroundYield();
+        if(ndcTransferCancelled)throw Error('Transfer cancelled');
+        worker.postMessage({id,type:'part',key:'__addonPackages',value:cloneSaveValue(addonPackages,false)});
         const assets=data.assets||{};
         const assetKeys=Object.keys(assets);
         for(let i=0;i<assetKeys.length;i++){
@@ -5978,7 +5989,7 @@
       const sourceId=state.project.localNdcId||null;
       let bytes;
       try{bytes=await encodeProjectInWorkerParts(source);}
-      catch{await saveBackgroundYield();bytes=window.UIXNDCCodec.encode(cloneSaveValue(source,true));}
+      catch{await saveBackgroundYield();const addonPackages=await window.UIXAddons?.getActivePackages?.()||[];bytes=window.UIXNDCCodec.encode(cloneSaveValue(source,true),addonPackages);}
       const saved=await window.UIXNDCCodec.saveCurrent(bytes,sourceName,sourceId);
       const sameProject=projectGeneration===capturedGeneration;
       if(sameProject){
@@ -6014,12 +6025,12 @@
     return ndcSavePromise;
   }
 
-  function loadProjectBytes(bytes,label,meta={}){
+  async function loadProjectBytes(bytes,label,meta={}){
     try{
       const data=window.UIXNDCCodec.decode(bytes);
-      const apply=()=>{applyProjectData(data,meta);status(`${label||'Project'} loaded`);};
+      const apply=async()=>{try{await applyProjectData(data,meta);status(`${label||'Project'} loaded`);}catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}};
       if(hasLoadedProject()&&!meta.force&&!window.__UIX_STANDALONE__)askConfirm('Replace Current Project',`Load “${label||'Project'}” and replace the current project?`,apply,'Load');
-      else apply();
+      else await apply();
     }catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}
   }
 
@@ -6028,7 +6039,7 @@
       await ndcSavePromise;
       const saved=await window.UIXNDCCodec.loadCurrent();
       if(!saved){status('No saved project in Project storage');return;}
-      loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||null});
+      await loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||null});
     }catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}
   }
 
@@ -6052,7 +6063,7 @@
       const bytes=await fetchFlappyBirdSampleBytes();
       const saved=await window.UIXNDCCodec.saveCurrent(bytes,'Flappy Bird Sample',null);
       setFlappyBirdSampleUsed();
-      loadProjectBytes(bytes,'Flappy Bird Sample',{localNdcId:saved?.id||null});
+      await loadProjectBytes(bytes,'Flappy Bird Sample',{localNdcId:saved?.id||null});
       closeModal($('#localNdcModal'));
       status('Flappy Bird sample added to Local NDC');
     }catch(err){console.error(err);status(`Could not load Flappy Bird sample: ${err.message||err}`);openLocalNDCModal();}
@@ -6113,16 +6124,16 @@
     const remembered=readCurrentProjectSession();
     if(!remembered.name&&!remembered.id)return false;
     try{
-      if(remembered.id){const saved=await window.UIXNDCCodec.loadLocal(remembered.id);if(saved){loadProjectBytes(saved.bytes,saved.name||remembered.name,{localNdcId:saved.id||remembered.id,force:true});return true;}}
+      if(remembered.id){const saved=await window.UIXNDCCodec.loadLocal(remembered.id);if(saved){await loadProjectBytes(saved.bytes,saved.name||remembered.name,{localNdcId:saved.id||remembered.id,force:true});return true;}}
       const list=await window.UIXNDCCodec.listLocal();
       const match=list.find(x=>(remembered.id&&String(x.id)===String(remembered.id))||(remembered.name&&String(x.name||'')===String(remembered.name)));
-      if(match){const saved=await window.UIXNDCCodec.loadLocal(match.id);if(saved){loadProjectBytes(saved.bytes,saved.name||match.name,{localNdcId:saved.id||match.id,force:true});return true;}}
+      if(match){const saved=await window.UIXNDCCodec.loadLocal(match.id);if(saved){await loadProjectBytes(saved.bytes,saved.name||match.name,{localNdcId:saved.id||match.id,force:true});return true;}}
     }catch(err){console.error(err);}
     return false;
   }
 
   async function loadLocalNDC(id){
-    try{await ndcSavePromise;const saved=await window.UIXNDCCodec.loadLocal(id);if(!saved){status('Local NDC was not found');return;}loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||id});}
+    try{await ndcSavePromise;const saved=await window.UIXNDCCodec.loadLocal(id);if(!saved){status('Local NDC was not found');return;}await loadProjectBytes(saved.bytes,saved.name||'Local NDC',{localNdcId:saved.id||id});}
     catch(err){console.error(err);status(`Load failed: ${err.message||err}`);}
   }
 
@@ -6154,11 +6165,11 @@
       const mode=await chooseNdcImportMode(file.name);
       if(!mode)return;
       if(mode==='load'){
-        loadProjectBytes(bytes,file.name,{localNdcId:null,force:true});
+        await loadProjectBytes(bytes,file.name,{localNdcId:null,force:true});
         return;
       }
       const data=window.UIXNDCCodec?.decode?.(bytes);
-      mergeProjectData(data,file.name);
+      await mergeProjectData(data,file.name);
     }catch(err){console.error(err);status(`Import failed: ${err.message||err}`);}
   }
 
@@ -6177,9 +6188,9 @@
       delete data.__ndc;
       if(!data.project||typeof data.project!=='object'||Array.isArray(data.project))data.project={name:String(file.name||'Imported JSON').replace(/\.json$/i,'')};
       const importedName=String(data.project.name||file.name||'Imported JSON');
-      const apply=()=>{
+      const apply=async()=>{
         try{
-          applyProjectData(data,{localNdcId:null});
+          await applyProjectData(data,{localNdcId:null});
           status(`Imported raw JSON · ${importedName}`);
         }catch(error){console.error(error);status(`JSON import failed: ${error.message||error}`);}
       };
@@ -6195,7 +6206,7 @@
       const response=await fetch(url.href,{cache:'no-store'});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       const bytes=new Uint8Array(await response.arrayBuffer());
-      loadProjectBytes(bytes,url.pathname.split('/').pop()||'URL NDC',{localNdcId:null});
+      await loadProjectBytes(bytes,url.pathname.split('/').pop()||'URL NDC',{localNdcId:null});
     }catch(err){console.error(err);status(`URL load failed: ${err.message||err}`);}
   }
 
@@ -6210,12 +6221,20 @@
     (Array.isArray(items)?items:[]).forEach(item=>{if(!item||typeof item!=='object')return;callback(item);if(item.type==='folder')walkProjectTree(item.children,callback);});
   }
 
-  function mergeProjectData(data,label='NDC Project'){
+  async function mergeProjectData(data,label='NDC Project'){
     if(!data||!Array.isArray(data.scenes)||!data.scenes.length)throw new Error('NDC project contains no scenes');
+    const embeddedAddonResults=await window.UIXAddons?.importEmbeddedPackages?.(data.__addonPackages||[])||[];
+    const currentAddonConfig=window.UIXAddons?.getProjectConfig?.()||{active:[]};
+    const importedAddonConfig=data.addons?.active||[];
+    const mergedAddonConfig=currentAddonConfig.active.slice();
+    const knownAddonUuids=new Set(mergedAddonConfig.map(x=>String(x.uuid||'').toLowerCase()));
+    importedAddonConfig.forEach(item=>{const uuid=String(item?.uuid||'').toLowerCase();if(uuid&&!knownAddonUuids.has(uuid)){mergedAddonConfig.push({uuid,version:String(item.version||'')});knownAddonUuids.add(uuid);}});
+    await window.UIXAddons?.restoreProject?.({active:mergedAddonConfig},[]);
     ensureProject();
     flushPendingValueEditors();
     flushPendingHistory();
     const imported=cloneSaveValue(data,false);
+    delete imported.__addonPackages;
     const importedScenes=Array.isArray(imported.scenes)?imported.scenes:[];
     const sceneIdMap=new Map(),nodeIdMap=new Map(),assetIdMap=new Map(),scriptIdMap=new Map(),variableIdMap=new Map(),referenceMap=new Map(),displayLabelMap=new Map();
     const usedSceneIds=new Set(state.scenes.map(scene=>String(scene.id||'')));
@@ -6403,12 +6422,12 @@
       await window.UIXClipboard?.readExternal?.();
       const record=window.UIXClipboard?.getRecord?.();
       if(record?.type!=='project'||!record.payload||!Array.isArray(record.payload.scenes))return status(record?`Clipboard contains ${record.type}, not an entire NDC project`:'Clipboard does not contain an NDC project');
-      mergeProjectData(record.payload,'Clipboard NDC');
+      await mergeProjectData(record.payload,'Clipboard NDC');
     }catch(err){console.error(err);status(`Paste entire project failed: ${err.message||err}`);}
   }
 
   async function exportProjectNDC(){
-    openNdcTransferModal('Export NDC','Encoding the project in a background worker.');
+    openNdcTransferModal('Export NDC','Encoding project data and active Addon packages.');
     try{
       ensureProject();
       const source=collectProjectData();
@@ -6566,7 +6585,7 @@
       setExportProgress(2,'Building project data…',true);
       const ndc=await buildProjectNDC();
       setExportProgress(8,'Packaging existing Playtime files…',true);
-      const result=await window.UIXProjectExporter.exportProject({name,version,pwa,manifest,iconAsset:icon,splash:{enabled:splashEnabled,iconAsset:splashIcon,title:splashTitle},screenType:state.game.screenType,projectNdc:ndc,needMidi:(state.assets.MIDI||[]).length>0,onProgress:(p,t)=>setExportProgress(Math.max(8,p),t,true)});
+      const result=await window.UIXProjectExporter.exportProject({name,version,pwa,manifest,iconAsset:icon,splash:{enabled:splashEnabled,iconAsset:splashIcon,title:splashTitle},screenType:state.game.screenType,projectNdc:ndc,needMidi:(state.assets.MIDI||[]).length>0,needAddons:(window.UIXAddons?.getProjectConfig?.().active||[]).length>0,onProgress:(p,t)=>setExportProgress(Math.max(8,p),t,true)});
       setExportProgress(100,`Download started · ${result.name}`,true);
       status(`Exported Project · ${name}`);
       setTimeout(()=>closeModal($('#exportProjectModal')),350);
@@ -7545,8 +7564,11 @@
     return true;
   }
 
-  // setVariable: the list operation inputs only show for List variables, and only the inputs the operation uses.
-  const SET_VARIABLE_ORDER=['Type','Name','Operation','Index','Value'];
+  // setVariable: List operations show only the inputs required by the selected operation.
+  const SET_VARIABLE_ORDER=['Type','Name','Operation','Index','Value Type','Value'];
+  function scriptTypeForVariableDataType(dataType){
+    return ({Bool:'bool',Int:'int',String:'str',Color:'col',List:'list'})[String(dataType||'String')]||'str';
+  }
   function setVariableListState(sn){
     const flat=flattenEditor(sn.values),typeItem=flat.find(x=>x.entry.name==='Type'),nameItem=flat.find(x=>x.entry.name==='Name'),opItem=flat.find(x=>x.entry.name==='Operation');
     const scope=String(typeItem?scriptEditorValue(sn,typeItem):'Global'),name=String(nameItem?scriptEditorValue(sn,nameItem):'');
@@ -7563,7 +7585,7 @@
         if(def?.name==='createParticles'){migrateCreateParticlesScriptNode(sn,def);restoreParticleStateDefinitions(sn,def);}
         if(def?.name==='setSprite')migrateSetSpriteScriptNode(sn,def);
         if(def?.name==='setVariable'&&Array.isArray(sn.values)){
-          // Older setVariable nodes have no list Operation/Index inputs: append them (paths of existing inputs stay valid).
+          // Older setVariable nodes have no list Operation/Index/Value Type inputs: append them (paths of existing inputs stay valid).
           for(const template of def.editor||[])if(!sn.values.some(e=>e?.name===template.name))sn.values.push(cloneEditorDefinition(template));
         }
       });
@@ -7618,23 +7640,27 @@
     const flat=flattenEditor(sn.values);
     const typeItem=flat.find(x=>x.entry.name==='Type');
     const nameItem=flat.find(x=>x.entry.name==='Name');
+    const operationItem=flat.find(x=>x.entry.name==='Operation');
     const scope=String(typeItem?scriptEditorValue(sn,typeItem):'Global');
     const name=String(nameItem?scriptEditorValue(sn,nameItem):'');
     const variable=variableList(scope).find(v=>String(v.name)===name);
-    if(variable?.dataType==='Bool') return 'bool';
-    if(variable?.dataType==='Int') return 'int';
-    if(variable?.dataType==='String') return 'str';
-    if(variable?.dataType==='Color') return 'col';
-    if(variable?.dataType==='List') return 'list';
-    return String(item.entry.type||'str').toLowerCase();
+    if(variable?.dataType==='List'&&String(operationItem?scriptEditorValue(sn,operationItem):'Set')==='Replace At'){
+      const valueTypeItem=flat.find(x=>x.entry.name==='Value Type');
+      return scriptTypeForVariableDataType(valueTypeItem?scriptEditorValue(sn,valueTypeItem):'Int');
+    }
+    return scriptTypeForVariableDataType(variable?.dataType||'String');
   }
   function syncSetVariableValueEditor(sn){
     if(sn?.defName!=='setVariable') return;
-    const flat=flattenEditor(sn.values),typeItem=flat.find(x=>x.entry.name==='Type'),nameItem=flat.find(x=>x.entry.name==='Name'),valueItem=flat.find(x=>x.entry.name==='Value');
+    const flat=flattenEditor(sn.values),typeItem=flat.find(x=>x.entry.name==='Type'),nameItem=flat.find(x=>x.entry.name==='Name'),operationItem=flat.find(x=>x.entry.name==='Operation'),valueTypeItem=flat.find(x=>x.entry.name==='Value Type'),valueItem=flat.find(x=>x.entry.name==='Value');
     if(!valueItem) return;
     const scope=String(typeItem?scriptEditorValue(sn,typeItem):'Global'),name=String(nameItem?scriptEditorValue(sn,nameItem):'');
     const variable=variableList(scope).find(v=>String(v.name)===name);
-    const next=variable?.dataType==='Bool'?'bool':variable?.dataType==='Int'?'int':variable?.dataType==='List'?'list':variable?.dataType==='Color'?'col':variable?.dataType==='String'?'str':'str';
+    const operation=String(operationItem?scriptEditorValue(sn,operationItem):'Set');
+    const dataType=variable?.dataType==='List'&&operation==='Replace At'
+      ?String(valueTypeItem?scriptEditorValue(sn,valueTypeItem):'Int')
+      :(variable?.dataType||'String');
+    const next=scriptTypeForVariableDataType(dataType);
     const prev=String(valueItem.entry.type||'str').toLowerCase();
     if(prev!==next){
       const old=valueItem.entry.value;
@@ -7695,7 +7721,7 @@
         if(String(scriptEditorValue(sn,item)??'')===String(v??''))return;
         pushHistory(`Edit ${item.name||'ScriptNode input'}`);
         entry.selected=v;delete sn.expressions[item.path];
-        if(sn.defName==='setVariable'&&(entry.name==='Type'||entry.name==='Name'))syncSetVariableValueEditor(sn);
+        if(sn.defName==='setVariable'&&['Type','Name','Operation','Value Type'].includes(entry.name))syncSetVariableValueEditor(sn);
         renderScriptCanvas();
       });return select;
     }
@@ -7764,7 +7790,7 @@
         if(sn.defName==='setVariable'&&entry.name==='Type'){
           const nameItem=flattenEditor(sn.values).find(x=>x.entry.name==='Name');if(nameItem)nameItem.entry.selected='';
         }
-        if(sn.defName==='setVariable'&&(entry.name==='Type'||entry.name==='Name')) syncSetVariableValueEditor(sn);
+        if(sn.defName==='setVariable'&&['Type','Name','Operation','Value Type'].includes(entry.name)) syncSetVariableValueEditor(sn);
         if((sn.defName==='saveVariable'||sn.defName==='loadVariable')&&entry.name==='Scope'){
           const nameItem=flattenEditor(sn.values).find(x=>x.entry.name==='Name');if(nameItem)nameItem.entry.selected='';
           syncVariableStorageSelector(sn,'Scope');
@@ -7863,9 +7889,10 @@
     orderedItems.forEach(item=>{
       if(listState){
         const n=item.entry.name,op=listState.operation;
-        if((n==='Operation'||n==='Index')&&!listState.isList)return;
+        if((n==='Operation'||n==='Index'||n==='Value Type')&&!listState.isList)return;
         if(listState.isList){
-          if(n==='Index'&&!['Insert','Set At','Remove At'].includes(op))return;
+          if(n==='Index'&&!['Insert','Set At','Replace At','Remove At'].includes(op))return;
+          if(n==='Value Type'&&op!=='Replace At')return;
           if(n==='Value'&&['Pop','Shift','Clear','Reverse','Sort','Remove At'].includes(op))return;
         }
       }
@@ -8559,6 +8586,7 @@
       screen:{W:screenView.W,H:screenView.H},
       camera:expressionCameraSnapshot(screenCanvas,screenCamera),
       variableNames:(state.globalVariables||[]).map(v=>v.name),
+      variableDataTypes:VARIABLE_DATA_TYPES.slice(),
       serverVariableNames:(state.serverVariables||[]).map(v=>v.name),
       sceneVariableNames:sceneVars.map(v=>v.name),
       localVariableNames:(state.localVarsByNode[state.script.nodeId]||[]).map(v=>v.name),
@@ -11032,12 +11060,31 @@
       return !!runtimeSetVariable(scope,name,rec.value,node);
     }catch(err){state.runtime.lastError=String(err?.message||err);runtimeOutput('error',`loadVariable: ${state.runtime.lastError}`);return false;}
   }
-  const LIST_VARIABLE_OPERATIONS=['Set','Push','Pop','Shift','Unshift','Insert','Set At','Remove At','Remove Value','Clear','Reverse','Sort'];
+  const LIST_VARIABLE_OPERATIONS=['Set','Push','Pop','Shift','Unshift','Insert','Set At','Replace At','Remove At','Remove Value','Clear','Reverse','Sort'];
+  function runtimeCoerceListElement(value,dataType){
+    switch(String(dataType||'String')){
+      case 'Int':{const source=Array.isArray(value)?value[0]:value;const number=typeof source==='boolean'?(source?1:0):Number(source);return Number.isFinite(number)?number:0;}
+      case 'Bool':{
+        if(typeof value==='boolean')return value;
+        if(typeof value==='number')return value!==0;
+        return ['true','1','yes','on'].includes(String(value??'').trim().toLowerCase());
+      }
+      case 'Color':return normalizeVariableColor(value);
+      case 'List':return parseListValue(value);
+      case 'String':return String(value??'');
+      default:return value;
+    }
+  }
   // Returns the new list for a List variable operation (never mutates `list`).
-  function runtimeListOperation(list,operation,value,index){
+  function runtimeListOperation(list,operation,value,index,valueType='String'){
     const out=Array.isArray(list)?list.slice():[];
-    const items=value===null||value===undefined?[]:parseListValue(value);
     const at=(fallback)=>{const n=Number.isFinite(Number(index))&&index!==null&&index!==''?Math.trunc(Number(index)):fallback;return n<0?Math.max(0,out.length+n):Math.min(n,out.length);};
+    if(operation==='Replace At'){
+      const i=at(out.length);
+      if(i>=0&&i<out.length&&value!==null&&value!==undefined)out[i]=runtimeCoerceListElement(value,valueType);
+      return out;
+    }
+    const items=value===null||value===undefined?[]:parseListValue(value);
     switch(operation){
       case 'Push':out.push(...items);break;
       case 'Pop':out.pop();break;
@@ -11054,11 +11101,11 @@
     }
     return out;
   }
-  function runtimeSetVariable(scope,name,value,node,operation='Set',index=null){
+  function runtimeSetVariable(scope,name,value,node,operation='Set',index=null,valueType='Int'){
     if(name===null||name===undefined)return false;
     const record=runtimeVariableRecord(scope,name,node);
     if(record?.dataType==='List'&&LIST_VARIABLE_OPERATIONS.includes(operation)&&operation!=='Set'){
-      value=runtimeListOperation(parseListValue(record.value),operation,value,index);
+      value=runtimeListOperation(parseListValue(record.value),operation,value,index,valueType);
     }else if(value===null||value===undefined)return false;
     if(scope==='Server'&&window.UIXNetwork?.setServerVariable)return !!window.UIXNetwork.setServerVariable(name,value);
     const v=record;if(!v)return false;
@@ -11610,7 +11657,7 @@ function updateRuntimeAnimations(dt){
     });
     const colorInput=node?component(node,'colorinput'):null;
     const applySetVisible=value=>runtimeSetVisible(node,!!value);
-    const applySetVariable=(v)=>runtimeSetVariable(v?.Type,v?.Name,v?.Value,node,v?.Operation,v?.Index);
+    const applySetVariable=(v)=>runtimeSetVariable(v?.Type,v?.Name,v?.Value,node,v?.Operation,v?.Index,v?.ValueType);
     const applySetTransform=(v)=>{
       const b=runtimeBodyForNode(node);if(!b)return;
       const num=(x,f)=>{if(x===null||x===undefined||x==='')return f;const n=Number(x);return Number.isFinite(n)?n:f;};
@@ -11712,7 +11759,7 @@ function updateRuntimeAnimations(dt){
       isVisible:()=>runtimeNodeVisible(node),
       setVisible:value=>{applySetVisible(value);return true;},
       createParticles:values=>runtimeCreateParticles(values,node),
-      setVariable:(scope,name,value,operation,index)=>applySetVariable({Type:scope,Name:name,Value:value,Operation:operation,Index:index}),
+      setVariable:(scope,name,value,operation,index,valueType)=>applySetVariable({Type:scope,Name:name,Value:value,Operation:operation,Index:index,ValueType:valueType}),
       saveVariable:(scope,name,storageType)=>runtimeSaveVariable(scope,name,storageType,node),
       loadVariable:(scope,name,storageType)=>runtimeLoadVariable(scope,name,storageType,node),
       setTransform:(x,y,sx,sy,angle)=>{applySetTransform({PosX:x,PosY:y,ScaleX:sx,ScaleY:sy,Angle:angle});return true;},
@@ -13365,14 +13412,21 @@ function updateRuntimeAnimations(dt){
   }
 
   // Editor initialization and standalone runtime share this source file.
+  window.addEventListener('node2d:addons-changed',()=>{
+    projectMutationRevision++;
+    if(!window.__UIX_STANDALONE__){renderScriptLibrary();if(state.script.nodeId)renderScriptCanvas();resetAutoSaveTimer();}
+  });
   installEditorServiceWorker();
   if(window.__UIX_STANDALONE__){
     document.documentElement.classList.add('uix-standalone');
   }else{
     state.scenes=[makeScene('Main')];state.currentSceneId=state.scenes[0].id;state.selectedIds=[];state.selectionAnchorId=null;ensureGameSettings();
-    installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();installWorkplaceResizeObserver();$('#node2dVersion')?.addEventListener('click',openUpdates);renderAll();applyTopbarAnchors();scheduleWorkplaceResize();loadNode2DVersion();
-    const bootURL=new URLSearchParams(location.search).get('load');
-    if(bootURL)bootstrapURLLoad();
-    else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
+    const bootEditor=()=>{
+      installEvents();enableWorkplace();enableScriptCanvas();enablePanelResize();installWorkplaceResizeObserver();$('#node2dVersion')?.addEventListener('click',openUpdates);renderAll();applyTopbarAnchors();scheduleWorkplaceResize();loadNode2DVersion();
+      const bootURL=new URLSearchParams(location.search).get('load');
+      if(bootURL)bootstrapURLLoad();
+      else restoreCurrentProjectFromSession().then(restored=>{if(!restored)showModal($('#projectModal'));else{hideAllModals();resetAutoSaveTimer();}}).catch(()=>showModal($('#projectModal')));
+    };
+    window.UIXAddons?.initialize?.().then(bootEditor).catch(err=>{console.error('[Node2D Addons]',err);bootEditor();});
   }
 })();

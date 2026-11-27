@@ -215,11 +215,28 @@
   }
 
   function setProjectNdc(payload, bytes) {
-    current = { type: 'project', payload: clone(payload), source: 'internal', writtenAt: Date.now() };
-    writePromise = bytes && typeof bytes.then === 'function'
-      ? writeSystemClipboardDeferred(bytes).catch(() => false)
-      : writeSystemClipboard(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0)).catch(() => false);
-    return clone(current.payload);
+    const record = { type: 'project', payload: clone(payload), source: 'internal', writtenAt: Date.now() };
+    current = record;
+    const attachEmbeddedAddons = value => {
+      const encoded = value instanceof Uint8Array ? value : new Uint8Array(value || 0);
+      try {
+        const decoded = globalThis.UIXNDCCodec?.decode?.(encoded);
+        if (Array.isArray(decoded?.__addonPackages) && current === record) {
+          record.payload.__addonPackages = clone(decoded.__addonPackages);
+        }
+      } catch (error) {
+        console.warn('[Node2D Clipboard] Could not attach embedded Addons to the internal project payload:', error);
+      }
+      return encoded;
+    };
+    if (bytes && typeof bytes.then === 'function') {
+      const resolvedBytes = Promise.resolve(bytes).then(attachEmbeddedAddons);
+      writePromise = writeSystemClipboardDeferred(resolvedBytes).catch(() => false);
+    } else {
+      const encoded = attachEmbeddedAddons(bytes);
+      writePromise = writeSystemClipboard(encoded).catch(() => false);
+    }
+    return clone(record.payload);
   }
 
   function get(type) {

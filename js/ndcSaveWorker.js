@@ -7,6 +7,7 @@
   const MAGIC = [0x4e,0x44,0x43,0x31];
   const PKG = [0x4e,0x44,0x50,0x31];
   const TEXT = [0x4e,0x44,0x46,0x31];
+  const ADDONS = [0x41,0x44,0x44,0x31];
   const NDC2 = [0x4e,0x4c,0x32,0x01];
   const MAX_DICT = 254;
   const MAX_PHRASE_TOKENS = 10;
@@ -166,8 +167,16 @@
     return `${bytes.length}:${h.toString(16)}`;
   }
 
-  function buildPackage1(project){
-    const source=clone(project||{});
+  function buildPackage1(project,addonPackages=null){
+    const packageInput=Array.isArray(addonPackages)?addonPackages:(Array.isArray(project?.__addonPackages)?project.__addonPackages:[]);
+    const projectData={...(project||{})};delete projectData.__addonPackages;
+    const source=clone(projectData);
+    const embeddedAddons=packageInput.map(item=>{
+      const bytes=item?.bytes instanceof Uint8Array?item.bytes:new Uint8Array(item?.bytes||item?.zip||[]);
+      const m=item?.manifest||{};
+      return {manifest:{uuid:String(m.uuid||'').toLowerCase(),name:String(m.name||''),description:String(m.description||''),version:String(m.version||''),icon:String(m.icon||'')},bytes:bytes.slice()};
+    }).filter(item=>item.manifest.uuid&&item.manifest.version&&item.bytes.length);
+    delete source.__addonPackages;
     const assets=source.assets&&typeof source.assets==='object'?source.assets:{};
     const table=Object.create(null),texts=[],textIndex=new Map(),blobs=[],blobBuckets=new Map();
     const addText=s=>{
@@ -213,6 +222,13 @@
     for(const s of texts){const raw=utf8(s),enc=encodeText(s,dict);parts.push(Uint8Array.from(u32(raw.length)),Uint8Array.from(u32(enc.length)),enc);}
     parts.push(Uint8Array.from(u32(blobs.length)));
     for(const b of blobs)parts.push(Uint8Array.from(u32(b.length)),b);
+    // ADD1 is an optional, separately length-delimited binary section. Older NDC
+    // package layouts end before this marker and remain readable.
+    parts.push(Uint8Array.from(ADDONS),Uint8Array.from(u32(embeddedAddons.length)));
+    for(const item of embeddedAddons){
+      const meta=utf8(JSON.stringify(item.manifest));
+      parts.push(Uint8Array.from(u32(meta.length)),meta,Uint8Array.from(u32(item.bytes.length)),item.bytes);
+    }
     return cat(parts);
   }
 
@@ -252,6 +268,20 @@
       blobs.push(bytes.slice(at,at+len));
       at+=len;
     }
+    const addonPackages=[];
+    if(at<bytes.length){
+      if(at+8>bytes.length||!ADDONS.every((v,i)=>bytes[at+i]===v))throw Error('Unexpected data after NDC package');
+      at+=4;
+      const addonCount=take();
+      if(addonCount>256)throw Error('Unsupported NDC Addon package count');
+      for(let i=0;i<addonCount;i++){
+        const metaLength=take();if(metaLength>65536||at+metaLength>bytes.length)throw Error('Invalid NDC Addon metadata');
+        let metadata;try{metadata=JSON.parse(text(bytes.subarray(at,at+metaLength)));}catch{throw Error('Invalid NDC Addon metadata JSON');}
+        at+=metaLength;
+        const zipLength=take();if(zipLength>64*1024*1024||at+zipLength>bytes.length)throw Error('Invalid NDC Addon binary package');
+        addonPackages.push({manifest:metadata,bytes:bytes.slice(at,at+zipLength)});at+=zipLength;
+      }
+    }
     if(at!==bytes.length)throw Error('Unexpected data after NDC package');
     const table=manifest.assets&&typeof manifest.assets==='object'?manifest.assets:{};
     manifest.assets=Object.create(null);
@@ -272,6 +302,7 @@
       }
     }
     delete manifest.__ndc;
+    manifest.__addonPackages=addonPackages;
     return manifest;
   }
 
@@ -883,8 +914,8 @@
     return cur;
   }
 
-  function encode(project){
-    const raw=buildPackage1(project);
+  function encode(project,addonPackages=null){
+    const raw=buildPackage1(project,addonPackages);
     const c=compressNDC2(raw);
     const flags=(c.compressed?1:0)|2|(c.compressed&&c.algorithm===1?4:0);
     return cat([Uint8Array.from(MAGIC),Uint8Array.from([1,flags,0,0]),Uint8Array.from(u32(raw.length)),Uint8Array.from(u32(c.payload.length)),c.payload]);

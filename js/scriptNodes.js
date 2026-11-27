@@ -66,11 +66,13 @@
         {name:'Type',type:'selector',value:()=>['Global','Local','Scene','Server'],selected:'Global'},
         {name:'Name',type:'selector',value:ctx=>ctx?.variableNames||[],selected:null},
         {name:'Value',type:'str',value:null},
-        // Only shown for List variables. Index is used by Insert, Set At and Remove At (negative counts from the end).
-        {name:'Operation',type:'selector',value:()=>['Set','Push','Pop','Shift','Unshift','Insert','Set At','Remove At','Remove Value','Clear','Reverse','Sort'],selected:'Set'},
-        {name:'Index',type:'int',value:null}
+        // Only shown for List variables. Index is used by Insert, Set At, Replace At and Remove At.
+        {name:'Operation',type:'selector',value:()=>['Set','Push','Pop','Shift','Unshift','Insert','Set At','Replace At','Remove At','Remove Value','Clear','Reverse','Sort'],selected:'Set'},
+        {name:'Index',type:'int',value:null},
+        // Replace At can store any supported variable data type as one List element.
+        {name:'Value Type',type:'selector',value:ctx=>ctx?.variableDataTypes||['Int','String','Bool','Color','List'],selected:'Int'}
       ],
-      func:(ctx,v)=>{ctx.setVariable?.(v.Type,v.Name,v.Value,v.Operation,v.Index);return {out:true};}
+      func:(ctx,v)=>{ctx.setVariable?.(v.Type,v.Name,v.Value,v.Operation,v.Index,v['Value Type']);return {out:true};}
     },
     {
       name:'saveVariable', receiver:true, group:'Actions', output:[{id:'out'}],
