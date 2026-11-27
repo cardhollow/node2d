@@ -1,6 +1,9 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.3). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v42.2.4). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 42.2.4
+- Expression Save is no longer blocked by syntax or result-type errors. The expression is stored as entered, validation messages remain visible while editing, and a saved expression with errors produces a notice so it can be corrected before runtime testing.
 
 ## Version 42.2.3
 - Fixed `pushOutput` so it remains in the ScriptNode registry and appears under Actions. The registry ordering pass now retains newly registered ScriptNodes even when a name has not yet been added to its preferred-order list.
