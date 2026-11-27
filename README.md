@@ -1,6 +1,20 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v43.0.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v44.0.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 44.0.1 — Screen-relative input priority correction
+
+- Corrected pointer hit-testing so **Screen-relative Nodes are checked before World-relative Nodes**. A Screen-relative Node remains clickable even when a World-relative Node visually covers it.
+- World-relative hit-testing is used only when no Screen-relative Node is hit. Within each relative mode, the higher Node Index is checked first.
+- Rendering and visual layering are unchanged.
+
+## Version 44.0.0 — Input priority, Sprite Transform, Physics override, Collision Filters, and Tags
+
+- World-relative Nodes receive input hit priority over Screen-relative Nodes. Within the same relative mode, the higher Node Index is checked first; the render order and separate World/Screen render passes are unchanged.
+- Added Sprite Editor **Transform** controls for X/Y pixel position (bounded by the current frame dimensions), Zoom (-100% to 100%), and Angle (0° to 360°). An active lasso selection is transformed instead of the full active layer.
+- Added **Override Physics** to each Joint. At runtime, the target receives copies of the joining Node’s Physics and Collider components, including removal when the joining Node lacks either component. Saved target components are not rewritten.
+- Added a comma-separated integer **Collision Filter** to Collider. Two colliders that share any value ignore one another for physical collision, collision events, and `isCollidedWith`. The `setCollider` ScriptNode exposes this field as a List.
+- Added the **Tag** component and `addTag` / `removeTag` Actions. `onCollideWith` and `isCollidedWith` now select targets by **Tag** or **Name**.
 
 ## Version 43.0.1 — setVariable List Replace At
 
