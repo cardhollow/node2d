@@ -1689,3 +1689,176 @@ html:fullscreen::backdrop,body:fullscreen::backdrop,#appShell:fullscreen::backdr
 .tag-component-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;padding:4px 7px;background:#202020;border:1px solid #3b3b3b;border-radius:5px;color:#ddd;font-size:11px}
 .tag-component-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
 .tag-component-add input{min-width:0;width:100%;padding:6px 8px;background:#171717;border:1px solid #444;border-radius:5px;color:#eee;font:inherit}
+
+/* v44.1.0: panel containment so content never leaks out of a narrowed/minimized panel */
+.inspector-dock>.panel,.editor-body>.inspector-dock>.panel{container-type:inline-size;container-name:editorpanel;min-width:0;overflow:hidden;}
+.panel-header{gap:6px;min-width:0;}
+.panel-header>div:first-child{min-width:0;flex:1 1 auto;overflow:hidden;}
+.panel-header>div:first-child strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.panel-subtitle{max-width:100%;}
+.panel-header .selection-id{flex:0 1 auto;min-width:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.panel-header .panel-icon{flex:0 0 auto;}
+.component-scroll,.selection-tree{min-width:0;overflow-x:hidden;overflow-y:auto;}
+.component-card,.component-body{min-width:0;max-width:100%;box-sizing:border-box;}
+.property-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.property-control{min-width:0;}
+.select-button>span:first-child{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.select-button>span:last-child{flex:0 0 auto;display:inline-flex;align-items:center;}
+.component-footer{min-width:0;}
+.add-component-button{max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.selection-tree .tree-row,.selection-tree [class*="tree-item"],.selection-tree [class*="tree-label"]{min-width:0;}
+@container editorpanel (max-width:250px){
+  .property-row,.property-row:has(.check-control){grid-template-columns:minmax(0,1fr)!important;gap:3px;padding:4px 0;}
+  .property-row.checkbox-row{grid-template-columns:minmax(0,1fr) auto!important;}
+  .property-label{white-space:normal;overflow-wrap:anywhere;}
+  .component-card-header{padding:0 6px;}
+}
+@container editorpanel (max-width:190px){
+  .panel-header .selection-id{display:none;}
+  .panel-subtitle{font-size:9px;}
+  .component-body{padding-left:6px;padding-right:6px;}
+}
+
+/* v44.1.1: scene-root drop zone and Add folder never leak out of a narrow panel */
+.root-drop,.add-folder{min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden;}
+.root-drop-icon{flex:0 0 auto;display:inline-flex;align-items:center;}
+.root-drop-label{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.add-folder{white-space:nowrap;text-overflow:ellipsis;}
+.nodes-label,.tree-separator{min-width:0;max-width:100%;}
+
+/* v44.1.1: File stays at the far left; the other groups spread evenly across the rest of the bar */
+#topbar:not(.topbar-modes-rail){display:flex!important;flex-wrap:nowrap;align-items:center;justify-content:flex-start;gap:5px;}
+#topbar:not(.topbar-modes-rail)>.top-part{flex:0 0 auto;min-width:max-content!important;justify-self:auto!important;position:relative;}
+#topbar:not(.topbar-modes-rail)>.part-left{margin:0!important;}
+#topbar:not(.topbar-modes-rail)>.top-part:not(.part-left){margin-left:auto!important;margin-right:0!important;}
+
+/* v44.1.2: Scene menu used a leftover translateX(-50%) on top of JS positioning, shoving it off-screen */
+.scene-menu,.context-menu.scene-menu{transform:none!important;}
+
+/* v44.1.2: Assets Manager toolbar - tabs on one row, actions wrap cleanly on the next */
+#assetModal .asset-toolbar{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;padding:10px 14px;min-width:0;box-sizing:border-box;}
+#assetModal .asset-tabs{display:flex;flex-wrap:wrap;gap:4px;min-width:0;}
+#assetModal .asset-tab{flex:0 0 auto;height:30px;display:inline-flex;align-items:center;justify-content:center;}
+#assetModal .asset-toolbar .asset-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;flex:0 0 auto;}
+#assetModal .asset-toolbar-group{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;}
+#assetModal .asset-toolbar-group-left,#assetModal .asset-toolbar-group-center{justify-content:flex-start;}
+#assetModal .asset-toolbar-group-right{justify-content:flex-end;margin-left:auto;}
+#assetModal .asset-toolbar .btn{flex:0 0 auto;min-width:0;height:30px;min-height:30px;padding:0 12px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;}
+#assetModal .asset-drop-hint{padding:0 4px;max-width:none;}
+@media(max-width:700px){#assetModal .asset-toolbar-group-right{margin-left:0;justify-content:flex-start;width:100%;}#assetModal .asset-drop-hint{display:none;}}
+
+/* v44.1.2: Assets Manager cards - uniform action buttons, audio symbol, tidy grid */
+.asset-card-actions{right:6px;top:6px;gap:4px;}
+.asset-card-actions .asset-edit,.asset-card-actions .asset-edit:not(.danger),.asset-card-actions .asset-edit.danger{position:static;width:24px;min-width:24px;max-width:24px;height:24px;padding:0!important;display:grid!important;place-items:center;}
+.asset-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;align-items:start;}
+.asset-card{min-width:0;display:flex;flex-direction:column;}
+.asset-name{padding:8px 9px;font-size:11px;}
+.asset-preview.audio-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#8a8a8a;}
+.audio-asset-symbol svg{width:32px;height:32px;display:block;}
+.audio-asset-meta{font-size:9px;letter-spacing:.08em;color:#777;}
+.asset-section-title{margin:2px 0 10px;}
+
+/* v44.2.0: Audio Editor */
+.uix-audio-modal{inset:0!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;transform:none!important;border-radius:0!important;padding:0!important;display:flex;flex-direction:column;overflow:hidden!important;background:#292929!important;box-sizing:border-box;}
+.uix-audio-modal *{box-sizing:border-box;}
+.uix-audio-header{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-bottom:1px solid #414141;background:#292929;}
+.uix-audio-title{min-width:0;display:flex;align-items:center;gap:10px;flex:1;}.uix-audio-title strong{font-size:12px;color:#ddd;white-space:nowrap;}
+.uix-audio-name{min-width:0;width:min(280px,100%);height:28px;padding:0 8px;background:#1f1f1f;border:1px solid #444;border-radius:5px;color:#ddd;font:inherit;font-size:12px;}
+.uix-audio-actions{display:flex;gap:6px;flex:none;}
+.uix-audio-toolbar{flex:none;display:flex;align-items:center;gap:7px;padding:7px 8px;background:#272727;border-bottom:1px solid #414141;overflow-x:auto;scrollbar-width:none;}
+.uix-audio-toolbar::-webkit-scrollbar{display:none;}
+.uix-audio-grp{display:flex;align-items:center;gap:4px;flex:none;}.uix-audio-sep{width:1px;height:22px;background:#444;flex:none;}
+.uix-audio-tb{height:28px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #444;border-radius:5px;background:#333;color:#ccc;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;}
+.uix-audio-tb:hover:not(:disabled){background:#404040;color:#fff;}.uix-audio-tb:disabled{opacity:.35;cursor:default;}
+.uix-audio-tb.active{background:#4a4220;border-color:#e4ca4e;color:#f0dc78;}
+.uix-audio-tb.rec .dot{width:9px;height:9px;border-radius:50%;background:#e25555;display:inline-block;}.uix-audio-tb.rec.active{background:#4a2222;border-color:#e25555;color:#ffb0b0;}
+.uix-audio-time{min-width:64px;text-align:right;font:12px ui-monospace,Consolas,monospace;color:#e4ca4e;padding:0 4px;}
+.uix-audio-main{flex:1;min-height:0;display:flex;}
+.uix-audio-stage{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#202020;}
+.uix-audio-rulerrow{flex:none;display:flex;height:28px;}
+.uix-audio-corner{flex:0 0 190px;display:flex;align-items:center;padding:0 10px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#888;background:#292929;border-right:1px solid #414141;border-bottom:1px solid #414141;}
+.uix-audio-rulerwrap{flex:1;min-width:0;overflow:hidden;}.uix-audio-rulerwrap canvas{display:block;cursor:pointer;touch-action:none;}
+.uix-audio-scroll{flex:1;min-height:0;display:flex;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
+.uix-audio-headers{flex:0 0 190px;background:#292929;border-right:1px solid #414141;}
+.uix-audio-lanes{flex:1;min-width:0;position:relative;}.uix-audio-lanes canvas{display:block;touch-action:none;}
+.uix-audio-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:#777;font-size:13px;pointer-events:none;}.uix-audio-empty[hidden]{display:none;}
+.uix-audio-th{padding:8px 9px;border-bottom:1px solid #383838;border-left:3px solid var(--tc,#e4ca4e);display:flex;flex-direction:column;justify-content:center;gap:6px;cursor:pointer;}
+.uix-audio-th.active{background:#2f2d22;}
+.uix-audio-th-top{display:flex;align-items:center;gap:4px;min-width:0;}
+.uix-audio-th-name{flex:1;min-width:0;height:24px;padding:0 6px;background:#1f1f1f;border:1px solid #3d3d3d;border-radius:4px;color:#ddd;font:inherit;font-size:11px;}
+.uix-audio-mini{flex:none;width:24px;height:24px;padding:0;display:inline-grid;place-items:center;border:1px solid #444;border-radius:4px;background:#333;color:#bbb;font:inherit;font-size:11px;cursor:pointer;}
+.uix-audio-mini:hover{background:#444;color:#fff;}.uix-audio-mini.on{background:#4a4220;border-color:#e4ca4e;color:#f0dc78;}
+.uix-audio-th-row{display:grid;grid-template-columns:26px minmax(0,1fr) 34px;align-items:center;gap:6px;font-size:10px;color:#999;}
+.uix-audio-th-row input[type=range]{width:100%;min-width:0;margin:0;}.uix-audio-th-row output{text-align:right;font-variant-numeric:tabular-nums;}
+.uix-audio-hbar{flex:none;padding:0 0 0 190px;background:#262626;border-top:1px solid #383838;}.uix-audio-hbar input{display:block;width:100%;margin:0;height:14px;}
+.uix-audio-statusbar{flex:none;height:26px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 10px;background:#292929;border-top:1px solid #414141;font-size:11px;color:#999;}
+.uix-audio-statusbar>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.uix-audio-meter{flex:0 0 120px;height:8px;background:#1b1b1b;border-radius:4px;overflow:hidden;border:1px solid #3a3a3a;}.uix-audio-meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#6fcf6f,#e4ca4e 70%,#e25555);}
+.uix-audio-side{flex:0 0 250px;min-width:0;overflow-y:auto;overflow-x:hidden;background:#292929;border-left:1px solid #414141;padding:8px;display:flex;flex-direction:column;gap:8px;}
+.uix-audio-card{border:1px solid #3d3d3d;border-radius:7px;background:#252525;padding:9px;display:flex;flex-direction:column;gap:8px;min-width:0;}
+.uix-audio-card h4{margin:0;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#888;font-weight:600;}
+.uix-audio-card select,.uix-audio-field select{width:100%;min-width:0;height:28px;background:#1f1f1f;border:1px solid #444;border-radius:5px;color:#ddd;font:inherit;font-size:12px;padding:0 6px;}
+.uix-audio-field{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;font-size:11px;color:#aaa;min-width:0;}
+.uix-audio-field input[type=range]{width:100%;margin:0;}.uix-audio-field output{font-size:10px;color:#e4ca4e;font-variant-numeric:tabular-nums;}
+.uix-audio-fxparams{display:flex;flex-direction:column;gap:8px;}
+.uix-audio-check{display:flex;align-items:center;gap:7px;font-size:12px;color:#bbb;}
+.uix-audio-hint{margin:0;font-size:11px;line-height:1.4;color:#777;overflow-wrap:anywhere;}
+.uix-audio-row{display:flex;flex-wrap:wrap;gap:6px;}.uix-audio-row .btn{flex:1 1 auto;min-width:0;white-space:nowrap;}
+.uix-audio-markers{display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto;}
+.uix-audio-marker{display:grid;grid-template-columns:auto minmax(0,1fr) 24px;gap:5px;align-items:center;}
+.uix-audio-marker input{min-width:0;height:24px;padding:0 6px;background:#1f1f1f;border:1px solid #3d3d3d;border-radius:4px;color:#ddd;font:inherit;font-size:11px;}
+.uix-audio-link{height:24px;padding:0 6px;border:0;background:transparent;color:#e4ca4e;font:11px ui-monospace,Consolas,monospace;cursor:pointer;text-decoration:underline;}
+.uix-audio-side .btn{height:30px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@media(max-width:820px){.uix-audio-main{flex-direction:column}.uix-audio-side{flex:0 0 auto;max-height:42%;border-left:0;border-top:1px solid #414141;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));align-items:start}.uix-audio-corner,.uix-audio-headers{flex-basis:150px}.uix-audio-hbar{padding-left:150px}.uix-audio-th-row{grid-template-columns:22px minmax(0,1fr) 30px}}
+.uix-audio-modal{accent-color:#e4ca4e;}
+.uix-audio-headers{flex:0 0 190px;width:190px;min-width:0;max-width:190px;overflow:hidden;}
+.uix-audio-th{min-width:0;overflow:hidden;}
+.uix-audio-toolbar{flex-wrap:wrap;overflow:visible;row-gap:6px;}
+.uix-audio-sep{display:none;}
+.uix-audio-grp{padding-right:8px;margin-right:2px;border-right:1px solid #444;}.uix-audio-grp:last-child{border-right:0;}
+@media(max-width:820px){.uix-audio-headers{flex-basis:150px;width:150px;max-width:150px;}}
+
+/* v44.2.0: sprite editor additions */
+.sprite-pal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(18px,1fr));gap:3px;margin:8px 0 6px;}
+.sprite-pal-swatch{aspect-ratio:1;min-width:0;padding:0;border:1px solid #555;border-radius:3px;background:linear-gradient(var(--sw),var(--sw)),repeating-conic-gradient(#3a3a3a 0 25%,#2a2a2a 0 50%) 0 0/8px 8px;cursor:pointer;}
+.sprite-pal-swatch:hover{border-color:#ddd;}.sprite-pal-swatch.active{outline:2px solid #e4ca4e;outline-offset:1px;}
+.sprite-pal-actions{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;}.sprite-pal-actions .btn{min-width:0;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sprite-sub-title{margin-top:10px;}
+.sprite-onion-options{display:flex;flex-direction:column;gap:6px;margin-top:6px;}.sprite-onion-options[hidden]{display:none;}
+.sprite-sheet-modal{width:min(440px,calc(100vw - 24px));}
+.sprite-sheet-body{display:flex;flex-direction:column;gap:10px;padding:2px 0 10px;min-width:0;}
+.sprite-sheet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.sprite-sheet-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#aaa;min-width:0;}
+.sprite-sheet-field input,.sprite-sheet-field select{width:100%;min-width:0;height:30px;padding:0 8px;background:#1f1f1f;border:1px solid #444;border-radius:5px;color:#ddd;font:inherit;}
+.sprite-sheet-preview{display:block;max-width:100%;max-height:240px;margin:0 auto;border:1px solid #444;border-radius:4px;image-rendering:pixelated;object-fit:contain;}
+.sprite-sheet-info{font-size:12px;color:#999;line-height:1.4;overflow-wrap:anywhere;}
+
+/* v44.2.0 fix: Create Asset icon + Audio Editor on short (landscape phone) screens */
+.choice-icon svg{width:1.15em;height:1.15em;display:block;}
+.uix-audio-panelbtn{display:none;}
+.uix-audio-lanes canvas{touch-action:pan-y;}
+@supports(padding:max(0px)){.uix-audio-header,.uix-audio-toolbar,.uix-audio-statusbar{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));}}
+@media(max-height:520px){
+  #assetCreateModal .project-choice-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+  #assetCreateModal .project-choice{padding:10px;min-width:0;}#assetCreateModal .project-choice small{display:none;}
+  .uix-audio-header{height:40px;padding-top:4px;padding-bottom:4px;}
+  .uix-audio-title strong{display:none;}.uix-audio-name{height:28px;}
+  .uix-audio-panelbtn{display:inline-flex;align-items:center;}.uix-audio-actions .btn{height:28px;padding:0 10px;font-size:12px;}
+  .uix-audio-toolbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:4px;padding-top:4px;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .uix-audio-toolbar::-webkit-scrollbar{display:none;}
+  .uix-audio-grp{flex:none;gap:3px;padding-right:6px;margin-right:0;}
+  .uix-audio-tb{height:30px;min-width:34px;padding:0 9px;}
+  .uix-audio-time{min-width:58px;font-size:11px;}
+  .uix-audio-main{position:relative;flex-direction:row;}
+  .uix-audio-rulerrow{height:22px;}.uix-audio-corner{flex-basis:132px;font-size:9px;padding:0 6px;}
+  .uix-audio-headers{flex-basis:132px;width:132px;max-width:132px;}
+  .uix-audio-th{padding:4px 6px;gap:3px;}
+  .uix-audio-th-top{gap:3px;}.uix-audio-th-name{height:22px;font-size:10px;padding:0 4px;}.uix-audio-mini{width:22px;height:22px;}
+  .uix-audio-th-row{grid-template-columns:minmax(0,1fr) 28px;gap:4px;font-size:9px;}.uix-audio-th-row>span{display:none;}
+  .uix-audio-th-row input[type=range]{height:14px;}
+  .uix-audio-hbar{padding-left:132px;}.uix-audio-hbar input{height:12px;}
+  .uix-audio-statusbar{height:20px;font-size:10px;}.uix-audio-meter{flex-basis:80px;}
+  .uix-audio-side{position:absolute;right:0;top:0;bottom:0;z-index:6;width:min(300px,62vw);flex:none;max-height:none;display:flex;flex-direction:column;border-left:1px solid #414141;border-top:0;box-shadow:-8px 0 20px #0008;transform:translateX(105%);transition:transform .18s ease;}
+  .uix-audio-main.side-open .uix-audio-side{transform:none;}
+  .uix-audio-card{padding:8px;gap:6px;}
+}

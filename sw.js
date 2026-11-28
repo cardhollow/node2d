@@ -1,4 +1,4 @@
-const CACHE_NAME='uix-node2d-v44-0-1-screen-input-priority';
+const CACHE_NAME='uix-node2d-v44-2-1-audio-mobile-fix';
 const ROOT=new URL('./',self.location.href);
 const EXTRA_FILES=['help/index.html','help/help.json','updates/index.html','updates/changes.json'];
 const STATIC_ASSETS=[
@@ -16,6 +16,7 @@ const STATIC_ASSETS=[
   './js/gifConvert.js',
   './js/keyBinds.js',
   './js/midiEditor.js',
+  './js/audioEditor.js',
   './js/midiParser.js',
   './js/ndcCodec.js',
   './js/ndcLoadWorker.js',

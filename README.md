@@ -1,6 +1,40 @@
 # Node2D
 
-Node2D is a browser-based 2D game engine and visual editor by CardHollow (v44.0.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+Node2D is a browser-based 2D game engine and visual editor by CardHollow (v44.2.1). Build games with Scenes, Nodes, Components, visual ScriptNodes, assets, cameras, audio, MIDI, runtime testing, and web export.
+
+## Version 44.2.0 — Audio Editor and Sprite Editor tools
+
+**Audio Editor** (Assets Manager → Create → Audio Editor, or the pencil on an audio asset)
+- Record from the microphone (level meter, pause/resume, optional voice cleanup) or import/drag-drop audio files; each becomes a track.
+- Waveform editing with zoom, selection, cut/copy/paste/delete, trim, silence, split, undo/redo.
+- Multi-track mixing: per-track volume, pan, mute, solo, and dragging tracks in time with the Move tool.
+- Effects: gain, normalize, fade in/out, reverse, invert, speed/pitch, low/high-pass, 3-band EQ, noise gate, compressor, echo, reverb.
+- Markers saved with the asset, "Save selection as new asset", and export options (44.1/22.05/11.025 kHz, mono/stereo, 16/8-bit, clipping protection). Saves as WAV.
+
+**Sprite Editor**
+- Magic Wand selection tool (tolerance, contiguous, Shift add, Alt subtract).
+- Color palette with swatches, From Sprite, Snap to palette, and persistence.
+- Onion skin (frames before/after, tinted, adjustable opacity).
+- Sprite sheet export (PNG + JSON) and import (grid slicing with preview).
+
+## Version 44.1.2 — Scene menu and Assets Manager UI fixes
+
+- Scene menu no longer opens partly off the left edge of the screen (a leftover centering transform fought the menu positioning).
+- Assets Manager toolbar is reorganized: tabs on the first row, Import/Create/Select on the left and Paste/Import-from-local on the right, wrapping cleanly instead of colliding.
+- Asset cards: Edit and Remove buttons are uniform squares, and Audio assets now show a waveform icon with their format instead of a camera icon.
+
+## Version 44.1.1 — Top bar layout, panel text fix, physics optimization
+
+- Top bar: **File** stays at the far left; Scene/Assets, Actions/Undo/Redo, the mode buttons and Add Node/Play/Fullscreen are now grouped and spread evenly across the rest of the bar.
+- "Drop here to place at scene root" and "Add folder" now truncate with an ellipsis inside a narrowed Selection panel instead of running off-screen.
+- Physics step optimized with identical results: collider cache keys are built only for static bodies and compared without string building, mass-property caching no longer builds strings, and static bodies share one constant props object.
+
+## Version 44.1.0 — Collision Filter and UI alignment fixes
+
+- Fixed Collider **Collision Filter** not working while physics runs: the physics engine now skips any pair whose colliders share at least one filter value (no contact, no response, no collision events, no `isCollidedWith`). Colliders with no shared value, or an empty filter, still collide normally.
+- Fixed the Addon Management dialog layout (padding, card grid, button alignment, long names/descriptions/UUIDs).
+- Editor panels now clip and reflow their content when narrowed or minimized instead of leaking text outside the panel.
+- Fixed the top bar's right-hand buttons overlapping the mode buttons.
 
 ## Version 44.0.1 — Screen-relative input priority correction
 
