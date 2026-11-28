@@ -1,5 +1,85 @@
 [
   {
+    "title": "Version 44.2.1",
+    "items": [
+      {
+        "id": "v44-2-1-audio-mobile",
+        "subtitle": "Audio Editor on landscape phones",
+        "contents": "The Audio Editor now has a compact landscape layout: a slim header, a single scrolling toolbar, smaller track headers and lanes, and a Panel button that slides the Effects, Markers and Export panel over the stage. Also fixed the oversized Audio Editor icon in the Create Asset window."
+      }
+    ]
+  },
+  {
+    "title": "Version 44.2.0",
+    "items": [
+      {
+        "id": "v44-2-0-audio-editor",
+        "subtitle": "New Audio Editor",
+        "contents": "Record from the microphone or import audio, edit it on a multi-track waveform timeline (selection, cut/copy/paste, trim, split, silence, undo/redo), mix tracks with volume, pan, mute, solo and time offset, and apply effects: gain, normalize, fades, reverse, speed/pitch, filters, EQ, noise gate, compressor, echo and reverb. Add markers, save a selection as a new asset, and export WAV at several sample rates, channel counts and bit depths. Open it from Create → Audio Editor, or the pencil on an Audio asset."
+      },
+      {
+        "id": "v44-2-0-sprite-wand-palette",
+        "subtitle": "Magic Wand and color palette",
+        "contents": "The Sprite Editor gains a Magic Wand selection tool with tolerance and contiguous options (Shift adds, Alt subtracts), and a saved color palette with swatches, From Sprite extraction and Snap to Palette."
+      },
+      {
+        "id": "v44-2-0-sprite-onion-sheets",
+        "subtitle": "Onion skin and sprite sheets",
+        "contents": "Onion skin shows tinted frames before and after the current one with adjustable opacity. Frames can be exported as a sprite sheet PNG with an optional JSON description, and a sheet image can be sliced into frames with a live grid preview."
+      }
+    ]
+  },
+  {
+    "title": "Version 44.1.2",
+    "items": [
+      {
+        "id": "v44-1-2-scene-menu-position",
+        "subtitle": "Scene menu stays on screen",
+        "contents": "The Scene menu was shifted left by a leftover centering transform and clipped off the screen. It now opens directly under the Scene button and is clamped to the viewport."
+      },
+      {
+        "id": "v44-1-2-assets-manager-ui",
+        "subtitle": "Assets Manager alignment",
+        "contents": "The toolbar now uses two rows (tabs, then actions) with consistent button heights and no wrapping text. Asset cards have uniform Edit and Remove buttons, and Audio assets show a waveform icon and format label instead of a camera icon."
+      }
+    ]
+  },
+  {
+    "title": "Version 44.1.1",
+    "items": [
+      {
+        "id": "v44-1-1-topbar-groups",
+        "subtitle": "Top bar groups spread across the bar",
+        "contents": "File stays pinned to the left. The remaining groups (Scene and Assets, Actions with Undo and Redo, the mode buttons, and Add Node with Play and Fullscreen) are spread evenly across the rest of the top bar with equal gaps and no overlap."
+      },
+      {
+        "id": "v44-1-1-root-drop-overflow",
+        "subtitle": "Scene root drop zone stays inside the panel",
+        "contents": "The Drop here to place at scene root zone and the Add folder button truncate with an ellipsis when the Selection panel is narrowed instead of overflowing the screen. The full text is available as a tooltip."
+      },
+      {
+        "id": "v44-1-1-physics-optimization",
+        "subtitle": "Physics step optimization",
+        "contents": "Collider cache keys are only built for static bodies and compared without string allocation, mass property caching avoids per-step string building, and static bodies share one constant props object. A 400-step comparison of 60 mixed bodies produced identical positions, velocities, contacts and collision pairs to the previous engine."
+      }
+    ]
+  },
+  {
+    "title": "Version 44.1.0",
+    "items": [
+      {
+        "id": "v44-1-0-collision-filter-physics",
+        "subtitle": "Collision Filter now applies during physics",
+        "contents": "The physics step previously ignored Collider Collision Filter values, so every collider collided. Pairs whose colliders share at least one filter value are now skipped entirely: no physical response, collision events, or isCollidedWith results. Colliders without a shared value (or with an empty filter) collide as before."
+      },
+      {
+        "id": "v44-1-0-ui-alignment",
+        "subtitle": "Addon Management and panel layout fixes",
+        "contents": "Addon Management now has consistent padding, an aligned card grid, uniform action buttons, and wrapping/ellipsis for long names, descriptions and UUIDs. Selection and Component panels clip and reflow their content when narrowed or minimized, and the top bar no longer overlaps its mode and Add Node buttons."
+      }
+    ]
+  },
+  {
     "title": "Version 44.0.1",
     "items": [
       {
