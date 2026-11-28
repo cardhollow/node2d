@@ -15,7 +15,8 @@
   const EXT = /\.[^.]+$/;
 
   const glyphKeys = {rect:'box', bucket:'fill', box:'box'};
-  const glyph = name => `<span class="ui-glyph" aria-hidden="true">${window.UIXIcons?.get(glyphKeys[name]||name)||''}</span>`;
+  const WAND_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20 15 9"/><path d="m14 4 .8 1.7L16.5 6.5l-1.7.8L14 9l-.8-1.7-1.7-.8 1.7-.8z"/><path d="M19 11l.6 1.2 1.2.6-1.2.6L19 14.6l-.6-1.2-1.2-.6 1.2-.6z"/></svg>';
+  const glyph = name => `<span class="ui-glyph" aria-hidden="true">${name==='wand'?WAND_SVG:(window.UIXIcons?.get(glyphKeys[name]||name)||'')}</span>`;
 
   let modalSeq = 0;
   let activeEditor = null;
@@ -231,6 +232,12 @@
             <div class="sprite-section-title">Smudge</div>
             <div class="sprite-mini-hint">Drag through the image to smear nearby colors. Brush Size controls thickness and Strength controls the smear amount.</div>
           </section>
+          <section class="sprite-tool-section" data-wand-settings hidden>
+            <div class="sprite-section-title">Magic Wand</div>
+            <label class="sprite-strength-row"><span>Tolerance</span><input data-wand-tolerance type="range" min="0" max="255" value="0"><b data-wand-tolerance-label>0</b></label>
+            <label class="sprite-check-row"><input type="checkbox" data-wand-contiguous checked><span>Contiguous only</span></label>
+            <div class="sprite-mini-hint">Click to select matching pixels on the active layer. Shift adds, Alt subtracts. Tolerance is the largest allowed difference per channel.</div>
+          </section>
           <section class="sprite-tool-section sprite-texture-controls" data-texture-brush-controls hidden>
             <div class="sprite-section-title">Texture Brush</div>
             <div class="sprite-texture-brush-row"><span data-texture-brush-name>No sprite selected</span><button class="btn" type="button" data-texture-brush-select>Select Sprite</button></div>
@@ -254,6 +261,9 @@
           <section class="sprite-tool-section">
             <div class="sprite-section-title">Color</div>
             <div class="sprite-color-row"><span class="sprite-color-swatch" data-sprite-color-swatch></span><input data-sprite-color type="text" value="#FFFFFFFF" spellcheck="false"></div>
+            <div class="sprite-pal-grid" data-palette-grid></div>
+            <div class="sprite-pal-actions"><button class="btn" type="button" data-palette-add title="Add the current color to the palette">+ Add</button><button class="btn" type="button" data-palette-extract title="Collect the colors used by the active layer">From Sprite</button><button class="btn" type="button" data-palette-snap title="Replace every pixel of the active layer with its nearest palette color">Snap</button><button class="btn" type="button" data-palette-reset title="Restore the default palette">Reset</button></div>
+            <div class="sprite-mini-hint">Click a swatch to use it. Shift-click or right-click removes it.</div>
           </section>
           <section class="sprite-tool-section sprite-modulation-section">
             <div class="sprite-section-title">Modulation</div>
@@ -353,6 +363,16 @@
             <div class="sprite-frame-list" data-frame-list></div>
             <div class="sprite-frame-actions"><button class="btn" data-frame-action="duplicate" type="button">${glyph('copy')}Duplicate</button><button class="btn" data-frame-action="add" type="button">${glyph('add')}Add Frame</button><button class="btn" data-frame-action="merge-down" type="button" title="Merge the selected frame with the frame below it as separate editable layers">Merge Down</button><button class="btn" data-frame-action="import" type="button"><i class="ui-svg" data-icon="add"></i> Import Sprite</button></div>
             <div class="sprite-play-row"><button class="btn" data-frame-action="prev" type="button" aria-label="Previous frame">${glyph('prev')}</button><button class="btn" data-frame-action="play" type="button">${glyph('play')}Play</button><button class="btn" data-frame-action="next" type="button" aria-label="Next frame">${glyph('next')}</button><label><span>FPS</span><input data-sprite-fps type="number" min="1" max="120" value="8"></label></div>
+            <div class="sprite-section-title sprite-sub-title">Onion Skin</div>
+            <button class="btn toggle-btn" type="button" data-onion-toggle>Onion Skin: Off</button>
+            <div class="sprite-onion-options" data-onion-options hidden>
+              <label class="sprite-texture-setting-row"><span>Before</span><select data-onion-prev><option>0</option><option selected>1</option><option>2</option><option>3</option></select></label>
+              <label class="sprite-texture-setting-row"><span>After</span><select data-onion-next><option>0</option><option selected>1</option><option>2</option><option>3</option></select></label>
+              <label class="sprite-strength-row"><span>Opacity</span><input data-onion-opacity type="range" min="10" max="80" value="35"><b data-onion-opacity-label>35%</b></label>
+            </div>
+            <div class="sprite-section-title sprite-sub-title">Sprite Sheet</div>
+            <div class="sprite-frame-actions"><button class="btn" type="button" data-sheet-import>Import Sheet</button><button class="btn" type="button" data-sheet-export>Export Sheet</button></div>
+            <input type="file" data-sheet-file accept="image/*" hidden>
             <div class="sprite-frame-hint">Drag frames to reorder. PNGs show the composite; layer stacks remain editable in the project.</div>
           </section>
         </aside>
@@ -368,6 +388,7 @@
       lassoPoints:[],lassoDrawing:false,selection:null,selectionMode:'set',selectionGestureMode:'set',selectionRect:null,clipboard:null,layerClipboard:null,modulateColor:[255,255,255,255],modulateStrength:100,canvasRenderRaf:0,selectionDrag:null
     };
     bindEditor(ed);
+    bindExtras(ed);
     enablePanelControls(ed);
     setPreviewVisibility(ed,true);
     activeEditor=ed;
@@ -455,7 +476,7 @@
   function renderTools(ed){
     const basic=ed.modal.querySelector('[data-basic-tools]'), shapes=ed.modal.querySelector('[data-shape-tools]');
     basic.innerHTML='';shapes.innerHTML='';
-    [['pencil','pencil','Pencil'],['specialpen','specialpen','Special Pen'],['smudge','smudge','Smudge'],['eyedropper','eyedropper','Eyedropper'],['texture','texture','Texture Brush'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso'],['box','rect','Box Select']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
+    [['pencil','pencil','Pencil'],['specialpen','specialpen','Special Pen'],['smudge','smudge','Smudge'],['eyedropper','eyedropper','Eyedropper'],['texture','texture','Texture Brush'],['eraser','eraser','Eraser'],['fill','bucket','Bucket'],['line','line','Line'],['point','point','Point'],['lasso','lasso','Lasso'],['wand','wand','Magic Wand'],['box','rect','Box Select']].forEach(([name,g,label])=>basic.append(toolButton(ed,name,g,label)));
     [['rect','rect','Rect'],['ellipse','circle','Circle'],['triangle','triangle','Triangle']].forEach(([name,g,label])=>shapes.append(toolButton(ed,name,g,label)));
   }
   function toolButton(ed,name,g,label){
@@ -628,12 +649,13 @@
       const cell=clientToCell(ed,e.clientX,e.clientY);if(!cell)return;
       if(ed.selection?.floating&&!pointInSelection(ed,cell))commitFloatingSelection(ed,false);
       if(ed.tool==='eyedropper'){ed.color=sampleCompositePixel(currentFrame(ed),cell.x,cell.y);syncColor(ed);renderStatus(ed,cell);render(ed);return;}
-      if((ed.tool==='lasso'||ed.tool==='box') && ed.selection && pointInSelection(ed,cell) && e.button===0){
+      if((ed.tool==='lasso'||ed.tool==='box'||ed.tool==='wand') && ed.selection && pointInSelection(ed,cell) && e.button===0){
         if(ed.selection.floating){const sel=ed.selection;ed.selectionDrag={floating:true,pointerX:e.clientX,pointerY:e.clientY,baseSelection:{x:sel.x,y:sel.y,width:sel.width,height:sel.height,mask:new Set(sel.mask),pixels:clonePixels(sel.pixels)}};}
         else {pushUndo(ed);ed.selectionDrag={pointerX:e.clientX,pointerY:e.clientY,dx:0,dy:0,basePixels:clonePixels(currentFrame(ed).pixels),baseSelection:JSON.parse(JSON.stringify({x:ed.selection.x,y:ed.selection.y,width:ed.selection.width,height:ed.selection.height,mask:[...ed.selection.mask],pixels:ed.selection.pixels}))};}
         return;
       }
       if(ed.tool==='lasso'){ed.selectionGestureMode=e.altKey?'subtract':(e.shiftKey?'add':(ed.selectionMode||'set'));ed.lassoDrawing=true;ed.lassoPoints=[{...cell}];ed.lastCell=cell;scheduleCanvasRender(ed);return;}
+      if(ed.tool==='wand'&&e.button===0){wandSelect(ed,cell,e);return;}
       if(ed.tool==='box'){ed.selectionGestureMode=e.altKey?'subtract':(e.shiftKey?'add':(ed.selectionMode||'set'));ed.selectionRect={a:{...cell},b:{...cell}};scheduleCanvasRender(ed);return;}
       if(ed.tool==='point'){handlePointDown(e,cell);return;}
       if(ed.tool==='fill'){pushUndo(ed);fill(ed,cell);ed.lastCell=cell;renderStatus(ed,cell);render(ed);return;}
@@ -1479,7 +1501,7 @@
     const r=wrap.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,r.width),h=Math.max(1,r.height),pw=Math.max(1,Math.floor(w*dpr)),ph=Math.max(1,Math.floor(h*dpr));
     if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph;}
     const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);drawChecker(ctx,w,h,12);
-    const f=currentFrame(ed);ctx.save();ctx.translate(w/2+ed.pan.x,h/2+ed.pan.y);ctx.scale(ed.zoom,ed.zoom);drawFrame(ctx,f,ed);
+    const f=currentFrame(ed);ctx.save();ctx.translate(w/2+ed.pan.x,h/2+ed.pan.y);ctx.scale(ed.zoom,ed.zoom);drawOnion(ctx,f,ed);drawFrame(ctx,f,ed);
     if(ed.drawing&&ed.drawStart&&ed.lastCell&&['line','rect','ellipse','triangle'].includes(ed.tool)){const end=constrainShapeEnd(ed,ed.drawStart,ed.lastCell,ed.tool);drawPreviewCells(ctx,f,ed,shapeCells(ed.tool,ed.drawStart,end,ed.perfectShape));}
     if(ed.tool==='point'&&ed.points.length){const pts=ed.points;for(let i=1;i<pts.length;i++)drawPreviewCells(ctx,f,ed,[...shapeCells('line',pts[i-1],pts[i],false)]);drawPreviewCells(ctx,f,ed,pts);}
     if(ed.tool==='box'&&ed.selectionRect){const a=ed.selectionRect.a,b=ed.selectionRect.b,ox=-f.width/2,oy=-f.height/2;ctx.strokeStyle='rgba(220,210,120,.95)';ctx.lineWidth=1/ed.zoom;ctx.setLineDash([3/ed.zoom,3/ed.zoom]);ctx.strokeRect(Math.min(a.x,b.x)+ox,Math.min(a.y,b.y)+oy,Math.abs(a.x-b.x)+1,Math.abs(a.y-b.y)+1);ctx.setLineDash([]);}
@@ -1532,6 +1554,7 @@
     const previewToggle=q('[data-sprite-toggle-preview]');if(previewToggle){previewToggle.innerHTML=ed.showPreview?'<i class="ui-svg" data-icon="sprite"></i> Preview':'<i class="ui-svg" data-icon="sprite"></i> Preview Off';previewToggle.classList.toggle('active',!!ed.showPreview);}const mergeFrame=q('[data-frame-action="merge-down"]');if(mergeFrame)mergeFrame.disabled=frameBelowIndex(ed,ed.frameIndex)<0;
     const inspectorToggle=q('[data-sprite-toggle-inspector]');if(inspectorToggle)inspectorToggle.innerHTML=ed.modal.querySelector('.sprite-inspector-panel')?.classList.contains('mobile-visible')?'Hide Inspector':'<i class="ui-svg" data-icon="layers"></i> Layers';
     renderPreview(ed);renderFrameList(ed);renderLayerList(ed);
+    ed.refreshExtras?.();
   }
   function syncFrameFields(ed){const f=currentFrame(ed),q=s=>ed.modal.querySelector(s);q('[data-sprite-width]').value=f.width;q('[data-sprite-height]').value=f.height;q('[data-sprite-fps]').value=ed.fps;q('[data-frame-count]').textContent=String(visibleFrameIndices(ed).length);}
   function renderFrameList(ed){
@@ -1612,5 +1635,176 @@
       case'delete':requestDeleteSelection(ed);break;
     }
   }
+
+  /* ===== v44.2.0 additions: magic wand, palette, onion skin, sprite sheets ===== */
+  function wandSelect(ed,cell,e){
+    const f=currentFrame(ed),px=f.pixels,w=f.width,h=f.height;
+    if(!cell||cell.x<0||cell.y<0||cell.x>=w||cell.y>=h)return;
+    if(ed.selection?.floating)commitFloatingSelection(ed,false);
+    const opts=ed.wand||{tolerance:0,contiguous:true},tol=opts.tolerance,t=px[cell.y][cell.x];
+    const match=p=>{if(t[3]===0||p[3]===0)return t[3]===p[3];return Math.max(Math.abs(p[0]-t[0]),Math.abs(p[1]-t[1]),Math.abs(p[2]-t[2]),Math.abs(p[3]-t[3]))<=tol;};
+    const mask=new Set();
+    if(opts.contiguous){
+      const seen=new Uint8Array(w*h),stack=[cell.y*w+cell.x];seen[stack[0]]=1;
+      while(stack.length){
+        const i=stack.pop(),x=i%w,y=(i-x)/w;
+        if(!match(px[y][x]))continue;
+        mask.add(`${x},${y}`);
+        if(x>0&&!seen[i-1]){seen[i-1]=1;stack.push(i-1);}
+        if(x<w-1&&!seen[i+1]){seen[i+1]=1;stack.push(i+1);}
+        if(y>0&&!seen[i-w]){seen[i-w]=1;stack.push(i-w);}
+        if(y<h-1&&!seen[i+w]){seen[i+w]=1;stack.push(i+w);}
+      }
+    }else{for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(match(px[y][x]))mask.add(`${x},${y}`);}
+    const mode=e.altKey?'subtract':(e.shiftKey?'add':(ed.selectionMode||'set')),prev=ed.selectionMode;
+    ed.selectionMode=mode;ed.selection=combineSelection(ed,selectionFromMask(ed,mask));ed.selectionMode=prev;ed.selectionDrag=null;
+    render(ed);
+  }
+
+  const PALETTE_KEY='uix-sprite-palette-v1';
+  const DEFAULT_PALETTE=['#000000FF','#FFFFFFFF','#9D9D9DFF','#5B5B5BFF','#E03C3CFF','#E0883CFF','#E0D23CFF','#5BC24AFF','#3CB8A8FF','#3C7BE0FF','#6B4FD6FF','#C24FB6FF','#7A4B2AFF','#F2C9A0FF','#2B2B4AFF','#1E5A3AFF'];
+  function loadPalette(){try{const v=JSON.parse(localStorage.getItem(PALETTE_KEY)||'null');if(Array.isArray(v)&&v.every(x=>typeof x==='string')){return v.filter(x=>{try{parseHex(x);return true;}catch{return false;}}).slice(0,256);}}catch{}return [...DEFAULT_PALETTE];}
+  function savePalette(list){try{localStorage.setItem(PALETTE_KEY,JSON.stringify(list));}catch{}}
+  function nearestPaletteColor(palette,p){let best=null,bd=Infinity;for(const c of palette){const dr=c[0]-p[0],dg=c[1]-p[1],db=c[2]-p[2],d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;best=c;}}return best;}
+
+  function drawOnion(ctx,f,ed){
+    const o=ed.onion;if(!o?.on||ed.playing)return;
+    const list=visibleFrameIndices(ed),pos=list.indexOf(ed.frameIndex);if(pos<0)return;
+    const x0=-f.width/2,y0=-f.height/2;
+    const draw=(idx,tint,alpha)=>{
+      const fr=ed.frames[idx];if(!fr||fr.width!==f.width||fr.height!==f.height)return;
+      const c=ed.__onionCanvas||(ed.__onionCanvas=document.createElement('canvas'));if(c.width!==f.width||c.height!==f.height){c.width=f.width;c.height=f.height;}
+      const g=c.getContext('2d');g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.clearRect(0,0,c.width,c.height);
+      drawLayerStack(g,fr,0,0);g.globalCompositeOperation='source-atop';g.fillStyle=tint;g.fillRect(0,0,c.width,c.height);g.globalCompositeOperation='source-over';
+      ctx.save();ctx.globalAlpha=clamp(alpha,0,1);ctx.imageSmoothingEnabled=false;ctx.drawImage(c,x0,y0);ctx.restore();
+    };
+    for(let k=o.prev;k>=1;k--){const i=list[pos-k];if(i!=null)draw(i,'rgba(255,70,70,.6)',o.opacity/100*(1-(k-1)*.25));}
+    for(let k=o.next;k>=1;k--){const i=list[pos+k];if(i!=null)draw(i,'rgba(70,200,255,.6)',o.opacity/100*(1-(k-1)*.25));}
+  }
+
+  function downloadBlob(blob,name){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);}
+  const safeFileName=v=>String(v||'sprite').replace(/[\\/:*?"<>|]+/g,'_').trim()||'sprite';
+
+  function openSheetExport(ed){
+    const idx=visibleFrameIndices(ed),n=idx.length;if(!n)return;
+    const fw=Math.max(...idx.map(i=>ed.frames[i].width)),fh=Math.max(...idx.map(i=>ed.frames[i].height));
+    const modal=makeModal('sprite-sheet-modal',`<div class="modal-header"><div><h3>Export Sprite Sheet</h3><p>${n} frame${n===1?'':'s'} · ${fw}×${fh} px each</p></div><button class="modal-close" type="button" data-sheet-close><i class="ui-svg" data-icon="close"></i></button></div>
+      <div class="sprite-sheet-body"><label class="sprite-sheet-field"><span>Columns</span><input type="number" data-sx-cols min="1" max="${n}" value="${Math.min(n,Math.ceil(Math.sqrt(n)))}"></label>
+      <label class="sprite-sheet-field"><span>Padding (px)</span><input type="number" data-sx-pad min="0" max="64" value="0"></label>
+      <label class="sprite-check-row"><input type="checkbox" data-sx-json checked><span>Also download a JSON description</span></label>
+      <div class="sprite-sheet-info" data-sx-info></div></div>
+      <div class="modal-actions"><button class="btn" type="button" data-sheet-close>Cancel</button><button class="btn primary" type="button" data-sx-go>Export PNG</button></div>`);
+    const q=s=>modal.querySelector(s),close=()=>{window.UIXApp?.closeModal?.(modal);modal.remove();};
+    const info=()=>{const cols=clamp(Math.floor(Number(q('[data-sx-cols]').value))||1,1,n),pad=clamp(Math.floor(Number(q('[data-sx-pad]').value))||0,0,64),rows=Math.ceil(n/cols);q('[data-sx-info]').textContent=`Sheet size ${cols*fw+(cols-1)*pad} × ${rows*fh+(rows-1)*pad} px (${cols} × ${rows})`;return {cols,pad,rows};};
+    modal.querySelectorAll('[data-sheet-close]').forEach(b=>b.onclick=close);q('[data-sx-cols]').oninput=info;q('[data-sx-pad]').oninput=info;info();
+    q('[data-sx-go]').onclick=()=>{
+      const {cols,pad,rows}=info(),W=cols*fw+(cols-1)*pad,H=rows*fh+(rows-1)*pad;
+      if(W>16384||H>16384){window.UIXApp?.status?.('Sheet is too large; use more columns or fewer frames');return;}
+      const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');g.imageSmoothingEnabled=false;const meta=[];
+      idx.forEach((fi,k)=>{const fr=ed.frames[fi],x=(k%cols)*(fw+pad),y=Math.floor(k/cols)*(fh+pad);drawLayerStack(g,fr,x+Math.floor((fw-fr.width)/2),y+Math.floor((fh-fr.height)/2));meta.push({name:fr.name,x,y,width:fw,height:fh});});
+      const base=safeFileName(ed.name);
+      c.toBlob(blob=>{
+        if(!blob){window.UIXApp?.status?.('Could not create the sheet image');return;}
+        downloadBlob(blob,`${base}_sheet.png`);
+        if(q('[data-sx-json]').checked)downloadBlob(new Blob([JSON.stringify({image:`${base}_sheet.png`,frameWidth:fw,frameHeight:fh,columns:cols,rows,padding:pad,fps:ed.fps,frames:meta},null,2)],{type:'application/json'}),`${base}_sheet.json`);
+        window.UIXApp?.status?.(`Exported ${n}-frame sprite sheet`);close();
+      },'image/png');
+    };
+  }
+
+  async function openSheetImport(ed,file){
+    let dataUrl;try{dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}catch{window.UIXApp?.status?.('Could not read the image');return;}
+    let img;try{img=await imageToPixels(dataUrl);}catch{window.UIXApp?.status?.('That file is not a readable image');return;}
+    const guessCols=img.height>0&&img.width%img.height===0&&img.width>img.height?img.width/img.height:1,base=currentFrame(ed);
+    const modal=makeModal('sprite-sheet-modal',`<div class="modal-header"><div><h3>Import Sprite Sheet</h3><p>${esc(file.name)} · ${img.width}×${img.height} px</p></div><button class="modal-close" type="button" data-sheet-close><i class="ui-svg" data-icon="close"></i></button></div>
+      <div class="sprite-sheet-body"><canvas class="sprite-sheet-preview" data-si-preview></canvas>
+      <div class="sprite-sheet-grid"><label class="sprite-sheet-field"><span>Columns</span><input type="number" data-si-cols min="1" max="${img.width}" value="${guessCols}"></label>
+      <label class="sprite-sheet-field"><span>Rows</span><input type="number" data-si-rows min="1" max="${img.height}" value="1"></label>
+      <label class="sprite-sheet-field"><span>Padding (px)</span><input type="number" data-si-pad min="0" max="64" value="0"></label></div>
+      <label class="sprite-sheet-field"><span>Add as</span><select data-si-mode><option value="insert">New frames after the current frame</option><option value="replace">Replace all frames (use the cell size)</option></select></label>
+      <label class="sprite-check-row"><input type="checkbox" data-si-skip checked><span>Skip empty cells</span></label>
+      <div class="sprite-sheet-info" data-si-info></div></div>
+      <div class="modal-actions"><button class="btn" type="button" data-sheet-close>Cancel</button><button class="btn primary" type="button" data-si-go>Import</button></div>`);
+    const q=s=>modal.querySelector(s),close=()=>{window.UIXApp?.closeModal?.(modal);modal.remove();};
+    const src=document.createElement('canvas');src.width=img.width;src.height=img.height;const sg=src.getContext('2d');const data=sg.createImageData(img.width,img.height);
+    for(let y=0;y<img.height;y++)for(let x=0;x<img.width;x++){const i=(y*img.width+x)*4,p=img.pixels[y][x];data.data[i]=p[0];data.data[i+1]=p[1];data.data[i+2]=p[2];data.data[i+3]=p[3];}sg.putImageData(data,0,0);
+    const read=()=>{const cols=clamp(Math.floor(Number(q('[data-si-cols]').value))||1,1,img.width),rows=clamp(Math.floor(Number(q('[data-si-rows]').value))||1,1,img.height),pad=clamp(Math.floor(Number(q('[data-si-pad]').value))||0,0,64);
+      const cw=Math.floor((img.width-(cols-1)*pad)/cols),ch=Math.floor((img.height-(rows-1)*pad)/rows);return {cols,rows,pad,cw,ch,ok:cw>=1&&ch>=1};};
+    const draw=()=>{
+      const r=read(),pv=q('[data-si-preview]'),scale=Math.max(1,Math.min(6,Math.floor(300/Math.max(img.width,img.height))||1));pv.width=img.width*scale;pv.height=img.height*scale;
+      const g=pv.getContext('2d');g.imageSmoothingEnabled=false;drawChecker(g,pv.width,pv.height,8);g.drawImage(src,0,0,pv.width,pv.height);
+      if(r.ok){g.strokeStyle='rgba(230,205,90,.9)';g.lineWidth=1;for(let cy=0;cy<r.rows;cy++)for(let cx=0;cx<r.cols;cx++)g.strokeRect((cx*(r.cw+r.pad))*scale+.5,(cy*(r.ch+r.pad))*scale+.5,r.cw*scale-1,r.ch*scale-1);}
+      const mismatch=q('[data-si-mode]').value==='insert'&&r.ok&&(r.cw!==base.width||r.ch!==base.height);
+      q('[data-si-info]').textContent=r.ok?`${r.cols*r.rows} cell${r.cols*r.rows===1?'':'s'} of ${r.cw}×${r.ch} px${mismatch?` — cells are centered/cropped to fit the current ${base.width}×${base.height} sprite`:''}`:'Grid is larger than the image';
+    };
+    ['[data-si-cols]','[data-si-rows]','[data-si-pad]','[data-si-mode]'].forEach(s=>q(s).addEventListener('input',draw));
+    modal.querySelectorAll('[data-sheet-close]').forEach(b=>b.onclick=close);draw();
+    q('[data-si-go]').onclick=()=>{
+      const r=read();if(!r.ok)return;const skip=q('[data-si-skip]').checked,replace=q('[data-si-mode]').value==='replace',prefix=assetStem({name:file.name}),w=replace?r.cw:base.width,h=replace?r.ch:base.height,made=[];
+      for(let cy=0;cy<r.rows;cy++)for(let cx=0;cx<r.cols;cx++){
+        const ox=cx*(r.cw+r.pad),oy=cy*(r.ch+r.pad),cell=makePixels(r.cw,r.ch);let any=false;
+        for(let y=0;y<r.ch;y++)for(let x=0;x<r.cw;x++){const p=img.pixels[oy+y][ox+x];cell[y][x]=[...p];if(p[3]>0)any=true;}
+        if(skip&&!any)continue;
+        const pixels=(w===r.cw&&h===r.ch)?cell:fitPixelsToFrame({width:r.cw,height:r.ch,pixels:cell},w,h,'center');
+        made.push({width:w,height:h,pixels});
+      }
+      if(!made.length){window.UIXApp?.status?.('Every cell was empty — nothing imported');return;}
+      pushUndoAllFrames(ed);
+      const frames=[];let n=0;
+      const nameFor=()=>{n++;return replace?`${prefix}${n}`:uniqueFrameName(ed,`${prefix}${n}`);};
+      for(const m of made){const nm=nameFor();frames.push(bindFrameLayers({name:nm,width:m.width,height:m.height,sourceAsset:null,layers:[{name:'Layer 1',visible:true,opacity:1,pixels:m.pixels}],activeLayer:0}));if(!replace)ed.frames.splice(ed.frameIndex+frames.length,0,frames.at(-1));}
+      if(replace){ed.frames=frames;ed.frameIndex=0;}else ed.frameIndex=ed.frameIndex+1;
+      ed.selection=null;close();fitEditor(ed);render(ed);window.UIXApp?.status?.(`Imported ${made.length} frame${made.length===1?'':'s'} from the sheet`);
+    };
+  }
+
+  function bindExtras(ed){
+    const q=s=>ed.modal.querySelector(s);
+    ed.wand={tolerance:0,contiguous:true};ed.onion={on:false,prev:1,next:1,opacity:35};ed.palette=loadPalette();
+    // Magic wand settings
+    q('[data-wand-tolerance]').addEventListener('input',e=>{ed.wand.tolerance=Number(e.target.value);q('[data-wand-tolerance-label]').textContent=String(ed.wand.tolerance);});
+    q('[data-wand-contiguous]').addEventListener('change',e=>{ed.wand.contiguous=e.target.checked;});
+    // Onion skin
+    q('[data-onion-toggle]').addEventListener('click',()=>{ed.onion.on=!ed.onion.on;render(ed);});
+    q('[data-onion-prev]').addEventListener('change',e=>{ed.onion.prev=Number(e.target.value);scheduleCanvasRender(ed);});
+    q('[data-onion-next]').addEventListener('change',e=>{ed.onion.next=Number(e.target.value);scheduleCanvasRender(ed);});
+    q('[data-onion-opacity]').addEventListener('input',e=>{ed.onion.opacity=Number(e.target.value);q('[data-onion-opacity-label]').textContent=`${ed.onion.opacity}%`;scheduleCanvasRender(ed);});
+    // Palette
+    const renderPalette=()=>{
+      const sig=ed.palette.join(',')+rgbaToHex(ed.color);if(sig===ed.__palSig)return;ed.__palSig=sig;
+      const grid=q('[data-palette-grid]');grid.innerHTML='';
+      ed.palette.forEach((hex,i)=>{const b=document.createElement('button');b.type='button';b.className='sprite-pal-swatch';b.title=hex;b.style.setProperty('--sw',hex.length===9?`rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${(parseInt(hex.slice(7,9),16)/255).toFixed(3)})`:hex);
+        if(hex.toUpperCase()===rgbaToHex(ed.color))b.classList.add('active');
+        b.addEventListener('click',e=>{if(e.shiftKey){ed.palette.splice(i,1);savePalette(ed.palette);renderPalette();return;}try{ed.color=parseHex(hex);if(ed.textureBrush)ed.textureBrush.stampKey='';}catch{}syncColor(ed);renderPalette();});
+        b.addEventListener('contextmenu',e=>{e.preventDefault();ed.palette.splice(i,1);savePalette(ed.palette);renderPalette();});
+        grid.append(b);});
+    };
+    q('[data-palette-add]').addEventListener('click',()=>{const hex=rgbaToHex(ed.color);if(!ed.palette.includes(hex)){ed.palette.push(hex);savePalette(ed.palette);}renderPalette();});
+    q('[data-palette-reset]').addEventListener('click',()=>{ed.palette=[...DEFAULT_PALETTE];savePalette(ed.palette);renderPalette();});
+    q('[data-palette-extract]').addEventListener('click',()=>{
+      const f=currentFrame(ed),seen=new Map();for(const row of f.pixels)for(const p of row){if(p[3]===0)continue;const hex=rgbaToHex(p);seen.set(hex,(seen.get(hex)||0)+1);}
+      if(!seen.size){window.UIXApp?.status?.('The active layer has no colors to collect');return;}
+      const lum=h=>{const c=parseHex(h);return .299*c[0]+.587*c[1]+.114*c[2];};
+      ed.palette=[...seen.keys()].sort((a,b)=>lum(a)-lum(b)).slice(0,256);savePalette(ed.palette);renderPalette();window.UIXApp?.status?.(`Palette set to ${ed.palette.length} color${ed.palette.length===1?'':'s'} from the sprite`);
+    });
+    q('[data-palette-snap]').addEventListener('click',()=>{
+      const colors=ed.palette.map(h=>{try{return parseHex(h);}catch{return null;}}).filter(Boolean);if(!colors.length)return;
+      const f=currentFrame(ed),sel=ed.selection&&!ed.selection.floating?ed.selection.mask:null;pushUndo(ed);
+      for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){const p=f.pixels[y][x];if(p[3]===0||(sel&&!sel.has(`${x},${y}`)))continue;const c=nearestPaletteColor(colors,p);f.pixels[y][x]=[c[0],c[1],c[2],p[3]];}
+      invalidateCache(f);ensureFrameCache(f);render(ed);window.UIXApp?.status?.('Snapped to palette');
+    });
+    // Sprite sheets
+    q('[data-sheet-export]').addEventListener('click',()=>openSheetExport(ed));
+    const fileIn=q('[data-sheet-file]');q('[data-sheet-import]').addEventListener('click',()=>fileIn.click());
+    fileIn.addEventListener('change',()=>{const f=fileIn.files?.[0];fileIn.value='';if(f)openSheetImport(ed,f);});
+    ed.refreshExtras=()=>{
+      const wand=q('[data-wand-settings]');if(wand)wand.hidden=ed.tool!=='wand';
+      const t=q('[data-onion-toggle]');if(t){t.textContent=`Onion Skin: ${ed.onion.on?'On':'Off'}`;t.classList.toggle('active',ed.onion.on);}
+      const o=q('[data-onion-options]');if(o)o.hidden=!ed.onion.on;
+      renderPalette();
+    };
+    renderPalette();
+  }
+
   window.UIXSpriteEditor={openCreate,openEdit,openEditMany,handleShortcut,importSpriteAsset:importSpriteAssetIntoEditor};
 })();

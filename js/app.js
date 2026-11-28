@@ -1823,7 +1823,7 @@
     const label = document.createElement('div'); label.className = 'nodes-label'; label.textContent = 'Nodes'; host.append(label);
     const nodesHost = document.createElement('div'); nodesHost.id = 'sceneNodes'; host.append(nodesHost);
     renderTreeItems(nodesHost, currentScene().nodes, 0);
-    const rootDrop = document.createElement('div'); rootDrop.className = 'root-drop'; rootDrop.innerHTML = '<span><i class="ui-svg" data-icon="dropin"></i></span> Drop here to place at scene root'; host.append(rootDrop);
+    const rootDrop = document.createElement('div'); rootDrop.className = 'root-drop'; rootDrop.innerHTML = '<span class="root-drop-icon"><i class="ui-svg" data-icon="dropin"></i></span><span class="root-drop-label">Drop here to place at scene root</span>'; rootDrop.title = 'Drop here to place at scene root'; host.append(rootDrop);
     rootDrop.addEventListener('dragover', e => { e.preventDefault(); rootDrop.classList.add('drag-over'); });
     rootDrop.addEventListener('dragleave', () => rootDrop.classList.remove('drag-over'));
     rootDrop.addEventListener('drop', e => { e.preventDefault(); rootDrop.classList.remove('drag-over'); if (state.dragTree?.items?.length) moveItemsToRoot(state.dragTree.items); else if (state.dragTree?.nodeId) moveToRoot(state.dragTree.nodeId); });
@@ -5731,6 +5731,7 @@
       case 'asset-import-local-projects': openAssetImportFromLocalProjects(); break;
       case 'create-asset': showModal($('#assetCreateModal')); break;
       case 'new-sprite-editor': closeModal($('#assetCreateModal')); window.UIXSpriteEditor?.openCreate(); break;
+      case 'new-audio-editor': closeModal($('#assetCreateModal')); window.UIXAudioEditor?.openCreate(); break;
       case 'new-midi-editor': closeModal($('#assetCreateModal')); window.UIXMIDIEditor?.openCreate(); break;
       case 'apply-color': applyColor(); break;
       case 'apply-expression': applyExpression(); break;
@@ -6851,7 +6852,7 @@
       const key=assetKey(asset),isSelected=selected.has(key);
       const card=document.createElement('article'); card.className=`asset-card${isSelected?' asset-selected':''}`; card.dataset.assetKey=key;
       const preview=document.createElement('div'); preview.className=`asset-preview ${type==='Audio'?'audio-preview':''} ${type==='MIDI'?'midi-preview':''} ${type==='Font'?'font-preview':''}`;
-      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);} else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol"><i class="ui-svg" data-icon="music"></i></span><span class="midi-asset-meta">MIDI</span>';} else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';sample.style.fontSize='38px';sample.style.lineHeight='1';preview.append(sample);} else UIXIcons.set(preview,'camera');
+      if(type==='Sprite'){const img=document.createElement('img');img.src=asset.value;img.alt=asset.name||'Sprite';preview.append(img);} else if(type==='MIDI'){preview.innerHTML='<span class="midi-asset-symbol"><i class="ui-svg" data-icon="music"></i></span><span class="midi-asset-meta">MIDI</span>';} else if(type==='Font'){const sample=document.createElement('span');sample.textContent='Aa';sample.style.fontFamily=asset.fontFamily||asset.name||'sans-serif';sample.style.fontSize='38px';sample.style.lineHeight='1';preview.append(sample);} else if(type==='Audio'){preview.innerHTML='<span class="audio-asset-symbol"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10v4M7 7v10M11 4v16M15 8v8M19 10v4"></path></svg></span><span class="audio-asset-meta">'+esc(String(asset.type||'audio').replace(/^audio\//,'').toUpperCase())+'</span>';} else UIXIcons.set(preview,'camera');
       if(state.assetManagerSelectMode){
         const mark=document.createElement('span');mark.className='asset-selection-mark';UIXIcons.set(mark,isSelected?'check':'add');preview.append(mark);
         if(isSelected){const order=document.createElement('span');order.className='selection-order-badge';order.textContent=String(selectionOrder.get(key)||'');preview.append(order);}
@@ -6863,6 +6864,7 @@
         e.stopPropagation();
         if(type==='Sprite')openSpriteAssetActionModal(asset);
         else if(type==='MIDI')window.UIXMIDIEditor?.openEdit(asset);
+        else if(type==='Audio'&&window.UIXAudioEditor)window.UIXAudioEditor.openEdit(asset);
         else if(type==='Audio'||type==='Font')promptModal(`Rename ${type}`,'Asset name',asset.name||asset.filename||type,value=>{const raw=String(value||'').trim();if(!raw)return;const currentExt=(String(asset.filename||'').match(/\.[^.]+$/)||[''])[0];const filename=uniqueAssetFilename(`${raw}${currentExt}`,asset);asset.filename=filename;asset.name=splitAssetFilename(filename).base;if(type==='Font'){asset.fontFamily=raw;loadFontAsset(asset);}renderAssetManager();status(`${type} renamed to ${asset.name}`);});
       };
       const del=document.createElement('button'); del.type='button'; del.className='asset-edit danger'; del.title='Delete'; del.setAttribute('aria-label','Delete asset'); UIXIcons.set(del,'close');
@@ -13362,7 +13364,7 @@ function updateRuntimeAnimations(dt){
     document.addEventListener('gesturestart',e=>e.preventDefault());document.addEventListener('gesturechange',e=>e.preventDefault());document.addEventListener('gestureend',e=>e.preventDefault());
   }
 
-  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:renderAssetManager,loadProjectBytes,buildProjectNDC,getCurrentProjectName:()=>String(state.project?.name||'Untitled Node2D'),startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode,openAssetSelector};
+  window.UIXApp={showModal,closeModal,status,askConfirm,addSpriteAsset,replaceSpriteAsset,deleteSpriteAsset,saveSpriteFrames,openColorModal,refreshAssets:()=>{renderAssetManager();projectMutationRevision++;resetAutoSaveTimer();},loadProjectBytes,buildProjectNDC,getCurrentProjectName:()=>String(state.project?.name||'Untitled Node2D'),startRuntime,stopRuntime,hasLoadedProject,isRuntimeRunning:()=>!!state.runtime?.running,showContextMenu,snapSelectedMainNode,openAssetSelector};
   function ensureViewportNotice(){
     let notice=$('#uixViewportNarrowNotice');
     if(!notice){

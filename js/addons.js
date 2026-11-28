@@ -313,30 +313,41 @@
   function activeForUUID(uuid){return projectConfig.active.find(x=>x.uuid===String(uuid||'').toLowerCase())||null;}
 
   function ensureStyle(){if(document.getElementById('node2dAddonStyles'))return;const s=document.createElement('style');s.id='node2dAddonStyles';s.textContent=`
-    .addon-manager-modal{width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));}
-    .addon-manager-list{display:flex;flex-direction:column;gap:9px;max-height:min(56vh,520px);overflow:auto;padding:2px 3px 6px;}
-    .addon-card{display:flex;align-items:center;gap:12px;width:100%;padding:11px;border:1px solid var(--border-color,#383838);border-radius:9px;background:var(--panel-bg,#171717);color:var(--text-primary,#eee);text-align:left;cursor:pointer;}
+    .addon-manager-modal{width:min(760px,calc(100vw - 24px));display:flex;flex-direction:column;box-sizing:border-box;}
+    .addon-manager-modal>.modal-header,.addon-manager-modal>.modal-actions{flex:0 0 auto;}
+    .addon-manager-modal .modal-header>div:first-child{min-width:0;flex:1;}
+    .addon-manager-modal .modal-header h3{line-height:1.3;overflow-wrap:anywhere;}
+    .addon-manager-modal .modal-header p{line-height:1.45;overflow-wrap:anywhere;}
+    .addon-manager-modal .modal-close{flex:0 0 28px;display:inline-grid;place-items:center;padding:0;margin:-2px -4px 0 0;}
+    .addon-manager-modal .modal-close svg{width:16px;height:16px;}
+    .addon-manager-modal>.modal-body{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .addon-manager-modal .modal-actions{flex-wrap:wrap;}
+    .addon-manager-list{display:flex;flex-direction:column;gap:9px;min-height:0;overflow:visible;padding:0;}
+    .addon-card{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;column-gap:12px;box-sizing:border-box;width:100%;min-width:0;padding:11px 12px;border:1px solid var(--border-color,#383838);border-radius:9px;background:var(--panel-bg,#171717);color:var(--text-primary,#eee);text-align:left;cursor:pointer;}
     .addon-card:hover{border-color:var(--text-muted,#777);}
-    .addon-icon{width:52px;height:52px;flex:0 0 52px;border-radius:8px;object-fit:contain;background:#222;padding:4px;box-sizing:border-box;}
-    .addon-card-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;}
-    .addon-card-title{font-weight:650;overflow-wrap:anywhere;}
-    .addon-card-description{font-size:12px;line-height:1.35;color:var(--text-muted,#999);overflow-wrap:anywhere;}
-    .addon-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--text-muted,#999);}
-    .addon-card-version{margin-left:auto;white-space:nowrap;}
-    .addon-card-tools{display:flex;flex-direction:column;gap:4px;}
-    .addon-card-tools button{width:30px;height:26px;border:1px solid var(--border-color,#444);background:transparent;color:inherit;border-radius:5px;cursor:pointer;}
-    .addon-card-tools .addon-toggle{width:auto;min-width:62px;padding:0 7px;font-size:10px;}
+    .addon-card:focus-visible{outline:2px solid var(--accent,#e8c84a);outline-offset:1px;}
+    .addon-icon{width:52px;height:52px;border-radius:8px;object-fit:contain;background:#222;padding:4px;box-sizing:border-box;display:block;}
+    .addon-card-main{min-width:0;display:flex;flex-direction:column;gap:4px;}
+    .addon-card-title{font-size:13px;font-weight:650;line-height:1.3;overflow-wrap:anywhere;}
+    .addon-card-description{font-size:12px;line-height:1.4;color:var(--text-muted,#999);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+    .addon-card-foot{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;font-size:11px;line-height:1.4;color:var(--text-muted,#999);min-width:0;}
+    .addon-card-foot>span:first-child{min-width:0;flex:1 1 160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .addon-card-version{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .addon-card-tools{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:96px;align-self:center;}
+    .addon-card-tools button{height:26px;min-width:0;padding:0;border:1px solid var(--border-color,#444);background:transparent;color:inherit;border-radius:5px;cursor:pointer;display:inline-grid;place-items:center;line-height:1;}
+    .addon-card-tools button:hover:not(:disabled){background:#363636;}
+    .addon-card-tools .addon-toggle{grid-column:1 / -1;width:100%;padding:0 6px;font-size:10px;white-space:nowrap;}
     .addon-card-tools button:disabled{opacity:.3;cursor:default;}
-    .addon-tag{font-size:10px;border:1px solid var(--border-color,#444);border-radius:12px;padding:2px 7px;white-space:nowrap;}
-    .addon-manager-note{font-size:12px;line-height:1.45;color:var(--text-muted,#999);margin:0 0 10px;}
+    .addon-tag{font-size:10px;line-height:1.3;border:1px solid var(--border-color,#444);border-radius:12px;padding:1px 7px;white-space:nowrap;}
+    .addon-manager-note{font-size:12px;line-height:1.5;color:var(--text-muted,#999);margin:0;overflow-wrap:anywhere;}
     .addon-detail-grid{display:grid;grid-template-columns:72px minmax(0,1fr);gap:14px;align-items:start;}
     .addon-detail-grid .addon-icon{width:72px;height:72px;}
     .addon-detail-meta{font-size:12px;color:var(--text-muted,#999);overflow-wrap:anywhere;line-height:1.5;}
     .addon-log-list{max-height:240px;overflow:auto;border:1px solid var(--border-color,#333);border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:7px;font:12px/1.4 ui-monospace,monospace;}
     .addon-log-row{overflow-wrap:anywhere;}.addon-log-row.warning{color:#e6be72;}.addon-log-row.error{color:#ef8888;}
     .addon-empty{padding:28px 12px;text-align:center;color:var(--text-muted,#999);border:1px dashed var(--border-color,#444);border-radius:8px;}
-    .addon-package-warning{font-size:12px;color:var(--text-muted,#999);line-height:1.4;}
-    @media(max-width:520px){.addon-icon{width:42px;height:42px;flex-basis:42px}.addon-card{gap:8px;padding:8px}.addon-card-tools button{width:26px}}
+    .addon-package-warning{font-size:12px;color:var(--text-muted,#999);line-height:1.4;margin:0;}
+    @media(max-width:520px){.addon-card{grid-template-columns:42px minmax(0,1fr);row-gap:8px;column-gap:8px;padding:9px}.addon-icon{width:42px;height:42px}.addon-card-tools{grid-column:1 / -1;width:100%;grid-template-columns:1fr 34px 34px}.addon-card-tools .addon-toggle{grid-column:auto}}
   `;document.head.append(s);}
   function showModal(modal){window.UIXApp?.showModal?.(modal);}
   function closeModal(modal){window.UIXApp?.closeModal?.(modal);}

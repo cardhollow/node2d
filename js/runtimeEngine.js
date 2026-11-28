@@ -18,6 +18,21 @@
   const perp = a => ({x:-a.y,y:a.x});
   const rot = (x,y,a) => ({x:x*Math.cos(a)-y*Math.sin(a),y:x*Math.sin(a)+y*Math.cos(a)});
 
+  // Two colliders sharing at least one Collision Filter value ignore each other
+  // completely (no detection, events, or physical response). Everything else collides.
+  function collisionFiltersOverlap(a,b){
+    const left=a?.collider?.collisionFilter,right=b?.collider?.collisionFilter;
+    if(!Array.isArray(left)||!Array.isArray(right)||!left.length||!right.length)return false;
+    const set=new Set();for(const v of left){const n=Number(v);if(Number.isInteger(n))set.add(n);}
+    if(!set.size)return false;
+    for(const v of right){const n=Number(v);if(Number.isInteger(n)&&set.has(n))return true;}
+    return false;
+  }
+
+  const sameKey=(a,b)=>{if(!a||a.length!==b.length)return false;for(let i=0;i<b.length;i++)if(!Object.is(a[i],b[i]))return false;return true;};
+  const isMovingType=t=>t==='Dynamic'||t==='Kinematic';
+  const STATIC_PROPS={invMass:0,invInertia:0};
+
   function colliderShape(body){
     const c=body?.collider;
     const physics=body?.physics;
@@ -25,11 +40,15 @@
     const detectable=hasComponent ? c.collidable !== false : false;
     const enabled=(hasComponent&&detectable)||(!hasComponent&&physics?.isCollider===true);
     if(!enabled) return null;
-    const isStatic=!['Dynamic','Kinematic'].includes(physics?.body);
+    const isStatic=!isMovingType(physics?.body);
     const nt=body.t||{position:[0,0],scale:[1,1],angle:[0]};
     const ctKey=hasComponent&&c?.transform?c.transform:{position:[0,0],scale:[1,1],angle:[0]};
-    const shapeKey=[Number(nt.position?.[0])||0,Number(nt.position?.[1])||0,Number(nt.scale?.[0]??1),Number(nt.scale?.[1]??1),Number(nt.angle?.[0])||0,hasComponent?String(c.shapeType||c.type||'Rect'):'Rect',Number(ctKey.position?.[0])||0,Number(ctKey.position?.[1])||0,Number(ctKey.scale?.[0]??1),Number(ctKey.scale?.[1]??1),Number(ctKey.angle?.[0])||0,hasComponent?(c.collidable===false?'0':'1'):'0',physics?.isCollider===true?'1':'0'].join('|');
-    if(isStatic&&!body._shapeDirty&&body._shapeCache&&body._shapeKey===shapeKey)return body._shapeCache;
+    // The cache key is only needed for static bodies; building it for moving bodies was wasted work.
+    let shapeKey=null;
+    if(isStatic){
+      shapeKey=[Number(nt.position?.[0])||0,Number(nt.position?.[1])||0,Number(nt.scale?.[0]??1),Number(nt.scale?.[1]??1),Number(nt.angle?.[0])||0,hasComponent?String(c.shapeType||c.type||'Rect'):'Rect',Number(ctKey.position?.[0])||0,Number(ctKey.position?.[1])||0,Number(ctKey.scale?.[0]??1),Number(ctKey.scale?.[1]??1),Number(ctKey.angle?.[0])||0,hasComponent?(c.collidable===false?'0':'1'):'0',physics?.isCollider===true?'1':'0'];
+      if(!body._shapeDirty&&body._shapeCache&&sameKey(body._shapeKey,shapeKey))return body._shapeCache;
+    }
 
     const nx=Number(nt.position?.[0])||0, ny=Number(nt.position?.[1])||0;
     const nsx=Number(nt.scale?.[0] ?? 1), nsy=Number(nt.scale?.[1] ?? 1);
@@ -168,15 +187,15 @@
   }
 
   function massProps(body,shape){
-    if(body.physics?.body!=='Dynamic')return{invMass:0,invInertia:0};
-    const rawMass=Number(body.physics?.mass);const explicitMass=Number.isFinite(rawMass)&&rawMass>0?rawMass:0;const key=`${shape.type}|${shape.w}|${shape.h}|${shape.radius||0}|${body.physics.fixedRotation?'1':'0'}|${explicitMass}`;
-    if(body._massKey===key&&body._massCache)return body._massCache;
+    if(body.physics?.body!=='Dynamic')return STATIC_PROPS;
+    const rawMass=Number(body.physics?.mass);const explicitMass=Number.isFinite(rawMass)&&rawMass>0?rawMass:0;const mk=body._massKey;
+    if(mk&&body._massCache&&mk.t===shape.type&&mk.w===shape.w&&mk.h===shape.h&&mk.r===(shape.radius||0)&&mk.f===!!body.physics.fixedRotation&&mk.m===explicitMass)return body._massCache;
     let mass, inertia;
     if(explicitMass>0){mass=explicitMass;inertia=mass*(shape.type==='Circle'?0.5*shape.radius*shape.radius:shape.type==='Triangle'?(shape.w*shape.w+shape.h*shape.h)/24:(shape.w*shape.w+shape.h*shape.h)/12);}
     else if(shape.type==='Circle'){mass=Math.PI*shape.radius*shape.radius*.001;inertia=.5*mass*shape.radius*shape.radius;}
     else if(shape.type==='Triangle'){mass=Math.max(.001,.5*shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/24;}
     else{mass=Math.max(.001,shape.w*shape.h*.001);inertia=mass*(shape.w*shape.w+shape.h*shape.h)/12;}
-    const safeMass=Math.max(.000001,mass);const safeInertia=Math.max(.0001,inertia);const out={mass:safeMass,invMass:1/safeMass,inertia:safeInertia,invInertia:body.physics?.fixedRotation?0:1/safeInertia};body._massKey=key;body._massCache=out;return out;
+    const safeMass=Math.max(.000001,mass);const safeInertia=Math.max(.0001,inertia);const out={mass:safeMass,invMass:1/safeMass,inertia:safeInertia,invInertia:body.physics?.fixedRotation?0:1/safeInertia};body._massKey={t:shape.type,w:shape.w,h:shape.h,r:shape.radius||0,f:!!body.physics.fixedRotation,m:explicitMass};body._massCache=out;return out;
   }
   function pointVelocity(body,r){return add({x:Number(body.vx)||0,y:Number(body.vy)||0},crossSV(Number(body.omega)||0,r));}
   function applyImpulse(body,imp,r,sign,props){if(props.invMass===0)return;body.vx=(Number(body.vx)||0)+imp.x*props.invMass*sign;body.vy=(Number(body.vy)||0)+imp.y*props.invMass*sign;body.omega=(Number(body.omega)||0)+cross(r,imp)*props.invInertia*sign;}
@@ -347,7 +366,7 @@
       const b=bodies[i];b.colliding=false;const type=b.physics?.body;
       if(type==='Dynamic')b.vy=(Number(b.vy)||0)+(Number(b.physics?.gravity)||0)*h;
       if(type==='Dynamic'||type==='Kinematic'){b.t.position[0]+=(Number(b.vx)||0)*h;b.t.position[1]+=(Number(b.vy)||0)*h;if(type==='Dynamic'&&!b.physics?.fixedRotation)b.t.angle[0]+=(Number(b.omega)||0)*h/DEG;}
-      const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const isStatic=!['Dynamic','Kinematic'].includes(type);const cacheValid=isStatic&&b._aabbCache&&!b._shapeDirty&&b._aabbCacheKey===b._shapeKey;const box=cacheValid?b._aabbCache:aabb(shape);if(isStatic){b._aabbCache=box;b._aabbCacheKey=b._shapeKey;}aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
+      const shape=colliderShape(b);shapes[i]=shape;if(!shape)continue;const isStatic=!isMovingType(type);const cacheValid=isStatic&&b._aabbCache&&!b._shapeDirty&&b._aabbCacheKey===b._shapeKey;const box=cacheValid?b._aabbCache:aabb(shape);if(isStatic){b._aabbCache=box;b._aabbCacheKey=b._shapeKey;}aabbs[i]=box;props[i]=massProps(b,shape);entries.push(i);
     }
 
     // Sweep-and-prune broadphase: only pairs whose AABBs overlap on X are tested further.
@@ -359,6 +378,7 @@
         const j=entries[aj],bb=aabbs[j];
         if(bb.l>aa.r)break;
         if(aa.r<bb.l||aa.l>bb.r||aa.b<bb.t||aa.t>bb.b)continue;
+        if(collisionFiltersOverlap(bodies[i],bodies[j]))continue;
         const hit=collide(A,shapes[j]);if(!hit)continue;
         // Collider components decide what is detectable. Physics.isCollider only
         // decides whether a detected pair participates in physical response.
